@@ -1,0 +1,278 @@
+--- Fast sets for small integers and enumerations, implemented as bit operations on 'Long'
+--- There may be at most 64 elements, due to the bit size of 'Long'.
+module frege.data.Bits 
+        inline (BitSet.empty, BitSet.singleton, BitSet.member, 
+                BitSet.subset, BitSet.null, BitSet.subset, BitSet.union,
+                BitSet.intersection, BitSet.difference, 
+                -- BitSet.set,       -- introduces CASE in inlining
+                BitSet.==, BitSet.<=>)
+    where
+
+import Data.Monoid
+
+newtype BitSet e = BitSet { !set :: Long } where
+    --- The empty set
+    empty :: BitSet α
+    empty  = BitSet 0L
+    --- The universal set
+    universal :: (Enum α, Bounded α) => BitSet α
+    universal = -- fromList (minBound .. maxBound)
+                    mapset trans (singleton maxBound) where 
+            trans l = l+l-1L
+            mapset :: (Long -> Long) -> BitSet α -> BitSet α
+            mapset f bs = BitSet (f bs.set)
+                     
+    --- A set with one argument
+    singleton :: Enum α => α -> BitSet α
+    singleton !a = BitSet (1L `shiftL` ord a)
+    --- @a `union` b@ -- a set with all elements that are members of a or members of b
+    union :: BitSet α -> BitSet α -> BitSet α
+    union a b  = BitSet (a.set `.|.` b.set)
+    --- @a `intersection` b@ -- a set with all elements that are members of a and members of b
+    intersection :: BitSet α -> BitSet α -> BitSet α
+    intersection a b  = BitSet (a.set `.&.` b.set)
+    --- @a `difference` b@ -- a set with all elements that are members of a and not members of b
+    difference :: BitSet α -> BitSet α -> BitSet α
+    difference a b  = BitSet (a.set `.&.` complement b.set)
+    --- @a `unionE` e@ = @a `union` {e}@
+    unionE bs = union bs . singleton
+    --- @a `intersectionE` e@ = @a `intersection` {e}@
+    intersectionE bs = intersection bs . singleton
+    --- @a `differenceE` e@ = @a `difference` {e}@
+    differenceE bs = difference bs . singleton
+    
+    --- Predicate to tell if the set is empty
+    null :: BitSet α -> Bool
+    null a = a.set == 0L    
+    --- Predicate to tell if an element is a member of a set
+    member :: Enum α => α -> BitSet α -> Bool
+    member a bs = singleton a `subset` bs
+    --- Predicate that tells if one set is a subset of another
+    subset :: BitSet α -> BitSet α -> Bool
+    subset a b = (a.set `.&.` b.set) == a.set
+    
+    --- tell the number of elements in a 'BitSet'
+    size :: BitSet a → Int
+    size a = bitCount a.set
+            
+    --- convert a list to a 'BitSet'
+    fromList = fold (\acc\e -> acc `union` singleton e) empty
+    --- convert a 'BitSet' to a list
+    toList :: Enum α => BitSet α -> [α]
+    toList BitSet{set} = go set 0
+        where
+            go 0L !c = []
+            go  n !c 
+                | odd  n    = Enum.from c : go (n `ushiftR` 1) (c+1)
+                | otherwise = go (n `ushiftR` 1) (c+1)
+    
+instance Monoid (BitSet a) where
+    mempty  = BitSet.empty
+    mappend = BitSet.union
+        
+instance ListEmpty BitSet
+
+instance Eq (BitSet a) where
+    ba == bb = ba.set == bb.set
+    hashCode bs = hashCode bs.set
+
+instance Ord (BitSet a) where
+    ba <=> bb = ba.set <=> bb.set
+
+instance (Show a, Enum a) => Show (BitSet a) where
+    show bs = "{" ++ joined ", " members ++ "}" where
+        members = map show bs.toList
+
+
+infixl 12 `shift` `rotate` `shiftL` `shiftR` `rotateL` `rotateR` `ushiftR`
+infixl 11 `.&.`
+infixl 10 `.|.` `.^.` `xor`
+
+{--
+The 'Bits' class defines bitwise operations over integral types.
+
+Bits are numbered from 0 with bit 0 being the least
+  significant bit.
+
+Minimal complete definition: '.&.', '.|.', '.^.', 'complement',
+('shift' or ('shiftL' and 'shiftR')), ('rotate' or ('rotateL' and 'rotateR')),
+'bitSize' and 'isSigned'.
+-}
+class Num a =>  Bits a where
+    --- Bitwise \"and\"
+    (.&.) :: a -> a -> a
+
+    --- Bitwise \"or\"
+    (.|.) :: a -> a -> a
+
+    --- Bitwise \"xor\"
+    (.^.) :: a -> a -> a
+
+    --- Haskell compatibility. Same as `.^.`
+    xor :: a -> a -> a
+    xor = (.^.)
+
+    {-- Reverse all the bits in the argument -}
+    complement        :: a -> a
+
+    {-- @'shift' x i@ shifts @x@ left by @i@ bits if @i@ is positive,
+        or right by @-i@ bits otherwise.
+        Right shifts perform sign extension on signed number types;
+        i.e. they fill the top bits with 1 if the @x@ is negative
+        and with 0 otherwise.
+
+        An instance can define either this unified 'shift' or 'shiftL' and
+        'shiftR', depending on which is more convenient for the type in
+        question. -}
+    shift             :: a -> Int -> a
+
+    x `shift`   i | i<0       = x `shiftR` (-i)
+                  | i>0       = x `shiftL` i
+                  | otherwise = x
+
+    {-- @'rotate' x i@ rotates @x@ left by @i@ bits if @i@ is positive,
+        or right by @-i@ bits otherwise.
+
+        For unbounded types like 'Integer', 'rotate' is equivalent to 'shift'.
+
+        An instance can define either this unified 'rotate' or 'rotateL' and
+        'rotateR', depending on which is more convenient for the type in
+        question. -}
+    rotate            :: a -> Int -> a
+
+    x `rotate`  i | i<0       = x `rotateR` (-i)
+                  | i>0       = x `rotateL` i
+                  | otherwise = x
+
+    {-
+    -- Rotation can be implemented in terms of two shifts, but care is
+    -- needed for negative values.  This suggested implementation assumes
+    -- 2's-complement arithmetic.  It is commented out because it would
+    -- require an extra context (Ord a) on the signature of 'rotate'.
+    x `rotate`  i | i<0 && isSigned x && x<0
+                         = let left = i+bitSize x in
+                           ((x `shift` i) .&. complement ((-1) `shift` left))
+                           .|. (x `shift` left)
+                  | i<0  = (x `shift` i) .|. (x `shift` (i+bitSize x))
+                  | i==0 = x
+                  | i>0  = (x `shift` i) .|. (x `shift` (i-bitSize x))
+    -}
+
+    --- @bit i@ is a value with the @i@th bit set
+    bit               :: Int -> a
+
+    --- @x \`setBit\` i@ is the same as @x .|. bit i@
+    setBit            :: a -> Int -> a
+
+    --- @x \`clearBit\` i@ is the same as @x .&. complement (bit i)@
+    clearBit          :: a -> Int -> a
+
+    --- @x \`complementBit\` i@ is the same as @x \`.^.\` bit i@
+    complementBit     :: a -> Int -> a
+
+    --- Return 'true' if the @n@th bit of the argument is 1
+    testBit           :: a -> Int -> Bool
+
+    {-- Return the number of bits in the type of the argument.  The actual
+        value of the argument is ignored.  The function 'bitSize' is
+        undefined for types that do not have a fixed bitsize, like 'Integer'.
+        -}
+    bitSize           :: a -> Int
+
+    {-- Return 'true' if the argument is a signed type.  The actual
+        value of the argument is ignored -}
+    isSigned          :: a -> Bool
+
+    bit i               = 1 `shiftL` i
+    x `setBit` i        = x .|. bit i
+    x `clearBit` i      = x .&. complement (bit i)
+    x `complementBit` i = x .^. bit i
+    x `testBit` i       = (x .&. bit i) /= 0
+
+    {-- Shift the argument left by the specified number of bits
+        (which must be non-negative).
+
+        An instance can define either this and 'shiftR' or the unified
+        'shift', depending on which is more convenient for the type in
+        question. -}
+    shiftL            :: a -> Int -> a
+    x `shiftL`  i = x `shift`  i
+
+    {-- Shift the first argument right by the specified number of bits
+        (which must be non-negative).
+        Right shifts perform sign extension on signed number types;
+        i.e. they fill the top bits with 1 if the @x@ is negative
+        and with 0 otherwise.
+
+        An instance can define either this and 'shiftL' or the unified
+        'shift', depending on which is more convenient for the type in
+        question. -}
+    shiftR            :: a -> Int -> a
+    x `shiftR`  i = x `shift`  (-i)
+
+    --- Unsigned shift right
+    ushiftR            :: a -> Int -> a
+
+    {-- Rotate the argument left by the specified number of bits
+        (which must be non-negative).
+
+        An instance can define either this and 'rotateR' or the unified
+        'rotate', depending on which is more convenient for the type in
+        question. -}
+    rotateL           :: a -> Int -> a
+    x `rotateL` i = x `rotate` i
+
+    {-- Rotate the argument right by the specified number of bits
+        (which must be non-negative).
+
+        An instance can define either this and 'rotateL' or the unified
+        'rotate', depending on which is more convenient for the type in
+        question. -}
+    rotateR           :: a -> Int -> a
+    x `rotateR` i = x `rotate` (-i)
+
+    {-- 
+        Returns the number of one-bits in the two's complement binary representation of the specified value.
+
+        Also known as "population count" or "Hamming Weight" of a bit string.
+
+        See also 'http://en.wikipedia.org/wiki/Hamming_weight Hamming Weight'.
+
+    -}
+    bitCount ∷ a → Int
+
+
+instance Bits Int where
+
+    bitSize  _ = Int.size
+
+    isSigned _ = true
+
+    pure native bitCount "java.lang.Integer.bitCount" :: Int -> Int
+
+instance Bits Long where
+
+    bitSize  _ = Long.size
+
+    isSigned _ = true
+    
+    pure native bitCount "java.lang.Long.bitCount" :: Long -> Int
+
+instance Bits Integer where
+
+    rotate x i = shift x i   -- since an Integer never wraps around
+
+    --- Returns the number of bits in the minimal two's-complement representation of this 'Integer', excluding a sign bit.
+    bitSize = Integer.bitLength
+    
+    --- Returns the number of bits in the two's complement representation of this 'Integer' that differ from its sign bit.
+    --- Note that this is slightly different from data types with a fixed bit size!
+    --- Best to be used after masking a certain number of bits with some all-1-bit pattern.
+    pure native bitCount :: Integer -> Int
+
+
+    isSigned _ = true
+
+
+--- Haskell has this, according to Wikipedia
+popCount = bitCount

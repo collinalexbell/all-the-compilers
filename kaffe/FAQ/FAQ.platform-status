@@ -1,0 +1,100 @@
+KAFFE PLATFORM NOTES
+--------------------
+
+These are the results on different platforms. 
+
+Some of these are less common and are not formally tested 
+before a release, but you may check here the results of 
+build and check runs on CVS versions.
+
+Version = CVS-HEAD 2006-04-23
+OS: Darwin 6.8
+Arch: PowerPC
+Compiler: apple cc
+Kaffe engine: intrp, pthreads, kaffe-gc
+Regressions: 149/150
+
+Version = CVS-HEAD 2007-07-31
+OS: NetBSD 1.6
+Arch: i386
+Compiler: gcc 2.95.3 20010315 (release) (NetBSD nb3)
+Kaffe engine: jit3, jthreads, kaffe-gc
+Regressions: 146/150
+
+Version = CVS-HEAD 2007-07-31
+OS: NetBSD 1.6
+Arch: i386
+Compiler: gcc 2.95.3 20010315 (release) (NetBSD nb3)
+Kaffe engine: jit, jthreads, kaffe-gc
+Regressions: 144/150
+
+Version = CVS-HEAD 2007-07-31
+OS: NetBSD 1.6
+Arch: i386
+Compiler: gcc 2.95.3 20010315 (release) (NetBSD nb3)
+Kaffe engine: intrp, jthreads, kaffe-gc
+Regressions: 144/150
+
+Version = CVS-HEAD 2007-07-31
+OS: Linux 2.2.20
+Arch: m68k (mc68030)
+Compiler: gcc 2.95.4 20011002 (Debian prerelease)
+Kaffe engine: jit3, pthreads, kaffe-gc
+Regressions: 128/150
+
+Version = CVS-HEAD 2007-07-31
+OS: Linux 2.2.20
+Arch: m68k (mc68030)
+Compiler: gcc 2.95.4 20011002 (Debian prerelease)
+Kaffe engine: jit, pthreads, kaffe-gc
+Regressions: 122/150
+
+Version = CVS-HEAD 2007-07-31
+OS: Linux 2.2.20
+Arch: m68k (mc68030)
+Compiler: gcc 2.95.4 20011002 (Debian prerelease)
+Kaffe engine: intrp, pthreads, kaffe-gc
+Regressions: 138/150
+
+Version = CVS-HEAD 2007-07-31
+OS: NetBSD 1.6.2
+Arch: m68k (mc68030)
+Compiler: gcc 2.95.3 20010315 (release) (NetBSD nb3)
+Kaffe engine: jit3, jthreads, kaffe-gc
+Regressions: 123/150
+
+Version = CVS-HEAD 2007-07-31
+OS: NetBSD 1.6.2
+Arch: m68k (mc68030)
+Compiler: gcc 2.95.3 20010315 (release) (NetBSD nb3)
+Kaffe engine: jit3, jthreads, kaffe-gc
+Regressions: 105/150
+
+Version = CVS-HEAD 2007-08-02
+OS: Linux debian 2.6.18-4-versatile
+Arch: arm (armv5tejl)
+Compiler: gcc version 3.4.6 (Debian 3.4.6-5)
+Kaffe engine: jit3, pthreads, kaffe-gc
+Regressions: 124/150
+
+Version = CVS-HEAD 2007-08-02
+OS: Linux debian 2.6.18-4-versatile
+Arch: arm (armv5tejl)
+Compiler: gcc version 3.4.6 (Debian 3.4.6-5)
+Kaffe engine: jit, pthreads, kaffe-gc
+Regressions: 136/150
+
+Version = CVS-HEAD 2007-08-02
+OS: Linux debian 2.6.18-4-versatile
+Arch: arm (armv5tejl)
+Compiler: gcc version 3.4.6 (Debian 3.4.6-5)
+Kaffe engine: intrp, pthreads, kaffe-gc
+Regressions: 137/150
+
+Version = CVS-HEAD 2007-08-02
+OS: NetBSD 3.1 (GENERIC)
+Arch: arm (SA-110 step S)
+Compiler: gcc version 3.3.3 (NetBSD nb3 20040520)
+Kaffe engine: intrp, pthreads, kaffe-gc
+Regressions: 146/150
+

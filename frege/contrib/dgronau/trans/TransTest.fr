@@ -1,0 +1,37 @@
+package frege.control.trans.TransTest where
+
+import frege.control.trans.MaybeT
+
+main _ = do
+  MaybeT.run askPassword 
+  return ()  
+
+isValid :: String -> Bool
+isValid s = length s >= 8
+
+getValidPassword = do 
+  s <- MaybeT.lift getLine
+  guard (isValid s)
+  return s
+ 
+askPassword = do 
+   MaybeT.lift $ putStrLn "Insert your new password:"
+   value <- msum $ repeat getValidPassword
+   MaybeT.lift $ putStrLn "Storing in database..."
+  
+putStrLn :: String -> IO ()
+putStrLn s = println s
+                 
+native systemInRead "java.lang.System.in.read" :: () -> IO (Exception Int)
+
+getChar :: IO Char
+getChar = do
+   (Right i) <- systemInRead ()
+   return $ chr i
+
+getLine :: IO String
+getLine = go [] where
+  go acc = do
+      c <- getChar
+      if c == '\n' then return (packed $ reverse acc) else go (c:acc)  
+ 

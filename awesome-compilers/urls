@@ -1,0 +1,101 @@
+ttps://github.com/sindresorhus/awesome.git
+https://github.com/munificent/craftinginterpreters.git
+https://github.com/happi/theBeamBook.git - Description of the ERTS (Erlang Runtime System)
+https://github.com/jaseemabid/micromanual.git
+https://github.com/quchen/articles/tree/master/hindley-milner.git
+https://github.com/maryrosecook/littlelisp.git
+https://github.com/aquynh/capstone.git
+https://github.com/keystone-engine/keystone.git
+https://github.com/dotnet/llilc.git
+https://github.com/xoreaxeaxeax/movfuscator.git
+https://github.com/rubinius/rubinius.git
+https://github.com/igor84/summus.git
+https://github.com/zetavm/zetavm.git
+https://github.com/asmjit/asmjit.git
+https://github.com/drh/lcc.git - The lcc retargetable ANSI C compiler (C as a Backend)
+https://github.com/LADSoft/DotNetPELib.git
+https://github.com/pwil3058/dunnart.git - LALR(1)
+https://github.com/UplinkCoder/FancyPars-lite.git
+https://github.com/dlang-community/libdparse.git
+https://github.com/Calrama/llvm-d.git
+https://github.com/PhilippeSigaud/Pegged.git
+https://github.com/graalvm/graal.git
+https://github.com/graalvm/graal-core.git
+https://github.com/graalvm/graalvm.git
+https://github.com/ekmett/bound/.git / [unbound](https://github.com/sweirich/replib) / [unbound-generics](https://github.com/lambdageek/unbound-generics)
+https://github.com/haskell/hoopl.git
+https://github.com/bscarlet/llvm-general/.git
+https://github.com/aslatter/parsec.git / [attoparsec](https://github.com/bos/attoparsec) / [Megaparsec](https://github.com/mrkkrp/megaparsec) / [Trifecta](https://github.com/ekmett/trifecta/) / [Alex](https://github.com/simonmar/alex) + [Happy](https://github.com/simonmar/happy)
+https://github.com/ivan-m/wl-pprint-text.git / [ansi-wl-pprint](https://github.com/batterseapower/ansi-wl-pprint)
+https://github.com/mraleph/irhydra.git
+https://github.com/GerHobbelt/jison.git
+https://github.com/Hardmath123/nearley.git
+https://github.com/harc/ohm.git
+https://github.com/cglib/cglib.git
+https://github.com/bytedeco/javacpp-presets/tree/master/llvm.git
+https://github.com/norswap/whimsy.git
+https://github.com/alex/rply.git
+https://github.com/Marwes/combine.git
+https://github.com/jauhien/iron-llvm.git
+https://github.com/nikomatsakis/lalrpop.git - LR(1)
+https://github.com/Geal/nom.git
+https://github.com/kevinmehall/rust-peg.git
+https://github.com/pest-parser/pest.git
+https://github.com/rust-lang-nursery/rls.git - The Rust Language Server implementation (aka RLS)
+https://github.com/babel/babel.git
+https://github.com/facebookincubator/BOLT.git
+https://github.com/cisco/ChezScheme.git
+https://github.com/ELENA-LANG/elena-lang.git
+https://github.com/typelead/eta.git
+https://github.com/Frege/frege.git
+https://github.com/gluon-lang/gluon.git
+https://github.com/facebook/hhvm.git
+https://github.com/FascinatedBox/lily.git
+https://github.com/LuaDist/lua.git
+https://github.com/mirah/mirah.git
+https://github.com/nim-lang/Nim.git
+https://github.com/p-org/P.git
+https://github.com/red/red.git
+https://github.com/dotnet/roslyn.git
+https://github.com/LADSoft/Simple-MSIL-Compiler.git
+https://github.com/Microsoft/TypeScript.git
+https://github.com/munificent/wren.git
+https://github.com/zig-lang/zig.git
+https://github.com/syegulalp/Akilang.git
+https://github.com/jserv/amacc.git
+https://github.com/readevalprintlove/black.git
+https://github.com/rswier/c4.git
+https://github.com/tekknolagi/carp.git
+https://github.com/charly-lang/charly.git
+https://github.com/tomhrr/dale.git
+https://github.com/erhanbaris/EasyLang.git
+https://github.com/Eschelle/Eschelle.git
+https://github.com/tekknolagi/gecho.git
+https://github.com/rhysd/gocaml.git
+https://github.com/paivett/gone.git - Compiler for a tiny programming language called Gone, implemented using Python 3.6, SLY and llvmlite. Developed as part of the January 2018 [Write a compiler course](http://www.dabeaz.com/compiler.html)
+https://github.com/mattgreen/hython.git
+https://github.com/llvm-mirror/llgo.git
+https://github.com/kanaka/mal.git
+https://github.com/lihaoyi/Metascala.git
+https://github.com/maierfelix/mini-js.git
+https://github.com/MunVM/MunVM.git
+https://github.com/paladin-t/my_basic.git
+https://github.com/lboasso/oberonc.git
+https://github.com/HackerFoo/poprc.git
+https://github.com/aalhour/PyCOOLC.git
+https://github.com/rabbitvm/rabbit.git
+https://github.com/KCreate/stackvm.git
+https://github.com/dsturnbull/stack_cpu.git
+https://github.com/thejameskyle/the-super-tiny-compiler.git
+https://github.com/raviqqe/tisp.git
+https://github.com/antonmedv/ultra-tiny-compiler.git
+https://github.com/CakeML/cakeml.git
+https://github.com/dotnet/coreclr.git
+https://github.com/erlang/otp.git
+https://github.com/facebook/hhvm.git
+https://github.com/kaffe/kaffe.git
+https://github.com/cfriedt/jamvm.git
+https://github.com/mre/awesome-static-analysis.git
+https://github.com/MattPD/cpplinks/blob/master/compilers.md#conferences.git
+https://github.com/endrazine/wcc.git
+https://github.com/williamdemeo/TypeFunc.git

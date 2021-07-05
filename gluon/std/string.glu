@@ -1,0 +1,37 @@
+//@NO-IMPLICIT-PRELUDE
+//! A UTF-8 encoded string
+
+let string_prim = import! std.string.prim
+let prim = import! std.prim
+let { Semigroup, (<>) } = import! std.semigroup
+let { Monoid } = import! std.monoid
+let { Show } = import! std.show
+let { Eq, Ord, Ordering } = import! std.cmp
+let function = import! std.function
+
+let semigroup : Semigroup String = { append = string_prim.append }
+
+/// Appends two strings.
+///
+/// Re-export of `semigroup.append`.
+#[infix(left, 4)]
+let (++) : String -> String -> String = (<>)
+
+let monoid : Monoid String = { semigroup, empty = "" }
+
+let eq : Eq String = { (==) = prim.string_eq }
+
+let ord : Ord String = { eq, compare = prim.string_compare }
+
+let show : Show String = { show = \s -> "\"" ++ s ++ "\"" }
+
+{
+    eq,
+    ord,
+    show,
+    semigroup,
+    monoid,
+    (++),
+    ..
+    string_prim
+}

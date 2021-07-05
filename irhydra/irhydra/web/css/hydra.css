@@ -1,0 +1,99 @@
+.brand {
+  font-family: 'Roboto';
+}
+
+#ir-pane {
+  background: white;
+}
+
+#graph-pane {
+  margin-bottom: 500px;
+}
+
+.sidebar-nav {
+  padding: 9px 0;
+}
+
+.popover.deopt {
+  max-width: 500px !important;
+}
+
+.popover.deopt > .popover-content > pre {
+  font-size: 0.7em;
+}
+
+.popover.deopt .deopt-marker {
+  display: none;
+}
+
+h4.deopt-header:first-letter {
+  text-transform: capitalize;
+}
+
+h4.deopt-header-eager > .first-word {
+  color: #C0392B;
+}
+
+h4.deopt-header-lazy > .first-word {
+  color: #F39C12;
+}
+
+h4.deopt-header-soft > .first-word {
+  color: #8E44AD;
+}
+
+.welcome-message {
+  font-family: 'RobotoDraft';
+  margin: 0 auto;
+  width: 600px;
+  font-size: 16px;
+  padding: 5em 0;
+}
+
+.welcome-message h1,
+.welcome-message h2,
+.welcome-message h3 {
+  font-family: 'Oswald';
+}
+
+.alpha-warning {
+  color: #E74C3C;
+}
+
+#welcome-splash {
+  position: absolute;
+  left: 0px;
+  right: 0px;
+  top: 40px;
+  bottom: 0px;
+  z-index: 1000;
+  overflow: auto;
+}
+
+#splash-spinner {
+  display: inline-block;
+  position: absolute;
+  width: 2em;
+  height: 2em;
+  left: -2em;
+  right: 0px;
+  top: -0.5em;
+}
+
+.welcome-message h1 {
+  position: relative;
+}
+
+.welcome-message pre > span {
+  cursor: help;
+}
+
+.welcome-message pre > span:hover {
+  border-bottom: 1px dashed #ccc;
+}
+
+.welcome-message pre, .welcome-message code {
+  font-size: inherit;
+  color: inherit;
+  background: inherit;
+}

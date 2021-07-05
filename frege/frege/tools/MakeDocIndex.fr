@@ -1,0 +1,208 @@
+--- Inspect a frege documentation directory and make files that enable framed HTML view.
+module Tools.MakeDocIndex where
+
+import Data.List
+import Java.Net (URLArray, URLClassLoader)
+
+--- regular expression to split path names on 'File.separator'
+!separatorRE = if File.separator == "/" then ´/+´ else ´\\+´
+
+--- regular expression to detect "\*.html" files
+!htmlAtEnd = ´(?i:\.html?)$´
+
+--- drop ".html" from the end of a name
+unHtml :: String -> String
+unHtml n = n.replaceFirst htmlAtEnd "" 
+
+--- tell if this is the name of a meta file
+isMeta f = f.startsWith "frame-"
+        || f `elem` metahtml
+
+--- tells which files should not get collected
+private metahtml = ["fregedoc.html", "prefix-frame.html", "index.html",
+        "allclasses-frame.html", "allclasses-noframe.html",
+        "constant-values.html", "deprecated-list.html",
+        "help-doc.html", "index-all.html",
+        "overview-tree.html", "serialized-form.html",
+    ]
+
+--- walk a directory and get all HTML files
+findHtml ∷ String → IO [(String, String)]
+findHtml dir = do
+        let fdir = File.new dir
+        walk [] fdir  
+    where
+        -- strip leading "dir" and path separators from path
+        normalize = makeslashy . rmleading . rmdir
+        rmdir s     = if s.startsWith dir then strtail s (length dir) else s
+        rmleading s = if s.startsWith File.separator 
+            then rmleading (strtail s 1)
+            else s 
+        makeslashy s = if File.separator == "/" then s
+            else s.replaceAll separatorRE "/"
+        walk ∷ [(String, String)] → File → IO [(String, String)]
+        walk acc fd = do
+            isdir ← fd.isDirectory
+            if isdir then do
+                subfiles ← fd.list
+                case subfiles of
+                    Nothing     = return acc
+                    Just array  = readonly _.toList array
+                                    >>= pure . map (File.new fd)
+                                    >>= foldM walk acc
+            else do
+                let p = maybe "" _.getPath $ fd.getParentFile
+                    n = fd.getName
+                -- stderr.print (show (p, n))
+                if  not (isMeta n) && n ~ htmlAtEnd
+                then do
+                    -- stderr.println " added"
+                    return  ((normalize p,n)!:acc)
+                else do
+                    -- stderr.println " ignored"
+                    return acc  
+
+{--
+    We will make the following files:
+    
+    @fregedoc.html@ defines 3 frames: left upper, left lower and right.
+    
+    @prefix-frame.html@ contains a list of the module prefixes,
+    which are shown in the left upper frame. Each entry causes the
+    left lower frame to display the modules with that prefix.
+    
+    For each module prefix a file that lists the actual modules. 
+    This one is displayed in the left lower frame, and clicking on
+    one of the names causes the module documentation to appear
+    in the right frame.
+    For example, @frame-frege.prelude.html@ would contain @PreludeBase@, 
+    @PreludeMonad@ and so on.
+    
+    There will be a pseudo module prefix "@All Modules@" and a 
+    corresponding @frame-All-Modules.html@ that contains links to all the
+    modules.
+-}
+
+main :: [String] -> IO Bool
+main [doc] = do
+    results ← findHtml doc
+    -- stderr.println (show results)
+    let fresults = filter (not • (\s -> s.startsWith "frege/runtime") • fst) results
+        allmods = ("All Modules", sortBy (comparing snd) fresults)
+        grouped = groupBy (using fst) (sortBy (comparing fst) fresults)
+        groups  = map (\xs -> (fst (head xs), sortBy  (comparing snd) xs))
+                        grouped
+        -- noruntime = filter (not • (\s -> s.startsWith "frege/runtime") • fst) groups
+    -- stderr.println (show grouped)
+    -- stderr.println (show groups)
+    -- stderr.println (show noruntime)
+    printFregeDoc doc
+    makePrefixFrame doc ("All Modules" : map fst groups)
+    mapM_ (uncurry (makeFrame doc)) (allmods : groups)
+    -- println allmods
+    -- mapM_ println noruntime 
+    return true
+
+main _ = mapM_ stderr.println [
+        "usage: frege.tools.MakeDocIndex directory",
+        "",
+        "looks up frege documentation in the given directory and",
+        "creates all the auxiliary files for a HTML page with frames.",
+    ] >> return false
+
+--- Print the top file with the frameset
+printFregeDoc ∷ String →  IO ()
+printFregeDoc doc  = do
+        urls    ← URLArray.genericFromList []
+        loader  ← ClassLoader.current >>= URLClassLoader.new urls
+        mburl   ← loader.getResource "frege/tools/fregedoc.html"
+        case mburl of
+            Nothing -> do
+                stderr.println "Can't find resource frege/tools/fregedoc.html"
+                System.exit 1
+                -- return ()
+            Just url -> do
+                stream ← url.openStream
+                lines  ← InputStreamReader.new stream "UTF-8"  
+                        >>= BufferedReader.new
+                        >>= _.getLines
+                p   ← openWriter $ fileIn doc "fregedoc.html"
+                mapM_ p.println lines
+                p.close
+
+--- compute the path of a file in a certain directory
+fileIn :: String -> String -> String
+fileIn dir f =
+    let d = File.new dir
+        f' = File.new d f
+    in f'.getPath
+
+--- make the @prefix-frame.html@ file
+makePrefixFrame doc paths = do
+    p   ← openWriter $ fileIn doc "prefix-frame.html"
+    let frames = map (wrap "li" . frameElem) paths
+        ul     = wrap "ul" (joined "\n" frames)
+    mapM_ p.println [
+        "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\" \"http://www.w3.org/TR/html4/loose.dtd\">",
+        "<html lang=\"en\">",
+        "<head>",
+        "<title>Frege Documentation</title>",
+        "<link rel=\"stylesheet\" type=\"text/css\" href=\"stylesheet.css\" title=\"Style\">",
+        "</head>",
+        "<body>",
+        "<h1 class=\"bar\">Package Index</h1>",
+        "<div class=\"indexContainer\">",
+        ul,
+        "</div>",
+        "</body>",
+        "</html>"
+        ]
+    p.close
+
+makeFrame :: String -> String -> [(String, String)] -> IO ()
+makeFrame doc prefix elems = do
+    p   ← openWriter $ fileIn doc (prefixFrame prefix)
+    let links  = map (wrap "li" . uncurry linkElem) elems
+        ul     = wrap "ul" (joined "\n" links)
+    mapM_ p.println [
+        "<!DOCTYPE HTML PUBLIC \"-//W3C//DTD HTML 4.01 Transitional//EN\" \"http://www.w3.org/TR/html4/loose.dtd\">",
+        "<html lang=\"en\">",
+        "<head>",
+        "<title>Frege Documentation</title>",
+        "<link rel=\"stylesheet\" type=\"text/css\" href=\"stylesheet.css\" title=\"Style\">",
+        "</head>",
+        "<body>",
+        "<h1 class=\"bar\">Modules in " ++ prefixName prefix ++ "</h1>",
+        "<div class=\"indexContainer\">",
+        ul,
+        "</div>",
+        "</body>",
+        "</html>"
+        ]
+    p.close
+
+--- wrap in html tags, i.e. @<xx>foo</xx>@
+wrap xx text = "<" ++ xx ++ ">" ++ text ++ "</" ++ xx ++ ">"
+ 
+--- make link from a relative path and a HTML file name
+linkElem path html = "<a href=\"" ++ path ++ "/" ++ html 
+                        ++ "\" target=\"doc\">"
+                        ++ modname
+                        ++ "</a>"
+    where
+        -- strip ".html" at end
+        modname = unHtml html
+
+--- make link to frame
+frameElem path = "<a href=\"" ++ prefixFrame path
+                        ++ "\" target=\"modules\">"
+                        ++ prefixName path
+                        ++ "</a>"
+
+--- display name of a module prefix
+prefixName  "All Modules"   = "All Modules"
+prefixName  path            = path.replaceAll ´/´ "."
+
+--- file name of a module prefix
+prefixFrame "All Modules"   = "frame-All-Modules.html"
+prefixFrame path            = "frame-" ++ prefixName path ++ ".html"

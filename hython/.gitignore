@@ -1,0 +1,10 @@
+.hython_history
+.stack-work
+.cabal-sandbox
+*.hi
+*.o
+cabal.sandbox.config
+dist
+happy.log
+/hython
+__pycache__

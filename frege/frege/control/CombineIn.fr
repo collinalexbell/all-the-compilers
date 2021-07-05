@@ -1,0 +1,16 @@
+--- type class 'CombineIn', which provides the '&&&' operator
+package frege.control.CombineIn where
+
+import frege.control.Semigroupoid (Semigroupoid())
+
+infixr 3 `&&&`
+
+class (Semigroupoid f) => CombineIn f where
+  {--
+      Send the input to both argument semigroupoids and combine
+      their output.
+  -}
+  (&&&) :: f a b -> f a c -> f a (b, c)
+
+instance CombineIn (->) where
+  f &&& g = \a -> (f a, g a)

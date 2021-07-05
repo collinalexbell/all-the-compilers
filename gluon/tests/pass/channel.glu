@@ -1,0 +1,25 @@
+let { TestEff, run, assert_eq, test, group, ? }  = import! std.test
+let { lift } = import! std.effect.lift
+let { (<|) } = import! std.function
+let prelude  = import! std.prelude
+let { Applicative, (*>), ? } = import! std.applicative
+let int = import! std.int
+let result @ { Result, ? } = import! std.result
+let unit @ { ? } = import! std.unit
+let { send, recv, channel } = import! std.channel
+
+
+let { ? } = import! std.effect
+
+let assert_recv channel expect : [Eq a] -> [Show a] -> _ -> Result () a -> _ =
+    do x = lift <| recv channel
+    assert_eq x expect
+
+test "channel" <| \_ ->
+    do { sender, receiver } = lift <| channel 0
+    seq lift <| send sender 0
+    seq lift <| send sender 1
+    seq lift <| send sender 2
+    seq assert_recv receiver (Ok 0)
+    seq assert_recv receiver (Ok 1)
+    assert_recv receiver (Ok 2)

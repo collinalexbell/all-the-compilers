@@ -1,0 +1,677 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!DOCTYPE html PUBLIC "-//W3C//DTD XHTML 1.0 Strict//EN"
+"http://www.w3.org/TR/xhtml1/DTD/xhtml1-strict.dtd">
+<html xmlns="http://www.w3.org/1999/xhtml" lang="en" xml:lang="en">
+<head>
+<title>Rabbit VM Implementation</title>
+<!-- 2016-05-25 Wed 14:18 -->
+<meta  http-equiv="Content-Type" content="text/html;charset=utf-8" />
+<meta  name="generator" content="Org-mode" />
+<meta  name="author" content="Maxwell Bernstein" />
+<style type="text/css">
+ <!--/*--><![CDATA[/*><!--*/
+  .title  { text-align: center; }
+  .todo   { font-family: monospace; color: red; }
+  .done   { color: green; }
+  .tag    { background-color: #eee; font-family: monospace;
+            padding: 2px; font-size: 80%; font-weight: normal; }
+  .timestamp { color: #bebebe; }
+  .timestamp-kwd { color: #5f9ea0; }
+  .right  { margin-left: auto; margin-right: 0px;  text-align: right; }
+  .left   { margin-left: 0px;  margin-right: auto; text-align: left; }
+  .center { margin-left: auto; margin-right: auto; text-align: center; }
+  .underline { text-decoration: underline; }
+  #postamble p, #preamble p { font-size: 90%; margin: .2em; }
+  p.verse { margin-left: 3%; }
+  pre {
+    border: 1px solid #ccc;
+    box-shadow: 3px 3px 3px #eee;
+    padding: 8pt;
+    font-family: monospace;
+    overflow: auto;
+    margin: 1.2em;
+  }
+  pre.src {
+    position: relative;
+    overflow: visible;
+    padding-top: 1.2em;
+  }
+  pre.src:before {
+    display: none;
+    position: absolute;
+    background-color: white;
+    top: -10px;
+    right: 10px;
+    padding: 3px;
+    border: 1px solid black;
+  }
+  pre.src:hover:before { display: inline;}
+  pre.src-sh:before    { content: 'sh'; }
+  pre.src-bash:before  { content: 'sh'; }
+  pre.src-emacs-lisp:before { content: 'Emacs Lisp'; }
+  pre.src-R:before     { content: 'R'; }
+  pre.src-perl:before  { content: 'Perl'; }
+  pre.src-java:before  { content: 'Java'; }
+  pre.src-sql:before   { content: 'SQL'; }
+
+  table { border-collapse:collapse; }
+  caption.t-above { caption-side: top; }
+  caption.t-bottom { caption-side: bottom; }
+  td, th { vertical-align:top;  }
+  th.right  { text-align: center;  }
+  th.left   { text-align: center;   }
+  th.center { text-align: center; }
+  td.right  { text-align: right;  }
+  td.left   { text-align: left;   }
+  td.center { text-align: center; }
+  dt { font-weight: bold; }
+  .footpara:nth-child(2) { display: inline; }
+  .footpara { display: block; }
+  .footdef  { margin-bottom: 1em; }
+  .figure { padding: 1em; }
+  .figure p { text-align: center; }
+  .inlinetask {
+    padding: 10px;
+    border: 2px solid gray;
+    margin: 10px;
+    background: #ffffcc;
+  }
+  #org-div-home-and-up
+   { text-align: right; font-size: 70%; white-space: nowrap; }
+  textarea { overflow-x: auto; }
+  .linenr { font-size: smaller }
+  .code-highlighted { background-color: #ffff00; }
+  .org-info-js_info-navigation { border-style: none; }
+  #org-info-js_console-label
+    { font-size: 10px; font-weight: bold; white-space: nowrap; }
+  .org-info-js_search-highlight
+    { background-color: #ffff00; color: #000000; font-weight: bold; }
+  /*]]>*/-->
+</style>
+<link rel="stylesheet" type="text/css" href="blogstyle.css" />
+<script type="text/javascript">
+/*
+@licstart  The following is the entire license notice for the
+JavaScript code in this tag.
+
+Copyright (C) 2012-2013 Free Software Foundation, Inc.
+
+The JavaScript code in this tag is free software: you can
+redistribute it and/or modify it under the terms of the GNU
+General Public License (GNU GPL) as published by the Free Software
+Foundation, either version 3 of the License, or (at your option)
+any later version.  The code is distributed WITHOUT ANY WARRANTY;
+without even the implied warranty of MERCHANTABILITY or FITNESS
+FOR A PARTICULAR PURPOSE.  See the GNU GPL for more details.
+
+As additional permission under GNU GPL version 3 section 7, you
+may distribute non-source (e.g., minimized or compacted) forms of
+that code without the copy of the GNU GPL normally required by
+section 4, provided you include this license notice and a URL
+through which recipients can access the Corresponding Source.
+
+
+@licend  The above is the entire license notice
+for the JavaScript code in this tag.
+*/
+<!--/*--><![CDATA[/*><!--*/
+ function CodeHighlightOn(elem, id)
+ {
+   var target = document.getElementById(id);
+   if(null != target) {
+     elem.cacheClassElem = elem.className;
+     elem.cacheClassTarget = target.className;
+     target.className = "code-highlighted";
+     elem.className   = "code-highlighted";
+   }
+ }
+ function CodeHighlightOff(elem, id)
+ {
+   var target = document.getElementById(id);
+   if(elem.cacheClassElem)
+     elem.className = elem.cacheClassElem;
+   if(elem.cacheClassTarget)
+     target.className = elem.cacheClassTarget;
+ }
+/*]]>*///-->
+</script>
+</head>
+<body>
+<div id="content">
+<h1 class="title">Rabbit VM Implementation</h1>
+<p>
+Our emulator can exit or abort with a couple of status codes. They are as
+follows:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c" id="status_enum">/* Exit/error codes and statuses. */
+typedef enum rabbits {
+    RB_SUCCESS = 0, RB_FAIL, RB_OVERFLOW, RB_ILLEGAL,
+} rabbits;
+</pre>
+</div>
+
+<p>
+<code>RB_SUCCESS</code> indicates no error. <code>RB_FAIL</code> indicates a generic
+failure. <code>RB_OVERFLOW</code> indicates a stack overflow. <code>RB_ILLEGAL</code> indicates an
+illegal instruction.
+</p>
+
+<div id="outline-container-sec-1" class="outline-2">
+<h2 id="sec-1">Emulator structure</h2>
+<div class="outline-text-2" id="text-1">
+<div class="org-src-container">
+
+<pre class="src src-c">#include &lt;stdio.h&gt;
+#include &lt;inttypes.h&gt;
+#include &lt;stdlib.h&gt;
+#include &lt;string.h&gt;
+#include &lt;sys/stat.h&gt;
+
+#include "rabbit_types.h"
+#include "rabbit_io.h"
+#include "rabbit_codewords.h"
+
+{{{declarations}}}
+
+{{{builtin_functions}}}
+
+int main(int argc, char **argv) {
+    {{{check_cli_arguments}}}
+
+    {{{open_code_file}}}
+
+    {{{stat_code_file}}}
+
+    {{{allocate_memory}}}
+
+    {{{read_code_into_memory}}}
+
+    {{{fetch_decode_execute_loop}}}
+
+    return 0;
+}
+
+{{{macro_cleanup}}}
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-2" class="outline-2">
+<h2 id="sec-2">Registers</h2>
+<div class="outline-text-2" id="text-2">
+<div class="org-src-container">
+
+<pre class="src src-c" id="register_enum">/* Registers available for use. */
+typedef enum rabbitr {
+    RB_ZERO = 0, RB_R1, RB_R2, RB_R3, RB_R4, RB_R5, RB_R6, RB_R7, RB_R8, RB_R9,
+    RB_IP, RB_SP, RB_RET, RB_TMP, RB_FLAGS, RB_NUMREGS,
+} rabbitr;
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-3" class="outline-2">
+<h2 id="sec-3">Instructions</h2>
+<div class="outline-text-2" id="text-3">
+<p>
+There are four types of instructions:
+</p>
+
+<pre class="example">
+instr %rA, %rB, %rC
+instr %rA, %rB
+instr %rA
+instr
+</pre>
+
+<p>
+There is only one instruction in the last category: <code>halt</code>.
+</p>
+
+<p>
+All instructions are represented as 32-bit words:
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c" id="rabbitw_typedef">#ifndef RABBIT_TYPES_H
+#define RABBIT_TYPES_H
+
+#include &lt;inttypes.h&gt;
+
+typedef uint32_t rabbitw;
+
+#endif
+</pre>
+</div>
+
+<p>
+These 32 bits are laid out as follows:
+</p>
+
+<pre class="example">
+     +-----Immediate bit
+     |+----Addressing mode bit C
+     ||+---Addressing mode bit B
+     |||+--Addressing mode bit A
+     |||| +Dead space+     regB
+     vvvv vvvvvvvvvvvv     vvvv
+IIII MDDD 000000000000 CCCCBBBBAAAA
+^^^^                   ^^^^    ^^^^
+Opcode                 regC    regA
+
+VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Immediate value
+</pre>
+
+<p>
+<b>Note that every bit in &ldquo;Dead space&rdquo; must be turned off.</b> If one is turned on,
+the result of executing that instruction is undefined.
+</p>
+
+<p>
+Internally, the emulator uses structs with
+<a href="http://en.cppreference.com/w/cpp/language/bit_field">bit fields</a> to
+represent instructions. It uses bit fields only to save space; they can be
+removed with no consequences.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c" id="mode_representation">/* Options for operand use. Is space C an immediate value or a register? Should
+ * any of spaces A, B, and C be dereferenced? */
+struct modes_s {
+    uint8_t immediate  : 1;
+    uint8_t regc_deref : 1;
+    uint8_t regb_deref : 1;
+    uint8_t rega_deref : 1;
+};
+</pre>
+</div>
+
+<p>
+The full unpacked representation of the instruction includes this unpacked
+modes struct along with the opcode and three operands.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c" id="instruction_representation">/* Holds an unpacked representation of an instruction (sans immediate value, if
+ * it has one). */
+struct unpacked_s {
+    struct modes_s modes;
+    uint8_t opcode : 4;
+    uint8_t regc   : 4;
+    uint8_t regb   : 4;
+    uint8_t rega   : 4;
+};
+</pre>
+</div>
+
+<p>
+The immediate value follows the instruction in memory; the emulator fetches it
+upon execution.
+</p>
+</div>
+
+<div id="outline-container-sec-3-1" class="outline-3">
+<h3 id="sec-3-1">Decoding</h3>
+<div class="outline-text-3" id="text-3-1">
+<p>
+With the knowledge of the instruction format and its in-emulator representation,
+it is not difficult to write a <code>decode</code> function that takes an instruction and
+returns the unpacked representation.
+</p>
+
+<p>
+First, <code>decode</code> fetches the mode from the instruction. Its least significant bit
+is 24 and it contains at most four bits.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c" id="fetch_modes">/* Fetch the space modes from the instruction. */
+uint8_t modes = (instr &gt;&gt; 24) &amp; 0xF;
+</pre>
+</div>
+
+<p>
+As the modes are stored in a bit vector, it&rsquo;s useful to have masks for each of
+the addressing modes and the immediate mode.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c" id="mode_offsets">/* Offsets of the space modes in the mode nibble. */
+static const uint8_t
+    RB_ADDRA_LSB = 0,
+    RB_ADDRB_LSB = 1,
+    RB_ADDRC_LSB = 2,
+    RB_IMMED_LSB = 3;
+</pre>
+</div>
+
+<p>
+From here it&rsquo;s reasonably trivial to fill the <code>unpacked_s</code> struct. <code>instr</code> needs
+to be shifted and masked a couple of times to fetch the opcode and registers,
+but nothing major.
+</p>
+
+<div class="org-src-container">
+
+<pre class="src src-c" id="rabbit_codewords_c">#include "rabbit_codewords.h"
+
+/* Transform the packed representation of an instruction into the unpacked
+ * representation. */
+struct unpacked_s decode(rabbitw instr) {
+    {{{fetch_modes}}}
+
+    {{{mode_offsets}}}
+
+    return (struct unpacked_s) {
+	.modes = {
+	    .immediate  = (modes &gt;&gt; RB_IMMED_LSB) &amp; 0x1,
+	    .regc_deref = (modes &gt;&gt; RB_ADDRC_LSB) &amp; 0x1,
+	    .regb_deref = (modes &gt;&gt; RB_ADDRB_LSB) &amp; 0x1,
+	    .rega_deref = (modes &gt;&gt; RB_ADDRA_LSB) &amp; 0x1,
+	},
+	.opcode = instr &gt;&gt; 28,
+	.regc =  (instr &gt;&gt; 8) &amp; 0xF,
+	.regb =  (instr &gt;&gt; 4) &amp; 0xF,
+	.rega = instr &amp; 0xF,
+    };
+}
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-3-2" class="outline-3">
+<h3 id="sec-3-2">Modes</h3>
+</div>
+
+<div id="outline-container-sec-3-3" class="outline-3">
+<h3 id="sec-3-3">Following mode rules</h3>
+</div>
+</div>
+
+<div id="outline-container-sec-4" class="outline-2">
+<h2 id="sec-4">VM setup</h2>
+<div class="outline-text-2" id="text-4">
+</div><div id="outline-container-sec-4-1" class="outline-3">
+<h3 id="sec-4-1">Check CLI arguments</h3>
+<div class="outline-text-3" id="text-4-1">
+<div class="org-src-container">
+
+<pre class="src src-c" id="check_cli_arguments">if (argc != 2) {
+    fprintf(stderr, "Need to pass file to execute.\n");
+    return RB_FAIL;
+}
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-4-2" class="outline-3">
+<h3 id="sec-4-2">Open code file</h3>
+<div class="outline-text-3" id="text-4-2">
+<div class="org-src-container">
+
+<pre class="src src-c" id="open_code_file">char *fn = argv[1];
+FILE *fp = fopen(fn, "rb");
+if (fp == NULL) {
+    fprintf(stderr, "Can't open `%s'.\n", fn);
+    return RB_FAIL;
+}
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-4-3" class="outline-3">
+<h3 id="sec-4-3">Get size of code file</h3>
+<div class="outline-text-3" id="text-4-3">
+<div class="org-src-container">
+
+<pre class="src src-c" id="stat_code_file">/* Get the size of the file so that we can allocate memory for it. */
+struct stat st;
+if (fstat(fileno(fp), &amp;st) != 0) {
+    fprintf(stderr, "Can't stat `%s'.\n", fn);
+    fclose(fp);
+    return RB_FAIL;
+}
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-4-4" class="outline-3">
+<h3 id="sec-4-4">Allocate memory</h3>
+<div class="outline-text-3" id="text-4-4">
+<div class="org-src-container">
+
+<pre class="src src-c" id="allocate_memory">/* Allocate memory with program first, stack second. */
+size_t stacksize = 1000;
+off_t size = st.st_size;
+rabbitw *mem = malloc(stacksize + size * sizeof *mem);
+if (mem == NULL) {
+    fprintf(stderr, "Not enough memory. Could not allocate stack of size"
+		    "%zu + program of size %lld.\n", stacksize, size);
+    return RB_FAIL;
+}
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-4-5" class="outline-3">
+<h3 id="sec-4-5">Read code into memory</h3>
+<div class="outline-text-3" id="text-4-5">
+<div class="org-src-container">
+
+<pre class="src src-c" id="read_code_into_memory">/* Read the file into memory. */
+size_t i = 0;
+rabbitw word = 0;
+/* We cannot use fread because of endian-ness issues. */
+while (read_word(fp, &amp;word) != 0) {
+    mem[i++] = word;
+}
+fclose(fp);
+</pre>
+</div>
+
+<div class="org-src-container">
+
+<pre class="src src-c" id="instruction_enum">/* Instructions available for use. */
+typedef enum rabbiti {
+    RB_HALT = 0, RB_MOVE, RB_ADD, RB_SUB, RB_MUL, RB_DIV, RB_SHR, RB_SHL,
+    RB_NAND, RB_XOR, RB_BR, RB_BRZ, RB_BRNZ, RB_IN, RB_OUT, RB_BIF,
+    RB_NUMINSTRS,
+} rabbiti;
+</pre>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-4-6" class="outline-3">
+<h3 id="sec-4-6">Fetch-decode-execute loop</h3>
+<div class="outline-text-3" id="text-4-6">
+<div class="org-src-container">
+
+<pre class="src src-c" id="fetch_decode_execute_loop">struct abc_s abc;
+rabbitw regs[RB_NUMINSTRS] = { 0 };
+regs[RB_SP] = i;
+
+/* Main fetch-decode-execute loop. */
+while (1) {
+    /* Fetch the current instruction word. */
+    rabbitw word = mem[regs[RB_IP]++];
+
+    /* Decode it. */
+    struct unpacked_s i = decode(word);
+
+    /* Execute it. */
+    switch (i.opcode) {
+    case RB_HALT:
+	free(mem);
+	return RB_SUCCESS;
+	break;
+    case RB_MOVE: {
+	/* Move is special because it has one source instead of two
+	 * operands. */
+	rabbitw src = i.modes.immediate   ? fetch_immediate()  : regs[i.regc];
+	rabbitw *dst = i.modes.regb_deref ? &amp;mem[regs[i.regb]] : &amp;regs[i.regb];
+	*dst = i.modes.regc_deref ? mem[src] : src;
+	break;
+    }
+    case RB_ADD:
+	abc = getabc(regs, mem, i);
+	*abc.dst = abc.b + abc.c;
+	break;
+    case RB_SUB:
+	abc = getabc(regs, mem, i);
+	rabbitw res = abc.b - abc.c;
+	*abc.dst = res;
+	if (res == 0) {
+	    /* Set zero flag. */
+	    regs[RB_FLAGS] |= 0x2U;
+	}
+	break;
+    case RB_MUL:
+	abc = getabc(regs, mem, i);
+	*abc.dst = abc.b * abc.c;
+	break;
+    case RB_DIV:
+	abc = getabc(regs, mem, i);
+	if (abc.c == 0) {
+	    free(mem);
+	    return RB_ILLEGAL;
+	}
+
+	*abc.dst = abc.b / abc.c;
+	break;
+    case RB_SHR:
+	abc = getabc(regs, mem, i);
+	*abc.dst = abc.b &gt;&gt; abc.c;
+	break;
+    case RB_SHL:
+	abc = getabc(regs, mem, i);
+	*abc.dst = abc.b &lt;&lt; abc.c;
+	break;
+    case RB_NAND:
+	abc = getabc(regs, mem, i);
+	*abc.dst = ~(abc.b &amp; abc.c);
+	break;
+    case RB_XOR:
+	abc = getabc(regs, mem, i);
+	*abc.dst = abc.b ^ abc.c;
+	break;
+    case RB_BR: {
+	/* Branch is special because it only has one argument. */
+	rabbitw src = i.modes.immediate  ? fetch_immediate() : regs[i.regc];
+	regs[RB_IP] = i.modes.regc_deref ? mem[src] : src;
+	break;
+    }
+    case RB_BRZ:
+	/* Branch if zero is special because it only has one argument. */
+	if ((regs[RB_FLAGS] &amp; 0x2U) == 0) {
+	    rabbitw src = i.modes.immediate  ? fetch_immediate() : regs[i.regc];
+	    regs[RB_IP] = i.modes.regc_deref ? mem[src] : src;
+	}
+	break;
+    case RB_BRNZ:
+	/* Branch not zero is special because it only has one argument. */
+	if ((regs[RB_FLAGS] &amp; 0x2U) != 0) {
+	    rabbitw src = i.modes.immediate ? fetch_immediate() : regs[i.regc];
+	    regs[RB_IP] = i.modes.regc_deref ? mem[src] : src;
+	}
+	break;
+    case RB_IN: {
+	/* Input is special because it does not have an argument. */
+	rabbitw dst = i.modes.immediate ? fetch_immediate() : regs[i.regc];
+	rabbitw *dstp = i.modes.regc_deref ? &amp;mem[regs[i.regc]] : &amp;regs[i.regc];
+	*dstp = getchar();
+	break;
+    }
+    case RB_OUT: {
+	/* Output is special because it has one argument and no
+	 * destination. */
+	rabbitw src = i.modes.immediate ? fetch_immediate() : regs[i.regc];
+	src = i.modes.regc_deref ? mem[src] : src;
+	putchar(src);
+	break;
+    }
+    case RB_BIF: {
+	rabbitw src = i.modes.immediate ? fetch_immediate() : regs[i.regc];
+	src = i.modes.regc_deref ? mem[src] : src;
+	if (src &gt; NUM_BIFS) {
+	    fprintf(stderr, "Invalid bif: `%u'.\n", src);
+	    return RB_FAIL;
+	}
+	bif f = biftable[src].f;
+	f(regs, mem);
+	break;
+    }
+/*    case RB_CFF:
+	break;
+*/
+    default:
+	free(mem);
+	return RB_ILLEGAL;
+	break;
+    }
+}
+</pre>
+</div>
+</div>
+</div>
+</div>
+
+<div id="outline-container-sec-5" class="outline-2">
+<h2 id="sec-5">Building the VM</h2>
+<div class="outline-text-2" id="text-5">
+<div class="org-src-container">
+
+<pre class="src src-make">CC=gcc
+CFLAGS=-Wall -Wextra -Wpedantic
+LFLAGS=
+RABBIT_OBJS=rabbit.o rabbit_io.o rabbit_codewords.o
+ASSEMBLER_OBJS=assembler.o rabbit_io.o
+DISASSEMBLER_OBJS=disassembler.o rabbit_io.o rabbit_codewords.o
+
+all: rabbit assembler disassembler
+
+clean:
+	rm -f rabbit rabbit-asm rabbit-dis
+	rm -f $(RABBIT_OBJS) $(ASSEMBLER_OBJS) $(DISASSEMBLER_OBJS)
+
+rabbit: $(RABBIT_OBJS)
+	$(CC) $(CFLAGS) $(LFLAGS) $(RABBIT_OBJS) -o rabbit
+
+assembler: $(ASSEMBLER_OBJS)
+	$(CC) $(CFLAGS) $(LFLAGS) $(ASSEMBLER_OBJS) -o rabbit-asm
+
+disassembler: $(DISASSEMBLER_OBJS)
+	$(CC) $(CFLAGS) $(LFLAGS) $(DISASSEMBLER_OBJS) -o rabbit-dis
+
+%.o: %.c
+	$(CC) $(CFLAGS) -o $@ -c $&lt;
+</pre>
+</div>
+</div>
+</div>
+</div>
+<div id="postamble" class="status">
+<p class="author">Author: Maxwell Bernstein</p>
+<p class="date">Created: 2016-05-25 Wed 14:18</p>
+<p class="creator"><a href="http://www.gnu.org/software/emacs/">Emacs</a> 24.5.1 (<a href="http://orgmode.org">Org</a> mode 8.2.10)</p>
+<p class="validation"><a href="http://validator.w3.org/check?uri=referer">Validate</a></p>
+</div>
+</body>
+</html>

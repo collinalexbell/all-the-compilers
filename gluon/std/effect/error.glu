@@ -1,0 +1,72 @@
+//! Implementation of the `Error` effect
+
+let { Eff, inject_rest, ? } = import! std.effect
+let { Result } = import! std.result
+let { Option } = import! std.option
+let { (<<) } = import! std.function
+let { wrap } = import! std.applicative
+
+/// The `Error` effects adds "exceptions" to the `Eff` monad
+type Error e r a =
+    | Error e
+    .. r
+
+let send_error f : Error e r a -> Eff [| error : Error e | r |] a =
+    Impure (convert_effect! error f) Pure
+
+let extract_error x : forall e . [| error : Error e | r |] a -> Error e r a = convert_variant! x
+
+/// Throws the error `e`
+let throw e : e -> Eff [| error : Error e | r |] a = send_error (Error e)
+
+/// Moves a `Result` into the `Eff` monad
+let ok_or_throw r : Result e t -> Eff [| error : Error e | r |] t =
+    match r with
+    | Ok t -> wrap t
+    | Err e -> throw e
+
+let some_or_throw e o : e -> Option a -> Eff [| error : Error e | r |] a =
+    match o with
+    | Some x -> wrap x
+    | None -> throw e
+
+/// Eliminates the `Error` effect and returns a `Result`
+let run_error eff : forall e . Eff [| error : Error e | r |] a -> Eff [| | r |] (Result e a) =
+    let loop ve : Eff [| error : Error e | r |] a -> Eff [| | r |] (Result e a) =
+        match ve with
+        | Pure v -> wrap (Ok v)
+        | Impure e f ->
+            match extract_error e with
+            | Error err ->
+                wrap (Err err)
+            | rest ->
+                Impure (inject_rest rest) (loop << f)
+    loop eff
+
+/// Catches an "exception", allowing the effect to continue executing
+let catch eff handler : forall e .
+        Eff [| error : Error e | r |] a
+            -> (e -> Eff [| error : Error e | r |] a)
+            -> Eff [| error : Error e | r |] a
+    =
+    let loop ve : Eff [| error : Error e | r |] a -> Eff [| error : Error e | r |] a =
+        match ve with
+        | Pure v -> wrap v
+        | Impure e f ->
+            match extract_error e with
+            | Error err ->
+                handler err
+            | rest ->
+                Impure e (loop << f)
+    loop eff
+
+
+{
+    Error,
+
+    catch,
+    throw,
+    ok_or_throw,
+    some_or_throw,
+    run_error,
+}

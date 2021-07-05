@@ -1,0 +1,346 @@
+#|
+@module utility
+
+Provides the common functions and macros used by the container and
+algorithm modules.
+
+|#
+(module utility (attr cto))
+
+(import cstdio)
+(import macros)
+(import concepts)
+(import ctype)
+
+(def tts (fn intern bool ((mc (p MContext)) (T (p DNode)) (buf (p char)))
+  (setv T (eval-macro-call mc T false false))
+  (if (and (= 0 (@:@ T is-list))
+           (std.isdigit (@ (@:@ T token-str))))
+      (do (sprintf buf "%s" (@:@ T token-str))
+          true)
+      (type-to-string mc T buf))))
+
+(def ttds (fn intern bool ((mc (p MContext)) (T (p DNode)) (buf (p char)))
+  (setv T (eval-macro-call mc T false false))
+  (if (and (= 0 (@:@ T is-list))
+           (std.isdigit (@ (@:@ T token-str))))
+      (do (sprintf buf "%s" (@:@ T token-str))
+          true)
+      (type-to-display-string mc T buf))))
+
+#|
+@fn make-type-string
+
+Writes the prefix, and the internal string representation of the type
+node, to the provided buffer. If the type node is a token that begins
+with a digit, then the token's contents are written to the buffer
+instead.
+
+@param mc       An MContext.
+@param prefix   The type string prefix.
+@param T        The type node.
+@param buf      The buffer for the type string.
+|#
+(def make-type-string
+  (fn extern bool ((mc (p MContext))
+                   (prefix (p (const char)))
+                   (T (p DNode))
+                   (buf (p char)))
+    (let ((tstr1 (array-of 250 char)))
+      (setf ($ tstr1 0) #\NULL)
+      (and (not (tts mc T tstr1))
+           (return false))
+      (sprintf buf "%s%s" prefix tstr1)
+      true)))
+
+#|
+@macro def-type-macro
+
+Takes a node as its single argument.  Constructs a macro with that
+name that takes one arbitrary type and expands to the concatenation of
+that name and the stringification of the type.
+
+@param name   The type macro name.
+|#
+(def def-type-macro
+  (macro extern (name)
+    (let ((buf (array-of 250 char)))
+      (sprintf buf "\"%s\"" (@:@ name token-str))
+      (let ((string \ (std.macros.mnfv mc buf)))
+        (std.macros.qq do
+          (def (uq name)
+            (macro extern (T)
+              (let ((typename (array-of 250 char)))
+                (and (not (make-type-string mc (uq string) T typename))
+                     (return T))
+                (def n (var auto (p DNode) (mnfv mc typename)))
+                (return n)))))))))
+
+#|
+@fn make-type-string
+
+As per the earlier implementation, except that it takes two type
+nodes.
+
+@param mc       An MContext.
+@param prefix   The type string prefix.
+@param T1       The first type node.
+@param T2       The second type node.
+@param buf      The buffer for the type string.
+|#
+(def make-type-string
+  (fn extern bool ((mc (p MContext))
+                   (prefix (p (const char)))
+                   (T1 (p DNode))
+                   (T2 (p DNode))
+                   (buf (p char)))
+    (let ((tstr1 (array-of 250 char))
+          (tstr2 (array-of 250 char)))
+      (setf ($ tstr1 0) #\NULL)
+      (setf ($ tstr2 0) #\NULL)
+      (and (not (tts mc T1 tstr1))
+           (return false))
+      (and (not (tts mc T2 tstr2))
+           (return false))
+      (sprintf buf "%s%s%s" prefix tstr1 tstr2)
+      true)))
+
+#|
+@fn make-type-string
+
+As per the earlier implementation, except that it takes three type
+nodes.
+
+@param mc       An MContext.
+@param prefix   The type string prefix.
+@param T1       The first type node.
+@param T2       The second type node.
+@param T3       The third type node.
+@param buf      The buffer for the type string.
+|#
+(def make-type-string
+  (fn extern bool ((mc (p MContext))
+                   (prefix (p (const char)))
+                   (T1 (p DNode))
+                   (T2 (p DNode))
+                   (T3 (p DNode))
+                   (buf (p char)))
+    (let ((tstr1 (array-of 250 char))
+          (tstr2 (array-of 250 char))
+          (tstr3 (array-of 250 char)))
+      (setf ($ tstr1 0) #\NULL)
+      (setf ($ tstr2 0) #\NULL)
+      (setf ($ tstr3 0) #\NULL)
+      (and (not (tts mc T1 tstr1))
+           (return false))
+      (and (not (tts mc T2 tstr2))
+           (return false))
+      (and (not (tts mc T3 tstr3))
+           (return false))
+      (sprintf buf "%s%s%s%s" prefix tstr1 tstr2 tstr3)
+      true)))
+
+#|
+@fn make-type-display-string
+
+Similar to `make-type-string`, except that it adds the display
+representation (i.e. the one set by way of `register-type`, if
+applicable) to the buffer, rather than the internal representation.
+
+@param mc       An MContext.
+@param prefix   The type display string prefix.
+@param T        The type node.
+@param buf      The buffer for the type display string.
+|#
+(def make-type-display-string
+  (fn extern bool ((mc (p MContext))
+                   (prefix (p (const char)))
+                   (T (p DNode))
+                   (buf (p char)))
+    (let ((tstr1 (array-of 250 char)))
+      (setf ($ tstr1 0) #\NULL)
+      (and (not (ttds mc T tstr1))
+           (return false))
+      (sprintf buf "(%s %s)" prefix tstr1)
+      true)))
+
+#|
+@fn make-type-display-string
+
+As per the earlier implementation, except that it takes two type
+nodes.
+
+@param mc       An MContext.
+@param prefix   The type display string prefix.
+@param T1       The first type node.
+@param T2       The second type node.
+@param buf      The buffer for the type display string.
+|#
+(def make-type-display-string
+  (fn extern bool ((mc (p MContext))
+                   (prefix (p (const char)))
+                   (T1 (p DNode))
+                   (T2 (p DNode))
+                   (buf (p char)))
+    (let ((tstr1 (array-of 250 char))
+          (tstr2 (array-of 250 char)))
+      (setf ($ tstr1 0) #\NULL)
+      (setf ($ tstr2 0) #\NULL)
+      (and (not (ttds mc T1 tstr1))
+           (return false))
+      (and (not (ttds mc T2 tstr2))
+           (return false))
+      (sprintf buf "(%s %s %s)" prefix tstr1 tstr2)
+      true)))
+
+#|
+@fn make-type-display-string
+
+As per the earlier implementation, except that it takes two type
+nodes.
+
+@param mc       An MContext.
+@param prefix   The type display string prefix.
+@param T1       The first type node.
+@param T2       The second type node.
+@param T3       The third type node.
+@param buf      The buffer for the type display string.
+|#
+(def make-type-display-string
+  (fn extern bool ((mc (p MContext))
+                   (prefix (p (const char)))
+                   (T1 (p DNode))
+                   (T2 (p DNode))
+                   (T3 (p DNode))
+                   (buf (p char)))
+    (let ((tstr1 (array-of 250 char))
+          (tstr2 (array-of 250 char))
+          (tstr3 (array-of 250 char)))
+      (setf ($ tstr1 0) #\NULL)
+      (setf ($ tstr2 0) #\NULL)
+      (setf ($ tstr3 0) #\NULL)
+      (and (not (ttds mc T1 tstr1))
+           (return false))
+      (and (not (ttds mc T2 tstr2))
+           (return false))
+      (and (not (ttds mc T3 tstr3))
+           (return false))
+      (sprintf buf "(%s %s %s %s)" prefix tstr1 tstr2 tstr3)
+      true)))
+
+(using-namespace std.macros
+(using-namespace std.concepts
+
+#|
+@macro Iterator
+
+Expands to a string that can be used as the `Iterator` type name for
+the argument type.
+
+@param T    The type node.
+|#
+(def Iterator
+  (macro extern (T)
+    (let ((typename (array-of 250 char)))
+      (and (not (make-type-string mc "iterator" T typename))
+           (return (nullptr DNode)))
+      (def n (var auto (p DNode) (mnfv mc typename)))
+      (return n))))
+
+#|
+@macro ReverseIterator
+
+Expands to a string that can be used as the `Iterator` type name for
+the argument type.
+
+@param T    The type node.
+|#
+(def ReverseIterator
+  (macro extern (T)
+    (let ((typename (array-of 250 char)))
+      (and (not (make-type-string mc "riterator" T typename))
+           (return (nullptr DNode)))
+      (def n (var auto (p DNode) (mnfv mc typename)))
+      (return n))))
+
+#|
+@concept-macro Pair
+
+Expands to a struct definition with two members, named `first` and
+`second`.
+
+@param T1   The first type node.
+@param T2   The second type node.
+|#
+(def-concept-macro Pair extern ((T1 Type) (T2 Type))
+  (let ((typename (array-of 250 char))
+        (etypename (array-of 250 char)))
+    (and (not (make-type-string mc "pair" T1 T2 typename))
+         (return (nullptr DNode)))
+    (and (not (make-type-display-string mc "Pair" T1 T2 etypename))
+         (return (nullptr DNode)))
+    (register-type mc typename etypename)
+    (if (exists-type mc (qq Pair (uq T1) (uq T2)))
+        (do (return (nullptr DNode)) 0)
+        0)
+    (def n (var auto (p DNode) (mnfv mc typename)))
+    (qq def (uq n)
+      (struct extern ((first (uq T1)) (second (uq T2)))))))
+
+#|
+@macro Pair
+
+Expands to the concrete type name of the `Pair` generated by way of
+the concept macro.
+
+@param T1   The first type node.
+@param T2   The second type node.
+|#
+(def Pair
+  (macro extern (T1 T2)
+    (let ((typename (array-of 250 char)))
+      (and (not (make-type-string mc "pair" T1 T2 typename))
+           (return (nullptr DNode)))
+      (def n (var auto (p DNode) (std.macros.mnfv mc typename)))
+      (return n))))
+
+#|
+@concept-macro Triple
+
+Expands to a struct definition with three members, named `first`,
+`second` and `third`.
+
+@param T1   The first type node.
+@param T2   The second type node.
+@param T3   The third type node.
+|#
+(def-concept-macro Triple extern ((T1 Type) (T2 Type) (T3 Type))
+  (let ((typename  (array-of 250 char))
+        (etypename (array-of 250 char)))
+    (and (not (make-type-string mc "triple" T1 T2 T3 typename))
+         (return (nullptr DNode)))
+    (and (not (make-type-display-string mc "Triple" T1 T2 T3 etypename))
+         (return (nullptr DNode)))
+    (register-type mc typename etypename)
+    (def n (var auto (p DNode) (std.macros.mnfv mc typename)))
+    (qq def (uq n)
+      (struct extern ((first (uq T1)) (second (uq T2)) (third (uq T3)))))))
+
+#|
+@macro Triple
+
+Expands to the concrete type name of the `Triple` generated by way of
+the concept macro.
+
+@param T1   The first type node.
+@param T2   The second type node.
+@param T3   The third type node.
+|#
+(def Triple
+  (macro extern (T1 T2 T3)
+    (let ((typename (array-of 250 char)))
+      (and (not (make-type-string mc "triple" T1 T2 T3 typename))
+           (return (nullptr DNode)))
+      (def n (var auto (p DNode) (std.macros.mnfv mc typename)))
+      (return n))))
+))

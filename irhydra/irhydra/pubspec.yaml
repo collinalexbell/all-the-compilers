@@ -1,0 +1,21 @@
+name: irhydra
+dependencies:
+  archive: any
+  browser: any
+  collection: any
+  fixnum: any
+  paper_elements: any
+  polymer: any
+  sass: any
+  ui_utils:
+    path: ../ui_utils
+  ui_components:
+    path: ../ui_components
+transformers:
+- sass
+- polymer:
+    entry_points: web/index.html
+- $dart2js:
+    checked: false
+    minify: true
+    commandLineOptions: ['--trust-type-annotations', '--trust-primitives']

@@ -1,0 +1,170 @@
+//! A minimal library for writing HTTP servers.
+
+let prelude = import! std.prelude
+let function = import! std.function
+let { ? } = import! std.io
+let { (<<), (<|), ? } = import! std.function
+let string = import! std.string
+let { Bool } = import! std.bool
+let { Functor, Applicative, Alternative, Monad } = prelude
+let { id } = import! std.prelude
+let { flat_map } = import! std.monad
+let { wrap, (*>) } = import! std.applicative
+let { or, empty, (<|>) } = import! std.alternative
+let regex = import! std.regex
+let result = import! std.result
+let { Eff, run_pure, ? } = import! std.effect
+let alt @ { run_alt } = import! std.effect.alt
+let { get, gets, eval_state } = import! std.effect.state
+let { lift, run_lift } = import! std.effect.lift
+
+let {
+    Method,
+    Failure,
+    Request,
+    StatusCode,
+    Response,
+    ResponseBody,
+    HttpEffect,
+    HttpState,
+    Uri
+} =
+    import! std.http.types
+let http_prim = lift_io! lift (import! std.http.prim)
+
+let status =
+    let code : Int -> StatusCode = id
+    {
+        ok = code 200,
+        moved_permanently = 301,
+        found = 302,
+        temporary_redirect = 307,
+        permanent_redirect = 308,
+        bad_request = code 400,
+        not_found = code 404,
+        internal_server_error = code 500,
+    }
+
+let method =
+    let method : String -> Method = id
+    {
+        get = method "GET",
+        post = method "POST",
+        put = method "PUT",
+    }
+
+let alternative : Alternative (Eff (HttpEffect r)) = alt.alternative
+
+let response : Response = { status = status.ok, headers = [] }
+
+/// Force the value to be a Handler. Necessary to make the the type inference work for
+/// higher-kinded types
+let make : Eff (HttpEffect r) a -> Eff (HttpEffect r) a = id
+
+/// Handles the request if `predicate` returns `True
+let test predicate : (Request -> Bool) -> Eff (HttpEffect r) () =
+    do state = get
+    if predicate state.request then wrap ()
+    else empty
+
+/// Handles `Get` requests
+let get : Eff (HttpEffect r) () =
+    test (\request -> request.method == method.get)
+
+/// Handles `Post` requests
+let post : Eff (HttpEffect r) () =
+    test (\request -> request.method == method.post)
+
+/// Processes this handler if `uri` matches the request's uri
+let path p : String -> Eff (HttpEffect r) () =
+    test (\request -> http_prim.uri.path request.uri == p)
+
+let is_match uri : String -> Eff (HttpEffect r) () =
+    let re = result.unwrap_ok (regex.new uri)
+    test (\request -> regex.is_match re (http_prim.uri.path request.uri))
+
+/// Retrieves the HTTP request
+let get_request : Eff (HttpEffect r) Request =
+    gets (\s -> s.request)
+
+/// Retrieves the body of the http response
+let get_response_body : Eff (HttpEffect r) ResponseBody =
+    gets (\s -> s.response)
+
+/// Returns `OK` with an empty body
+let empty_response = { status = status.ok }
+
+/// Write `bytes` to the http response
+let write_response bytes : Array Byte -> Eff (HttpEffect r) () =
+    do response = get_response_body
+    http_prim.write_response response bytes
+
+/// Throws an exception which aborts the current handler. Can be caught with `catch_error`
+let fail msg : String -> Eff (HttpEffect r) a =
+    empty
+// TODO use msg
+
+/// Recovers from an exception thrown by `fail`
+let catch_error action catch : Eff (HttpEffect r) a
+        -> (String -> Eff (HttpEffect r) a)
+        -> Eff (HttpEffect r) a
+    =
+    do opt = alt.run_alt action empty
+    match opt with
+    | None -> catch "empty"
+    | Some a -> wrap a
+
+/// Takes a `Handler` and a `Request` tries to process the request
+let handle handler state : Eff (HttpEffect r) Response -> HttpState -> IO Response =
+    do opt =
+        run_lift <| eval_state state <| run_alt handler empty
+    match opt with
+    | None ->
+        run_lift
+            (http_prim.write_response state.response (string.as_bytes "Page not found")
+                    *> wrap
+                        {
+                            status = status.not_found,
+                            ..
+                            response
+                        })
+    | Some response -> wrap response
+
+let show_uri : Show Uri = {
+    show = http_prim.uri.to_string,
+}
+
+let default_listen_settings = { port = 80, tls_cert = None }
+
+{
+    Method,
+    Failure,
+    Request,
+    StatusCode,
+    Response,
+    HttpEffect,
+
+    alternative,
+
+    status,
+    method,
+
+    empty_response,
+    get_request,
+    handle,
+    get,
+    post,
+    path,
+    is_match,
+    fail,
+    catch_error,
+
+    show_uri,
+
+    write_response,
+
+    default_listen_settings,
+    response,
+    ..
+    http_prim
+}

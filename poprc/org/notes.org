@@ -1,0 +1,308 @@
+#+TITLE: PoprC Notes
+
+* fixing fuse_map_filter
+- pop map out of next_match up to filter, apply to unreachable tail, and eliminate
+- caught in the filter loop
+- maybe why unification failed, it wants to consume filter:next_match:map
+- pull out tail call to recursive functions on exclusive exit
+- look at unroll & pattern match
+* linear/flat laziness
+can only be lazy in one argument
+fits streams well
+* non-flat reduce_ptr
+- func_list
+- try something that forces alt
+* read/write_array sequencing
+hold the array bus with ready+!we to ensure sequencing
+* concat_map
+8281 unless - doesn't match the failure, quote around + prevents failure
+* stream_compute
+- input streams to io.stream_write_array & io.stream_compute must be dup'ed
+  - ready = X when only one of them is ready
+* compose
+- bind through row lists -> pushr
+* pos
+- works as an anchor
+- need to clean up
+- used both to keep expressions in and initial values out of recursion
+* memory
+- write weighted histogram
+* fusion
+- apply `ap0N` to unwrap recursive call, then `pushrN` for row
+- unwrap: [a... b c] -> [a...] b c?
+  maybe not necessary, `a...` is already a list
+  look at row forcing behavior in func_list
+- split row into separate function?
+  or encode lazy row?
+  don't unwrap list functions with row
+    * get chained list functions to work, then fix up specialization
+- in func_exec_wrap, push specialize-able recursive functions up to parent
+  __ short term options __
+  - don't specialize them for now
+  - specialize inputs first
+* rule: output registers should only change if out_valid
+* ready/valid
+set valid --- give ---> set ready
+clear valid < --- take -------'
+* AXI types
+- slave: Array -> [RA WA W -> R B] ==> Array RA WA W -> RB
+- master: [RA WA W -> R B] -> Array
+* write a more correct version of stream_read_write_array
+- choose between read_array and write_array based on stream?
+  e.g. [drop ... read_array ...] [... write_array ...] | get2
+* zip
+- feed back loop complete indictor to ready on input streams?
+- in_ready always &-ed with in_valid (if there are simple inputs), but out_valid should never depend on out_ready
+* AXI tests
+- AXI Stream
+  - Simple countdown, send TLAST at 0
+  - map 2* with TLAST
+- AXI Lite with an array
+* stream widening
+- apN0 -> ap0N ==> ap10 -> ap01
+  - with wider data type
+  - need to insert gearboxes to change width
+    2 -> 1: ap02 -> ap10, ap10
+* AXI
+- AXI BMF/TLM
+- verification
+- Use AXI-Lite or AXI-Stream
+  - AXI DMA
+- AXI in Popr?
+  - B R [Array -> Array] axi_run -> WA W RA
+  - RA -> R, WA W -> B forms a loop
+  - not a good idea
+* vectors
+- chunky lists tell us the size of width of a stream
+  - fixed size -> quote/ap, no pushr/compose
+- enforce that all but the outer list is fixed size
+- can use this to calculate the width
+* range inference
+- add max_bound flag to bound all values
+- use bit set for symbols
+* tcell_t
+- C11 _Generic
+* pushl/pushr
+- idea: just emit streams, reversing negative streams when consumed
+  - this means e.g. maps can be applied backwards
+** before tail call
+<== emit || l <===> r || emit ==>
+- two pointers, so must hold
+*** pushl: enqueue (+)
+*** pushr: push (-)
+** after tail call
+- one pointer
+*** pushr: emit to queue (+)
+*** pushl: emit to stack (-)
+* Don't actually route opaque types
+- assign unique ids at the top level
+- distribute bus per unique id
+* keep linear arguments in same position
+* generator = ready line
+* mutual recursion in quotes
+- state machine (Mealy)
+  - like object where popr is a method call
+- token passing, parallelism, circular pipeline
+* linear graphs
+- `A ⅋ B` is two subgraphs that diverge such that you can't reach one from the other
+- `A ⊗ B` is two subgraphs that diverge after reversing all the edges
+- `A ⊕ B` don't diverge (some vertex is reachable from both A and B)
+- `A & B` don't diverge in the reverse direction
+* connected linear vertices are always trees and can be laid out in blocks
+- stack for linear allocation, move to heap when refcount > 1
+* IDEA inline continuations on non-tail calls?
+- one non-tail call: build data-only stack followed by reduction
+- multiple non-tail calls: defunctionalize return addresses
+* work on C streaming, defunctionization -> jumps
+* list.repeat
+in_valid: 1 X..., out_ready: 1...
+in_ready: 1 0..., out_valid: 1...
+out0_ready: 1..., out0_valid: 1...
+in0: 42 X..., out0: 42 42...
+* need to split ready items in quotes
+- if second arg is ready, don't reduce first arg
+- [r . a] [b] . ==> [r] [a . b] .
+- chunky lists are compose chains
+* cleanup
+expand, mod_alt, idify, unique, etc.
+find_passthrough, concatenate_conditions
+seq, assert, otherwise ops
+
+1. copy & forward
+2. update deps
+3. expand
+4. count deps
+5. replace
+6. copy if needed
+* split/alts
+no alts on exprs
+instead, pass split alts up ctx
+alt nodes get id on first reduction? or creation.
+* placeholder
+extendable version of ap/compose: byte_compile.c:425
+build ap/compose tree instead
+* IO streams
+IO a b ++ write ==> IO a write b write
+IO read "\n" strsplit ==> ...
+- move consumer into producer, opposite of lazy IO
+IO read line
+  - line: "\n" strplit
+1. explicit size
+2. condition
+^ both could be built using recursion and getchar
+* otherwise per alt e.g. f9:
+___ tests.f9 (2 -> 1) x3 ___
+[1] var, type = ?a x1
+[2] var, type = ?a x2
+[3] return [ 2 ], type = r -> 4 x1
+[4] return [ 1 ], type = r -> 7 x1
+[5] __primitive.otherwise 2 6, type = a x1
+[6] __primitive.otherwise 1 7, type = a x1
+[7] val 3, type = i x1
+[8] return [ 5 ], type = r x1
+* use context to identify dep and pass types
+* pos's are barriers that should only be moved down for transparent ops and lists
+* monopath and recursion
+- monopath only required on exit, but required for TCO
+* promote to operand with highest pos
+* specialize recursive functions on continuations
+* exists
+- assert (forall i : Nat, i > n -> i > k)
+  for some n : Nat , k : Nat
+- f: [nat_t ? >] both implies QED swap !
+* compiling recursion
+- unify tail call, replace arguments with unification variables
+- force them in initialization
+- update non-tail calls
+- LICM: force expressions only using constant args and add to loop parameters
+  - can violate laziness unless used in all paths
+* pointers
+- handles (regions)
+- modification returns a new handle
+- like immutable malloc
+- if mutable:
+  - can't dup
+  - like tokens
+- objects are allocated to a handle
+- can't return a handle, only references
+- references can't leave scope of handle (destroyed with handle)
+- how to determine size of region?
+  - static when possible (stack, unless large)
+  - otherwise heap (recursive)
+  - extend quote sizing method
+- unify handles with quotes?
+- autohandle?
+  - every function that returns an object takes an implicit handle
+  - could cause excessive copying to compact regions when returning
+    - sort regions by lifetime
+- associations
+  - handle : array[N], struct
+  - reference / name : ix, .member
+  - dereference : array[ix], struct.member
+  - reference function : ix++
+* next: int max(int *elems, int size)
+* specializing recursive functions
+- need to take [x] -> f -> [x'] to f -> [x] -> f'
+- split at each call to form mutually recursive functions
+- could be compiled to jumps
+- hitting a recursive function starts a new block
+- push tail into the specialized function, then force tail recursion even if not in tail position
+  - i.e. only apply tail in base case
+- pass down in type_t, or maybe T_ANY is enough?
+- encode results so that output falls through
+  - this should be easier after tracing to return
+  - just crush everything between recursive call and return
+  - resolved this by trace_enable = false until return
+* full relations
+- send down allocated memory in addition to type
+- type flag to indicate if variable or value
+- if value, it works as an addition argument to invert computation
+- ?x 1 + 3 == ! -->> (add ?x 1 3)
+* byte compile quotes
+- special pushl instruction
+  - quote + compose
+  - breaks quote apart, so that each element of list can be evaluated separately
+- in func_quote, unpack quotes: either
+  - pushl left & pushr right, or
+  - unpack with special instruction
+- store cell + vars + out on first pass
+- replace cell with entry after compilation of quote to auxilary function
+* lightweight quote format
+- struct with function pointer and args
+  - {function_ptr, arg_n-1, ..., arg_0}
+  - inefficient if passed by value
+- pushl
+  - zero args out, set function ptr
+  - pass pointer to next arg
+  - when not zero, it's ready to call
+- caller passes in allocated storage when size is known
+* (non) tail call optimization
+- move call down
+- insert delay
+  - <call return var> = <recursive case return var>
+- tail call becomes:
+top-level param = call param;
+...
+goto body;
+- <call return var> is initialized with return value of base case
+- return value changed to <call return var>
+- reverses reduction order, so only works if tail is commutative and associative
+((1 + 2) + 3) -> ((3 + 2) + 1)
+a list would be reversed
+* jump to alt on failed assert
+** label _before_ reduction on assert
+** need labels in bytecode
+*** label is just forward alt pointer
+**** only stored on assert
+*** support forward alts in bytecode
+**** split exec on alt blocks
+**** store PC somewhere, though, maybe tmp for now?
+* simple etif (else/then/if)
+:c etif ! swap | cut
+* things that must not escape functions
+- for efficiency and simplicity
+** thunks
+** alts? (cut before return)
+* indentation
+line with ':' establishes body indent
+next line sets head indent if greater
+section precedence: module > word
+
+module first: _start of head_ head
+  module inside_first_head: blah
+    blah
+  blah
+  _end of head_
+_start of body_
+f1: blah
+  blah
+  blah
+f2: blah
+module next: ...
+
+sub-modules and imports must be in module head, functions in body
+* indentation 2
+- one definition
+name: blah
+        blah blah
+        blah
+- multiple definitions
+_type1_
+name:
+  blah blah
+    blah __ first
+  yak yak
+    yak  __ second
+mod:
+  module a
+  module b
+mod.f1: c.f1
+_type2_
+mod2: module a, module b
+mod2.f1: c.f1
+_type3_
+mod3: module a
+mod3: module b
+mod3.f1: c.f1
+- also works for words
+- type1 may be confusing

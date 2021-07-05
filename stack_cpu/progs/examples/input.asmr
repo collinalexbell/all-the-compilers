@@ -1,0 +1,29 @@
+; press q (0x71) to exit
+_main:
+	push	_read_key
+	call
+	ret
+
+_read_key:
+	push	KBD
+	push	_read_key_print
+	int
+
+_read_key_print:
+	dup
+	push	0x71
+	sub
+	push	_read_key_ret
+	jz
+
+	out
+
+	ret
+
+_read_key_ret:
+	pop
+
+	push	0xa
+	out
+
+	ret

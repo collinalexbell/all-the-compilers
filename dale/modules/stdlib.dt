@@ -1,0 +1,851 @@
+#|
+@module stdlib
+
+Provides commonly-used macros and functions, including the core
+control structures (`for`, `while` and `let`). All of the bindings
+provided by this library are in the root namespace.
+
+|#
+(module stdlib (attr cto))
+
+(import cstdio-core)
+(import macros)
+(import introspection)
+
+(using-namespace std.macros
+
+#|
+@macro is-valid
+
+Returns its boolean argument.  Defined for use with `and` and `or`.
+
+@param arg  A boolean.
+|#
+(def is-valid
+  (macro extern ((arg bool))
+    arg))
+
+#|
+@macro and
+
+Returns the first argument, if it is not valid. Returns the last
+argument otherwise.  A object `o` is valid if `(is-valid o)` returns
+true.
+
+@param condition    The condition expression.
+@param true-case    The form to run when condition is true.
+|#
+(def and (macro extern (a b)
+  (if (is-lvalue mc a)
+    (qq if (not (is-valid (uq a))) (uq a) (uq b))
+    (new-scope
+      (def tmp (var auto \ (make-gensym-var-node mc)))
+      (qq new-scope
+        (def (uq tmp) (var auto \ (uq a)))
+        (if (not (is-valid (uq tmp))) (uq tmp) (uq b)))))))
+
+#|
+@macro or
+
+Returns the first argument, if it is valid. Returns the last argument
+otherwise.  A object `o` is valid if `(is-valid o)` returns true.
+
+@param condition    The condition expression.
+@param false-case   The form to run when condition is false.
+|#
+(def or (macro extern (a b)
+  (if (is-lvalue mc a)
+    (qq if (is-valid (uq a)) (uq a) (uq b))
+    (new-scope
+      (def tmp (var auto \ (make-gensym-var-node mc)))
+      (qq new-scope
+        (def (uq tmp) (var auto \ (uq a)))
+        (if (is-valid (uq tmp)) (uq tmp) (uq b)))))))
+
+(def break-to-goto
+  (fn (attr cto) intern int ((frm      (p DNode))
+                             (mc (p MContext))
+                             (data     (p void)))
+    (def break-label (var auto (p DNode) (cast data (p DNode))))
+    (def ln          (var auto (p DNode) (@:@ frm list-node)))
+    (def ln-str      (var auto (p char)  (if (not (null ln))
+                                                (@:@ ln token-str)
+                                                (return 0))))
+
+    (if (null ln-str)
+        (return 0)
+        0)
+    (if (!= 0 (strcmp ln-str "break"))
+        (do (if (= 0 (strcmp ln-str "goto"))
+                (do (if (is-gensym-label (@:@ ln next-node) "breaklabel")
+                        (do (setf (:@ frm list-node) (mnfv mc "goto"))
+                            (setf (:@ (@:@ frm list-node) next-node)
+                            break-label))
+                        (return 0)))
+                (return 0))
+            0)
+        0)
+
+    (setf (:@ frm list-node) (mnfv mc "goto"))
+    (setf (:@ (@:@ frm list-node) next-node) break-label)
+    0))
+
+(def continue-to-goto
+  (fn (attr cto) intern int ((frm (p DNode))
+                             (mc (p MContext))
+                             (data (p void)))
+    (def break-label (var auto (p DNode) (cast data (p DNode))))
+    (def ln          (var auto (p DNode) (@:@ frm list-node)))
+    (def ln-str      (var auto (p char)  (if (not (null ln))
+                                                (@:@ ln token-str)
+                                                (return 0))))
+
+    (if (null ln-str)
+        (return 0)
+        0)
+    (if (!= 0 (strcmp ln-str "continue"))
+        (do (if (= 0 (strcmp ln-str "goto"))
+                (do (if (is-gensym-label (@:@ ln next-node) "continuelabel")
+                        (do (setf (:@ frm list-node) (mnfv mc "goto"))
+                            (setf (:@ (@:@ frm list-node) next-node)
+                            break-label))
+                        (return 0)))
+                (return 0))
+            0)
+        0)
+
+    (setf (:@ frm list-node) (mnfv mc "goto"))
+    (setf (:@ (@:@ frm list-node) next-node) break-label)
+    0))
+
+#|
+@macro while
+
+Takes a condition expression and an arbitrary number of other forms as
+its arguments. Expands to a form that loops over the provided forms
+for so long as the condition expression evaluates to `true`.
+
+@param condition    The condition expression form.
+|#
+(def while
+  (macro extern (condition rest)
+    (def arg-count (var auto \ (arg-count mc)))
+
+    (setv arg-count (- arg-count 1))
+    (def arglist (var auto va-list))
+    (def varargs-list (var auto \ (get-varargs-list mc arg-count rest)))
+
+    (def begin-label
+        (var auto (p DNode) (make-gensym-label-node mc "continuelabel")))
+    (def end-label
+        (var auto (p DNode) (make-gensym-label-node mc "breaklabel")))
+
+    (and (is-empty-node varargs-list)
+      (do (report-error mc condition "no body forms provided")
+          (return (nullptr DNode))))
+
+    (walk-nodes varargs-list mc (cast end-label   (p void))
+                (# break-to-goto))
+    (walk-nodes varargs-list mc (cast begin-label (p void))
+                (# continue-to-goto))
+
+    (qq do
+        (label (uq begin-label))
+          (if (uq-nc condition)
+              (do (uql-nc varargs-list)
+                  (goto (uq begin-label)))
+              (goto (uq end-label)))
+        (label (uq end-label)))))
+
+#|
+@macro incf
+
+Takes a pointer form as its single argument. Expands to a form that
+increments the underlying value and returns true.
+
+@param form     The pointer variable to be incremented.
+|#
+(def incf
+  (macro extern (form)
+    (qq setf (uq form) (+ (@ (uq form)) 1))))
+
+#|
+@macro decf
+
+Takes a pointer form as its single argument. Expands to a form that
+decrements the underlying value and returns true.
+
+@param form     The pointer variable to be decremented.
+|#
+(def decf
+  (macro extern (form)
+    (qq setf (uq form) (- (@ (uq form)) 1))))
+
+#|
+@macro incv
+
+Takes a variable form as its single argument. Expands to a form that
+increments the underlying value and returns true.
+
+@param form     The variable to be incremented.
+|#
+(def incv
+  (macro extern (form)
+    (qq setv (uq form) (+ (uq form) 1))))
+
+#|
+@macro decv
+
+Takes a variable form as its single argument. Expands to a form that
+decrements the underlying value and returns true.
+
+@param form     The variable to be decremented.
+|#
+(def decv
+  (macro extern (form)
+    (qq setv (uq form) (- (uq form) 1))))
+
+#|
+@macro for
+
+Takes an initialisation form, a condition expression, a loop entry
+form and an arbitrary number of other forms as its arguments. Expands
+into a 'for' loop: the initialisation form is run at the beginning,
+the loop entry form is run on loop entry (except on the first
+iteration), and the loop is only run for so long as the condition
+expression evaluates to true.  The initialisation form must be either
+a `let` variable binding (e.g. `(i \ 0)`), or a `setv` call (e.g.
+`(setv i 0)`, or the atom `true`.
+
+@param init-form    The initialisation form.
+@param condition    The condition expression.
+@param loop-entry   The loop entry form.
+|#
+(def for
+  (macro extern (init-form condition loop-entry rest)
+    (def arg-count (var auto \ (arg-count mc)))
+    (setv arg-count (- arg-count 3))
+    (def varargs-list (var auto \ (get-varargs-list mc arg-count rest)))
+
+    (def begin-label
+        (var auto (p DNode) (make-gensym-label-node mc)))
+    (def mid-label
+        (var auto (p DNode) (make-gensym-label-node mc "continuelabel")))
+    (def end-label
+        (var auto (p DNode) (make-gensym-label-node mc "breaklabel")))
+
+    (and (is-empty-node varargs-list)
+      (do (report-error mc init-form "no body forms provided")
+          (return (nullptr DNode))))
+
+    (walk-nodes varargs-list mc (cast end-label (p void))
+                (# break-to-goto))
+    (walk-nodes varargs-list mc (cast mid-label (p void))
+                (# continue-to-goto))
+
+    (def init-form-original (var auto (p DNode) init-form))
+    (def init-holder  (var auto (p DNode) (nullptr DNode)))
+    (def init-current (var auto (p DNode) (nullptr DNode)))
+    (def init-form-list (var auto \ (@:@ init-form list-node)))
+    (setf (:@ init-form next-node) (nullptr DNode))
+    (and (and (not (null init-form-list))
+              (not (null (@:@ init-form-list list-node))))
+      (setv init-form init-form-list))
+
+    (while (not (null init-form))
+      (def next-form (var auto (p DNode) (nullptr DNode)))
+      (setv init-form-list (@:@ init-form list-node))
+      (if (and (null init-form-list)
+               (= 0 (strcmp (@:@ init-form token-str) "true")))
+          (setv next-form init-form)
+      (if (and (not (null init-form-list))
+               (= 0 (strcmp (@:@ init-form-list token-str) "setv")))
+          (setv next-form init-form)
+          (do (and (null init-form-list)
+              (do (report-error mc init-form "initialisation form must be a list")
+                  (return (nullptr DNode))))
+              (def init-form-token (var auto \ (@:@ init-form-list token-str)))
+              (and (null init-form-token)
+                (do (report-error mc init-form "initialisation form must begin with an atom")
+                    (return (nullptr DNode))))
+              (def type-form (var auto \ (@:@ init-form-list next-node)))
+              (and (null type-form)
+                (do (report-error mc init-form-list "list needs variable name and type")
+                    (return (nullptr DNode))))
+              (setv next-form (qq def (uq init-form-list) (var
+              auto (uql type-form)))))))
+      (if (null init-holder)
+          (setv init-holder next-form)
+          (setf (:@ init-current next-node) next-form))
+      (setv init-current next-form)
+      (setv init-form (@:@ init-form next-node)))
+
+    (def retform (var auto \
+    (qq new-scope
+        (do (uql init-holder))
+        (label (uq begin-label))
+          (if (uq-nc condition)
+              (do (uql-nc varargs-list)
+                  (label (uq mid-label))
+                  (uq-nc loop-entry)
+                  (goto (uq begin-label)))
+              (goto (uq end-label)))
+        (label (uq end-label)))))
+    retform))
+
+#|
+@macro let
+
+A form for introducing local (automatic storage) variables. It's
+easier to explain by example.
+
+        (let (({name1} {type1} [{value1}])
+              ({name2} {type2} [{value2}]))
+          ; ...
+          )
+
+expands to:
+
+        (new-scope
+          (def {name1} (var auto {type1} {value1}))
+          (def {name2} (var auto {type2} {value2}))
+          ; ...
+          )
+
+@linkage extern
+|#
+(def let
+  (macro extern (new-vars rest)
+    (def arg-count (var auto \ (arg-count mc)))
+    (setv arg-count (- arg-count 1))
+    (def varargs-list (var auto \ (get-varargs-list mc arg-count rest)))
+
+    (and (is-empty-node varargs-list)
+      (do (report-error mc new-vars "no body forms provided")
+          (return (nullptr DNode))))
+
+    (def nullp (var auto (p DNode) (cast 0 (p DNode))))
+
+    (def first-node (var auto (p DNode) (cast 0 (p DNode))))
+
+    ; Create an anchor node pointer. This will be set to the value
+    ; of each newly-created node, so that the next node can be
+    ; linked to it.
+    (def anchor-node (var auto (p DNode) (cast 0 (p DNode))))
+
+    (def vars-node (var auto (p DNode) (@:@ new-vars list-node)))
+    (and (null vars-node)
+      (do (report-error mc new-vars "variable forms must be a list")
+          (return (nullptr DNode))))
+
+    (def name-node    (var auto (p DNode) (cast 0 (p DNode))))
+    (def type-node    (var auto (p DNode) (cast 0 (p DNode))))
+    (def default-node (var auto (p DNode) (cast 0 (p DNode))))
+
+    (def def-node (var auto (p DNode) (cast 0 (p DNode))))
+
+    (while (not (null vars-node))
+
+      (setv name-node    (@:@ vars-node list-node))
+      (and (null name-node)
+        (do (report-error mc vars-node "variable form must be a list")
+            (return (nullptr DNode))))
+      (setv type-node    (@:@ name-node next-node))
+      (and (null type-node)
+        (do (report-error mc vars-node "form needs variable name and type")
+            (return (nullptr DNode))))
+      (setv default-node (@:@ type-node next-node))
+
+      (and (and (not (null default-node))
+                (not (null (@:@ default-node next-node))))
+        (do (report-error mc default-node "variable form has too many arguments")
+            (return (nullptr DNode))))
+
+      (setf (:@ name-node next-node) nullp)
+      (setf (:@ type-node next-node) nullp)
+
+      (if (not (null default-node))
+        (do
+          (setf (:@ default-node next-node) nullp)
+          (setv def-node
+              (qq def (uq-nc name-node)
+                  (var auto (uq-nc type-node) (uq-nc default-node)))))
+          (setv def-node
+              (qq def (uq-nc name-node)
+                  (var auto (uq-nc type-node)))))
+
+      (if (null first-node)
+          (do (setv first-node def-node) 0)
+          0)
+
+      (if (not (null anchor-node))
+          (do (setf (:@ anchor-node next-node) def-node) 0)
+          0)
+
+      (setv anchor-node def-node)
+
+      (setv vars-node (@:@ vars-node next-node)))
+
+    (qq new-scope (uql-nc first-node) (do (uql-nc varargs-list)))))
+
+(def cond-error-check
+  (macro intern (condition element message)
+    (qq if (uq-nc condition)
+            (do (report-error mc (uq-nc element) (uq-nc message))
+                (return (nullptr DNode)))
+            0)))
+
+#|
+@macro cond
+
+As per Common Lisp's `cond`, except that the first element of each
+argument must be a condition, and each argument must have at least two
+elements.
+
+    (cond ((= x 1) 2)
+          ((= x 2) 3)
+          (true    4))
+
+expands to:
+
+    (if (= x 1) 2
+    (if (= x 2) 3
+                4))
+
+The last condition test must be the literal `true`.
+|#
+(def cond
+  (macro extern (rest)
+    (def arg-count (var auto \ (arg-count mc)))
+
+    (cond-error-check
+      (= arg-count 0)
+      (mnfv mc "unused")
+      "cond requires at least one argument")
+
+    (def frm (var auto (p DNode)))
+    (def va-dnode (var auto (p DNode)))
+
+    (def begin (var auto bool true))
+    (def last (var auto (p DNode)))
+    (def index (var auto int 0))
+
+    (label begin-loop)
+        (if (= arg-count 0) (goto end-loop) 0)
+        (setv va-dnode (@$ rest index))
+        (setv index (+ index 1))
+        (cond-error-check
+          (null (@:@ va-dnode list-node))
+          va-dnode
+          "cond argument must be list")
+        (def first  (var auto (p DNode) (@:@ va-dnode list-node)))
+        (cond-error-check
+          (null (@:@ first next-node))
+          va-dnode
+          "cond argument list must have two elements")
+        (def second (var auto (p DNode) (@:@ first next-node)))
+        (cond-error-check
+          (not (null (@:@ second next-node)))
+          va-dnode
+          "cond argument list must have only two elements")
+        (setf (:@ first next-node) (nullptr DNode))
+        (if begin
+            (do (if (= arg-count 1)
+                    (do (setv frm (qq do (uq-nc second)))
+                        (setv last (@:' frm list-node next-node))
+                        true)
+                    (do (setv frm (qq if (uq-nc first) (uq-nc second)))
+                        (setv last (@:' frm list-node next-node next-node))
+                        (setv begin false)
+                        true)))
+            (do (if (= arg-count 1)
+                    (do (cond-error-check
+                          (or (null (@:@ first token-str))
+                              (!= 0 (strcmp (@:@ first token-str) "true")))
+                          first
+                          "last cond argument list condition must be 'true'")
+                        (setf (:@ last next-node) second)
+                        (setv last second)
+                        true)
+                    (do (def nextn
+                          (var auto (p DNode)
+                                    (qq if (uq-nc first) (uq-nc second))))
+                        (setf (:@ last next-node) nextn)
+                        (setv last (@:' nextn list-node next-node next-node))
+                        true))))
+        (setv arg-count (- arg-count 1))
+        (goto begin-loop)
+
+    (label end-loop)
+        (return frm)))
+
+#|
+@macro malloc'
+
+Expands to a `malloc` that allocates memory sufficient for `n` `T`s.
+
+@param n    The number of objects being allocated.
+@param T    The type of the objects being allocated.
+|#
+(def malloc' (macro extern (n T)
+  (qq cast (malloc (* (cast (uq n) size) (sizeof (uq T)))) (p (uq T)))))
+
+#|
+@macro free'
+
+Expands to a `free` to which the pointer form argument, after being
+cast to a void pointer, is passed.
+
+@param form     The pointer form.
+|#
+(def free' (macro extern (form)
+  (qq free (cast (uq form) (p void)))))
+
+#|
+@macro p<=
+
+@linkage extern
+|#
+(def p<= (macro extern (ptr1 ptr2)
+  (qq or (p< (uq ptr1) (uq ptr2)) (p= (uq ptr1) (uq ptr2)))))
+
+#|
+@macro p>=
+
+@linkage extern
+|#
+(def p>= (macro extern (ptr1 ptr2)
+  (qq or (p> (uq ptr1) (uq ptr2)) (p= (uq ptr1) (uq ptr2)))))
+
+#|
+@macro make-macro-constant
+
+Expands to a macro definition, with the specified name, that in turn
+expands to the value.
+
+@param name     The name of the macro constant.
+@param value    The value for the new macro constant.
+|#
+(def make-macro-constant
+  (macro extern (name value)
+    (qq def (uq name)
+        (macro extern (void) (std.macros.mnfv mc (uq value))))))
+
+#|
+@macro short-type
+
+Expands to an integer type that has the same size as the system C
+compiler's `short` type. Only intended for use when writing C bindings.
+
+@linkage extern
+|#
+(def short-type
+  (macro extern (void)
+    (let ((n  \ SIZEOF_SHORT)
+          (ts \ (if (= n 2)  "int16"
+                (if (= n 4)  "int32"
+                (if (= n 8)  "int64"
+                (if (= n 16) "int128"
+                             "invalid-short-type"))))))
+      (mnfv mc ts))))
+
+#|
+@macro ushort-type
+
+Expands to an unsigned integer type that has the same size as the
+system C compiler's `unsigned short` type. Only intended for use when
+writing C bindings.
+
+@linkage extern
+|#
+(def ushort-type
+  (macro extern (void)
+    (let ((n  \ SIZEOF_SHORT)
+          (ts \ (if (= n 2)  "uint16"
+                (if (= n 4)  "uint32"
+                (if (= n 8)  "uint64"
+                (if (= n 16) "uint128"
+                             "invalid-ushort-type"))))))
+      (mnfv mc ts))))
+
+#|
+@macro long-type
+
+Expands to an integer type that has the same size as the system C
+compiler's `long` type. Only intended for use when writing C bindings.
+
+@linkage extern
+|#
+(def long-type
+  (macro extern (void)
+    (let ((n  \ SIZEOF_LONG)
+          (ts \ (if (= n 4)  "int32"
+                (if (= n 8)  "int64"
+                (if (= n 16) "int128"
+                             "invalid-long-type")))))
+      (mnfv mc ts))))
+
+#|
+@macro ulong-type
+
+Expands to an unsigned integer type that has the same size as the
+system C compiler's `unsigned long` type. Only intended for use when
+writing C bindings.
+
+@linkage extern
+|#
+(def ulong-type
+  (macro extern (void)
+    (let ((n  \ SIZEOF_LONG)
+          (ts \ (if (= n 4)  "uint32"
+                (if (= n 8)  "uint64"
+                (if (= n 16) "uint128"
+                             "invalid-ulong-type")))))
+      (mnfv mc ts))))
+
+#|
+@macro long-long-type
+
+Expands to an integer type that has the same size as the system C
+compiler's `long long` type. Only intended for use when writing C
+bindings.
+
+@linkage extern
+|#
+(def long-long-type
+  (macro extern (void)
+    (let ((n  \ SIZEOF_LONG_LONG)
+          (ts \ (if (= n 8)  "int64"
+                (if (= n 16) "int128"
+                             "invalid-long-long-type"))))
+      (mnfv mc ts))))
+
+#|
+@macro ulong-long-type
+
+Expands to an unsigned integer type that has the same size as the
+system C compiler's `unsigned long long` type. Only intended for use
+when writing C bindings.
+
+@linkage extern
+|#
+(def ulong-long-type
+  (macro extern (void)
+    (let ((n  \ SIZEOF_LONG_LONG)
+          (ts \ (if (= n 8)  "uint64"
+                (if (= n 16) "uint128"
+                             "invalid-ulong-long-type"))))
+      (mnfv mc ts))))
+
+(def mfor-struct
+  (struct intern ((placeholder (p DNode))
+                  (new-token   (p DNode)))))
+
+(def mfor-helper
+  (fn (attr cto) intern int ((frm      (p DNode))
+                             (mc (p MContext))
+                             (data     (p void)))
+      (if (null (@:@ frm token-str))
+          (return 0)
+          0)
+      (let ((ms \ (cast data (p mfor-struct))))
+        (if (!= 0 (strcmp (@:@ frm token-str)
+                          (@:@ (@:@ ms placeholder) token-str)))
+          (return 0)
+          0)
+        (copy-to frm (@:@ ms new-token))
+        (return 0))))
+
+#|
+@macro mfor
+
+Short for 'macro for', but more akin to a 'foreach'. Takes a
+value-name form, a value-list form and an arbitrary number of other
+forms. For each entry in value-list, bind value-name to that value,
+and expand the other forms, substituting any instance of value-name in
+those forms with the value from value-list. For example:
+
+        (mfor str ("asdf" "zxcv" "qwer")
+          (printf "%s\n" str))
+
+expands to:
+
+        (printf "%s\n" "asdf")
+        (printf "%s\n" "zxcv")
+        (printf "%s\n" "qwer")
+
+@linkage extern
+|#
+(def mfor
+  (macro extern (value-name value-list rest)
+    (def arg-count (var auto \ (arg-count mc)))
+    (setv arg-count (- arg-count 2))
+    (def varargs-list (var auto \ (get-varargs-list mc arg-count rest)))
+
+    (and (is-empty-node varargs-list)
+      (do (report-error mc value-name "no body forms provided")
+          (return (nullptr DNode))))
+    (def original-value-list (var auto \ value-list))
+
+    (let ((first-node \ (mnfv mc "do"))
+          (anchor   \ first-node)
+          (body     \ (qq do (uql varargs-list)))
+          (bodycopy (p DNode))
+          (ms       mfor-struct))
+      (setv value-list (@:@ value-list list-node))
+      (and (null value-list)
+        (do (report-error mc original-value-list "argument must be a list")
+            (return (nullptr DNode))))
+      (setf (: ms placeholder) value-name)
+      (while (not (null value-list))
+        (setv bodycopy (copy mc true body))
+        (setf (: ms new-token) value-list)
+        (walk-nodes bodycopy mc (cast (# ms) (p void)) (# mfor-helper))
+        (setf (:@ anchor next-node) bodycopy)
+        (setv anchor (@:@ anchor next-node))
+        (setv value-list (@:@ value-list next-node)))
+      (new-scope (qq (uql first-node))))))
+
+#|
+@macro mfor'
+
+Like `mfor`, except that it evaluates the value-list form as a macro
+call to determine the actual list values that should be used.  This
+allows for calls like:
+
+        (mfor' N (range 0 2)
+          (printf "%d\n" N))
+
+to expand to:
+
+        (printf "0\n")
+        (printf "1\n")
+        (printf "2\n")
+
+@linkage extern
+|#
+(def mfor'
+  (macro extern (value-name value-list rest)
+    (def arg-count (var auto \ (arg-count mc)))
+    (setv arg-count (- arg-count 2))
+    (def varargs-list (var auto \ (get-varargs-list mc arg-count rest)))
+    (def new-value-list (var auto (p DNode) (eval-macro-call mc value-list true false)))
+    (and (null new-value-list)
+      (return (nullptr DNode)))
+    (qq mfor (uq value-name)
+             (uq new-value-list)
+             (uql varargs-list))))
+
+#|
+@macro mif
+
+Short for 'macro if'.  Operates in the same way as the core `if` form,
+except that the condition is evaluated at compile-time and the form as
+a whole expands to one of the provided branches.
+
+@linkage extern
+|#
+(def mif (macro extern (condition then else)
+  (def condition-result (var auto bool false))
+  (let ((result bool (eval-expression mc (q bool) condition
+                                      (cast (# condition-result) (p void)))))
+    (and (not result)
+      (do (report-error mc condition "unable to evaluate condition")
+          (return (nullptr DNode))))
+    (if condition-result then else))))
+
+#|
+@macro no-op
+
+Expands to an empty `do` form, which is a no-op both at the top-level
+and within a procedure.
+
+@linkage extern
+|#
+(def no-op
+  (macro extern (void)
+    (q (do))))
+
+#|
+@macro ignore
+
+Takes any number of arguments, and expands to `(no-op)`.  Useful for
+ignoring parts of s-expressions without having to search, where they
+end.
+
+|#
+(def ignore (macro extern (rest)
+  (qq no-op)))
+
+#|
+@macro identity
+
+Expands to the argument form.
+
+@param frm  A node.
+|#
+(def identity
+  (macro extern (frm)
+    frm))
+
+#|
+@function range-fn
+
+Takes two integers as DNode and generates a list of integers.
+
+@param mc  A MContext.
+@param a   An integer DNode.
+@param b   An integer DNode.
+|#
+(def range-fn (fn (attr cto) extern (p DNode) ((mc (p MContext))
+                                               (a (p DNode))
+                                               (b (p DNode)))
+  (let ((x int)
+        (y int)
+        (erra bool (eval-expression mc (q int) a (cast (# x) (p void))))
+        (errb bool (eval-expression mc (q int) b (cast (# y) (p void)))))
+    (or erra (report-error mc a "Unable to eval"))
+    (or errb (report-error mc b "Unable to eval"))
+    (if (< x y)
+        (qq (uq a) (uql (@:@ (range-fn mc (mnfv mc (+ x 1)) b) list-node)))
+        (if (> x y)
+            (qq (uq a) (uql (@:@ (range-fn mc (mnfv mc (- x 1)) b) list-node)))
+            (qq (uq a)))))))
+
+#|
+@macro range
+
+Expands to a list of integers.
+
+@param a   An integer DNode.
+@param b   An integer DNode.
+|#
+(def range (macro extern (a b)
+  (range-fn mc a b)))
+
+#|
+@macro +'
+
+For each of the primitive numeric types, macros that correspond to the
+core arithmetical and relational operators are defined which cast the
+second argument so that it has the same type as the first.  Each of
+these macros has the same name as the original function, except with a
+' symbol appended.
+
+|#
+(def prime-function
+  (macro intern (T F)
+    (let ((buf (array-of 4 char)))
+      (sprintf buf "%s'" (@:@ F token-str))
+      (let ((F' \ (mnfv mc buf)))
+        (qq def (uq F')
+          (macro extern ((a (uq T)) b)
+            (qq (uq F) (uq (uq a)) (cast (uq (uq b)) (uq T)))))))))
+(mfor T (char
+         int  int16  int32  int64
+         uint uint16 uint32 uint64
+         size ptrdiff
+         float double)
+  (mfor F (+ - * / % = != < <= > >=)
+    (prime-function T F)))
+)

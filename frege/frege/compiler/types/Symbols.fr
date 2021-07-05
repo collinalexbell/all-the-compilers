@@ -1,0 +1,93 @@
+--- Information about named items.
+module frege.compiler.types.Symbols where 
+
+import  frege.data.TreeMap as TM(TreeMap, each, values)
+import  frege.control.monad.State
+import  frege.compiler.enums.RFlag(RState, RFlag)
+import  frege.compiler.types.Positions
+import  frege.compiler.types.Strictness
+import  frege.compiler.enums.Visibility
+import  frege.compiler.enums.SymState
+import  frege.compiler.types.QNames
+import  frege.compiler.types.Types
+import  frege.compiler.types.Expression
+import  frege.compiler.types.ConstructorField
+import  frege.compiler.enums.TokenID
+
+-- the symbol table
+-- type Symtab = TreeMap String Symbol
+
+--- A delayed expressions that will be build on demand.
+type ExprD a = State a Expr
+
+
+{--
+    The information stored in the 'Symtab' nodes.
+    -}
+data SymbolT global =
+        !SymT    {sid::Int, pos::Position, vis::Visibility, doc::Maybe String, name::QName,
+                 kind::Kind, typ::Sigma, env::TreeMap String (SymbolT global), nativ::Maybe String,
+                 gargs::[Tau]   --- generic arguments of a native type
+                 product::Bool  --- indicate product type 
+                 enum::Bool     --- indicates enumeration type 
+                 pur::Bool      --- indicates *pure native* types
+                 newt::Bool     --- indicates *newtype*
+                }  --- data type
+        | !SymL  {sid::Int, pos::Position, vis::Visibility, name::QName,
+                 alias::QName}                                      --- alias name
+        | !SymD  {sid::Int, pos::Position, vis::Visibility, doc::Maybe String, name::QName,
+                 cid::Int   --- constructor number
+                 typ::Sigma, flds::[ConField QName],
+                 strsig :: Strictness,
+                 op :: TokenID                  --- how to use as operator 
+                }                             --- data constructor
+        | !SymC  {sid::Int, pos::Position, vis::Visibility, doc::Maybe String, name::QName,
+                 tau::Tau, supers::[QName], insts::[(QName, QName)],
+                 env::TreeMap String (SymbolT global)}                         --- class
+        | !SymI  {sid::Int, pos::Position, vis::Visibility, doc::Maybe String, name ::QName,
+                 clas::QName, typ::Sigma, 
+                 env::TreeMap String (SymbolT global)}              --- instance
+        | !SymV  {sid::Int, pos::Position, vis::Visibility, doc::Maybe String, name ::QName,
+                 typ::Sigma,
+                 --- For imported expressions, we will make them on demand 
+                 expr::Maybe (ExprD global), 
+                 nativ::Maybe String, 
+                 pur::Bool, anno::Bool, exported::Bool, state::SymState,
+                 strsig :: Strictness, depth :: Int, rkind :: RState,
+                 throwing :: [Tau]  --- list of exceptions thrown
+                 over :: [QName ]   --- list of overloaded members, if any
+                 gargs::[Tau]       --- generic arguments that must be used on the method
+                 op   :: TokenID    --- how to use as operator
+                } --- variable or function
+        | !SymA  {sid::Int, pos::Position, vis::Visibility, doc::Maybe String, name ::QName,
+                 kind::Kind, typ::Sigma, vars::[Tau]}                           --- type alias
+    where
+        hashCode = SymbolT.sid
+        gExpr SymV{expr=Just x} g = Just (evalState x g)
+        gExpr _                 _ = Nothing
+        -- functions for querying the field 'Symbol.rkind'
+        --- Check certain bit in 'Symbol.rkind'
+        has ∷ SymbolT a → RFlag → Bool
+        has sym bit = bit RState.`member` sym.rkind
+        --- Check if this is 'RMethod'
+        isMethod sym = has sym RMethod
+
+--- Symbols ordered by the 'Symbol.sid' field, which is a unique number.
+--- This allows us to have sets of symbols.
+instance Ord (SymbolT g) where
+        sym1 <=> sym2 = (SymbolT.sid sym1). <=> (SymbolT.sid sym2)
+        sym1 == sym2  = (SymbolT.sid sym1). ==  (SymbolT.sid sym2)
+        sym1 != sym2  = (SymbolT.sid sym1). !=  (SymbolT.sid sym2)
+
+
+
+instance Positioned (SymbolT g) where
+    is x = ""
+    getpos = SymbolT.pos
+    getrange sym
+        | sym.{env?} = fold Position.merge sym.pos (map getrange (values sym.env))
+        -- SymV{expr = Just x} <- sym = sym.pos.merge x.getrange
+        | otherwise = getpos sym
+    -- untyped = id
+
+

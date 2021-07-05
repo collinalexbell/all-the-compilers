@@ -1,0 +1,14 @@
+# Eclipse
+.classpath
+.project
+.settings/
+
+## JetBrains IDEs: IntelliJ
+.idea/
+.idea_modules/
+*.iml
+*.ipr
+*.iws
+
+# Maven
+target/

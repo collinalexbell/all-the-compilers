@@ -1,0 +1,12 @@
+/doc/
+/libs/
+/lib/
+/.crystal/
+/.shards/
+/bin/
+*.swp
+.DS_Store
+.git
+test/debug.ch
+todos.md
+test/interpreter/fs/data/tmp.txt

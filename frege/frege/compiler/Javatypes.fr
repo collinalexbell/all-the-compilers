@@ -1,0 +1,116 @@
+{- «•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»
+
+    Copyright © 2011 - 2021, Ingo Wechsung
+    All rights reserved.
+
+    Redistribution and use in source and binary forms, with or
+    without modification, are permitted provided that the following
+    conditions are met:
+
+        Redistributions of source code must retain the above copyright
+        notice, this list of conditions and the following disclaimer.
+
+        Redistributions in binary form must reproduce the above
+        copyright notice, this list of conditions and the following
+        disclaimer in the documentation and/or other materials provided
+        with the distribution. Neither the name of the copyright holder
+        nor the names of its contributors may be used to endorse or
+        promote products derived from this software without specific
+        prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE
+    COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR
+    IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+    WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+    PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER
+    OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+    SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+    LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+    USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
+    AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+    LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+    IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+    THE POSSIBILITY OF SUCH DAMAGE.
+
+    «•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•» -}
+
+{--
+    Utility functions regarding java types
+-}
+
+
+package frege.compiler.Javatypes where
+
+import frege.compiler.Utilities as U()
+import frege.lib.PP (text)
+
+import  Compiler.types.Positions(Position)
+import  Compiler.types.Global as G
+
+import  Compiler.common.Errors as E()
+
+--- more elaborate version than in PreludeBase
+native forName java.lang.Class.forName{}
+    :: String -> Bool -> MutableIO ClassLoader -> (IO (ClassNotFoundException | Class a))
+native getInterfaces{} :: Class a -> IOMutable (JArray (Class b))
+native getSuperclass{} :: Class a -> IO (Maybe (Class b))   -- null for Interfaces. primitives and Object 
+
+{--
+    Find out if the 1st type is a subtype of the 2nd type
+    from the point of view of Java. That is, 'File' will be a subtype of
+    'Object', whereas the typechecker considers also the mutability status.
+-}
+subTypeOf :: Global -> String -> String -> Bool
+subTypeOf g t1 t2 = t2 `elem` superTypes g t1
+
+--- get the cached super types of t
+superTypes g t = t : U.supersOfNativ t g
+
+--- get all the super types and implemented interfaces, including super interfaces, of this class
+findSuperTypes this = do
+    direct   <- getSuperclass this
+    directIs <- getInterfaces this >>= readonly JArray.toList
+    let supers = maybe directIs (:directIs) direct
+    supersupers <- mapM findSuperTypes supers
+    return (supers ++ concat supersupers)
+
+{--
+    Because @Class.forName@ needs a name of the form @pack.Outer$Nested@ when
+    @Nested@ is nested in @Outer@, we successively replace "." with "$" whenever
+    we encounter a ClassNotFoundException.
+    -}
+classForName :: String -> StIO (ClassNotFoundException | Class a)
+classForName fqn = do
+    g <- getSTT
+    try <- liftIO (forName fqn false g.sub.loader)
+    case try of
+        Right _ -> return try
+        Left ex 
+            | fqn ~ ´\.´,                                   -- x.Z
+              ex.getClass.getName ~ ´ClassNotFound´         -- perhaps inner class?
+            = classForName binary
+            | otherwise = return try
+            where
+                binary = compose (´\.´.splitted fqn)
+                -- reconstruct the class name, but last component is added with '$'
+                compose [a,b] = a ++ "$" ++ b
+                compose (a:b:cs) = compose (a ++ "." ++ b : cs)
+                compose _ = error "compose"     
+
+findAllSupers name 
+    | name `elem` primitiveTypes = return ()
+    | name ~ ´\[\]$´             = return ()
+    | otherwise = do
+        result <- classForName name
+        case result of
+            Left l -> liftStG do
+                g <- getST
+                syms <- mapM U.findT (U.typesOfNativ name g)
+                let oss = filter (g.ourSym) syms
+                    pos = if null oss then Position.null else (head oss).pos 
+                E.error pos (text ("`" ++ name ++ "` is not a known java class"))
+                changeST Global.{javaEnv <- _.delete name}
+            Right c -> do
+                supers <- liftIO (findSuperTypes c)
+                liftStG $ U.nativeSupers name supers
+                

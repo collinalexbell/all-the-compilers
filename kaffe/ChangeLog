@@ -1,0 +1,411 @@
+2008-08-29  Kiyo Inaba <inaba@src.ricoh.co.jp>
+	* config/arm/jit.h,
+	config/arm/jit3-arm.def,
+	config/arm/jit3-icode.h,
+	config/arm/netbsd1/jit-md.h,
+	config/arm/netbsd1/md.h: Partial work to make ji3 work on NB4.
+
+2008-03-09  Dalibor Topic  <robilad@kaffe.org>
+
+	* kaffe/kaffe/Makefile.am (kaffe_bin_LDADD): 
+	Removed OPT_DLOPEN_JAVA_LIBS.
+
+	* configure.ac (OPT_JAVA_LIBS, OPT_DLOPEN_JAVA_LIBS): Removed.
+
+2008-03-09  Dalibor Topic  <robilad@kaffe.org>
+
+	* m4/gwqt.m4: Removed.
+
+2008-03-09  Dalibor Topic  <robilad@kaffe.org>
+
+	* WHATSNEW, TODO: Updated.
+
+2008-03-09  Dalibor Topic  <robilad@kaffe.org>
+
+	* configure.ac: Removed old kaffe AWT configuration mechanism.
+
+	* Makefile.am (EXTRA_DIST): Removed FAQ.awt.
+
+	* libraries/clib/Makefile.am (MAYBE_NATIVE_AWT_DIR): Removed.
+	(SUBDIRS) Removed MAYBE_NATIVE_AWT_DIR.
+
+	* kaffe/kaffe/Makefile.am (AM_CFLAGS): Removed AWT includes.
+
+	* libraries/javalib/Makefile.am (SUBIDRS): Removed AWT implementations.
+
+	* FAQ/FAQ.awt,
+	libraries/clib/awt/,
+	libraries/clib/awt/.cvsignore,
+	libraries/clib/awt/win32/clr.cpp,
+	libraries/clib/awt/win32/lbl.cpp,
+	libraries/clib/awt/win32/imgjpeg.cpp,
+	libraries/clib/awt/win32/imggif.cpp,
+	libraries/clib/awt/win32/toolkit.hpp,
+	libraries/clib/awt/win32/imgpng.cpp,
+	libraries/clib/awt/win32/lst.cpp,
+	libraries/clib/awt/win32/scroll.cpp,
+	libraries/clib/awt/win32/wnd.cpp,
+	libraries/clib/awt/win32/btn.cpp,
+	libraries/clib/awt/win32/edit.cpp,
+	libraries/clib/awt/win32/gra.cpp,
+	libraries/clib/awt/win32/choice.cpp,
+	libraries/clib/awt/win32/tlk.cpp,
+	libraries/clib/awt/win32/img.cpp,
+	libraries/clib/awt/win32/filedlg.cpp,
+	libraries/clib/awt/win32/fnt.cpp,
+	libraries/clib/awt/win32/cbd.cpp,
+	libraries/clib/awt/win32/cmnwnd.cpp,
+	libraries/clib/awt/win32/widget.cpp,
+	libraries/clib/awt/win32/tlkprops.hpp,
+	libraries/clib/awt/win32/cmnwnd.hpp,
+	libraries/clib/awt/win32/evt.cpp,
+	libraries/clib/awt/win32/menu.cpp,
+	libraries/clib/awt/xynth/event.c,
+	libraries/clib/awt/xynth/font.c,
+	libraries/clib/awt/xynth/window.c,
+	libraries/clib/awt/xynth/graphic.c,
+	libraries/clib/awt/xynth/image.c,
+	libraries/clib/awt/xynth/color.c,
+	libraries/clib/awt/xynth/toolkit.h,
+	libraries/clib/awt/xynth/Makefile.in,
+	libraries/clib/awt/xynth/toolkit.c,
+	libraries/clib/awt/xynth/Makefile.am,
+	libraries/clib/awt/nano-X/event.c,
+	libraries/clib/awt/nano-X/font.c,
+	libraries/clib/awt/nano-X/window.c,
+	libraries/clib/awt/nano-X/image.c,
+	libraries/clib/awt/nano-X/color.c,
+	libraries/clib/awt/nano-X/clipboard.c,
+	libraries/clib/awt/nano-X/.cvsignore,
+	libraries/clib/awt/nano-X/toolkit.h,
+	libraries/clib/awt/nano-X/keymap.h,
+	libraries/clib/awt/nano-X/graphics.c,
+	libraries/clib/awt/nano-X/Makefile.in,
+	libraries/clib/awt/nano-X/handler.c,
+	libraries/clib/awt/nano-X/toolkit.c,
+	libraries/clib/awt/nano-X/awt_const.h,
+	libraries/clib/awt/nano-X/Makefile.am,
+	libraries/clib/awt/qt/evt.h,
+	libraries/clib/awt/qt/evt.cc,
+	libraries/clib/awt/qt/keysyms.h,
+	libraries/clib/awt/qt/cbd.cc,
+	libraries/clib/awt/qt/.cvsignore,
+	libraries/clib/awt/qt/toolkit.h,
+	libraries/clib/awt/qt/gra.cc,
+	libraries/clib/awt/qt/tlkprops.h,
+	libraries/clib/awt/qt/clr.cc,
+	libraries/clib/awt/qt/img.cc,
+	libraries/clib/awt/qt/fnt.cc,
+	libraries/clib/awt/qt/Makefile.in,
+	libraries/clib/awt/qt/tlk.cc,
+	libraries/clib/awt/qt/wnd.cc,
+	libraries/clib/awt/qt/Makefile.am,
+	libraries/clib/awt/Makefile.in,
+	libraries/clib/awt/X/keysyms.h,
+	libraries/clib/awt/X/gra.c,
+	libraries/clib/awt/X/.cvsignore,
+	libraries/clib/awt/X/toolkit.h,
+	libraries/clib/awt/X/tlkprops.h,
+	libraries/clib/awt/X/fnt.c,
+	libraries/clib/awt/X/imgjpeg.c,
+	libraries/clib/awt/X/imgpng.c,
+	libraries/clib/awt/X/wnd.c,
+	libraries/clib/awt/X/img.c,
+	libraries/clib/awt/X/clr.c,
+	libraries/clib/awt/X/tlk.c,
+	libraries/clib/awt/X/imggif.c,
+	libraries/clib/awt/X/evt.c,
+	libraries/clib/awt/X/Makefile.in,
+	libraries/clib/awt/X/cbd.c,
+	libraries/clib/awt/X/Makefile.am,
+	libraries/clib/awt/Makefile.am,
+	libraries/javalib/awt-implementations/kaffe/org/kaffe/awt/ImageDict.java,
+	libraries/javalib/awt-implementations/kaffe/org/kaffe/awt/HookInstaller.java,
+	libraries/javalib/awt-implementations/kaffe/org/kaffe/awt/ExportTransferable.java,
+	libraries/javalib/awt-implementations/kaffe/org/kaffe/awt/DoNothingPeer.java,
+	libraries/javalib/awt-implementations/kaffe/org/kaffe/awt/ObjectSelection.java,
+	libraries/javalib/awt-implementations/kaffe/org/kaffe/awt/FlavorConverter.java,
+	libraries/javalib/awt-implementations/kaffe/org/kaffe/awt/MouseHook.java,
+	libraries/javalib/awt-implementations/kaffe/org/kaffe/awt/JavaColorModel.java,
+	libraries/javalib/awt-implementations/kaffe/org/kaffe/awt/SerializerConverter.java,
+	libraries/javalib/awt-implementations/kaffe/org/kaffe/awt/ImageClass.java,
+	libraries/javalib/awt-implementations/kaffe/org/kaffe/awt/OpaqueComponent.java,
+	libraries/javalib/awt-implementations/kaffe/org/kaffe/awt/KeyHook.java,
+	libraries/javalib/awt-implementations/kaffe/org/kaffe/awt/FocusHook.java,
+	libraries/javalib/awt-implementations/kaffe/org/kaffe/awt/ImageSpec.java,
+	libraries/javalib/awt-implementations/kaffe/org/kaffe/io/AccessibleBAOStream.java,
+	libraries/javalib/awt-implementations/kaffe/org/kaffe/util/Timer.java,
+	libraries/javalib/awt-implementations/kaffe/org/kaffe/util/log/SimpleLogViewer.java,
+	libraries/javalib/awt-implementations/kaffe/org/kaffe/util/log/LogClient.java,
+	libraries/javalib/awt-implementations/kaffe/org/kaffe/util/log/LogStream.java,
+	libraries/javalib/awt-implementations/kaffe/org/kaffe/util/TimerClient.java,
+	libraries/javalib/awt-implementations/kaffe/org/kaffe/util/VectorSnapshot.java,
+	libraries/javalib/awt-implementations/kaffe/org/kaffe/util/DoubleLinkedObject.java,
+	libraries/javalib/awt-implementations/kaffe/.cvsignore,
+	libraries/javalib/awt-implementations/kaffe/java/awt/ComponentEvt.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/ClassAnalyzer.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/NativeGraphics.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/Dialog.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/ClassProperties.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/image/ImageFilter.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/image/IndexColorModel.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/image/PixelGrabber.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/image/AreaAveragingScaleFilter.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/image/ImageConsumer.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/image/CropImageFilter.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/image/MemoryImageSource.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/image/ReplicateScaleFilter.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/image/ImageProducer.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/image/ImageObserver.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/image/RGBImageFilter.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/image/FilteredImageSource.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/WindowEvt.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/TextField.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/Scrollbar.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/EventQueue.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/ShortcutConsumer.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/Container.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/Button.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/Image.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/Dimension.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/ItemEvt.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/Panel.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/PopupMenu.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/NativeClipboard.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/FileDialog.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/Label.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/CheckboxGroup.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/TextCursor.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/MenuComponent.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/Event.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/Component.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/Canvas.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/RootWindow.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/SystemColor.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/NativeGraphics.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/TextField.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/Scrollbar.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/NativeContainer.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/Button.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/Panel.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/PopupMenu.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/FileDialog.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/Label.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/Canvas.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/SystemColor.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/Menu.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/NativeComponent.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/WMEvent.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/Choice.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/Window.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/List.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/MenuItem.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/TextComponent.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/Checkbox.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/ActionEvt.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/Frame.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/CheckboxMenuItem.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/Toolkit.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/Defaults.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/TextArea.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/MenuBar.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/win32/ScrollPane.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/RowCanvas.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/NativeSelection.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/PSPrintJob.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/TextEvt.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/Font.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/Menu.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/PSGraphics.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/GraphicsLink.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/BarMenu.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/TextBuffer.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/PrintJob.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/FontMetrics.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/PopupWindow.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/event/ContainerAdapter.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/event/PaintEvent.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/event/AdjustmentEvent.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/event/InputEvent.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/event/KeyAdapter.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/event/MouseAdapter.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/event/MouseMotionAdapter.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/event/ComponentAdapter.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/event/FocusAdapter.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/event/ItemEvent.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/event/KeyEvent.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/event/TextEvent.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/event/ComponentEvent.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/event/ContainerEvent.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/event/MouseEvent.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/event/WindowEvent.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/event/WindowAdapter.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/WMEvent.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/MenuShortcut.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/ImageLoader.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/Choice.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/ImageFrameLoader.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/KeyEvt.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/Insets.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/ContainerEvt.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/AdjustmentEvt.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/Window.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/OpaqueComponent.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/List.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/MenuItem.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/Graphics.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/ShortcutHandler.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/MouseEvt.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/PaintEvt.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/EventDispatchThread.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/TextComponent.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/FlowLayout.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/Checkbox.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/MediaTracker.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/FocusEvt.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/AWTEvent.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/ActionEvt.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/Cursor.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/Frame.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/CheckboxMenuItem.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/Toolkit.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/Defaults.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/TextArea.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/MenuBar.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/ImageNativeProducer.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/ScrollPane.java,
+	libraries/javalib/awt-implementations/kaffe/java/awt/DefKeyFilter.java,
+	libraries/javalib/awt-implementations/kaffe/Makefile.in,
+	libraries/javalib/awt-implementations/kaffe/Makefile.am,
+	libraries/javalib/awt-implementations/.cvsignore,
+	libraries/javalib/awt-implementations/Makefile.in,
+	libraries/javalib/awt-implementations/Makefile.am:
+	Removed.
+
+2008-03-09  Dalibor Topic  <robilad@kaffe.org>
+
+	* TODO: Updated.
+
+2008-03-08  Dalibor Topic  <robilad@kaffe.org>
+
+	* libraries/clib/native/java_lang_Object.c: Don't include inttypes.h,
+	we already include stdint.h.
+
+	* TODO: Updated.
+
+2008-03-08  Dalibor Topic  <robilad@kaffe.org>
+
+	* m4/ax_create_stdint_h.m4: Removed.
+
+2008-03-06  Dalibor Topic  <robilad@kaffe.org>
+
+	* kaffe/kaffevm/systems/unix-pthreads/Makefile.am (libkthread_la_CFLAGS): 
+	Define _GNU_SOURCE.
+
+	* kaffe/kaffevm/systems/unix-pthreads/signal.c,
+	kaffe/kaffevm/systems/unix-pthreads/thread-impl.c: Removed
+	the _GNU_SOURCE define.
+
+2008-03-01  Dalibor Topic  <robilad@kaffe.org>
+
+	* TODO: Updated.
+
+2008-03-01  Dalibor Topic  <robilad@kaffe.org>
+
+	* config/x86_64/atomic.h,
+	config/s390/atomic.h,
+	config/config-std.h, 
+	config/powerpc/bits/atomic.h, 
+	config/mips/atomic.h,
+	config/generic/gentypes.h,
+	config/ia64/atomic.h,
+	config/m68k/atomic.h,
+	config/alpha/atomic.h,
+	config/sparc/atomic-sparc64.h,
+	config/sparc/atomic-sparc32v9.h,
+	libraries/clib/native/java_lang_Object.c,
+	libraries/clib/awt/qt/fnt.cc,
+	include/jni_md.h,
+	include/jsyscall.h,
+	kaffe/kaffevm/intrp/icode.h,
+	kaffe/kaffevm/gc.h: Include stdint.h rather than config-int.h.
+
+	* include/Makefile.am (include_HEADERS, DISTCLEANFILES): Removed 
+	config-int-h.
+
+	* config/config-hacks.h: (HAVE_BOOL) Removed.
+
+	* libraries/clib/awt/qt/toolkit.h [HAVE_BOOL]: Removed.
+
+	* kaffe/kaffevm/gtypes.h: (HAVE_BOOL): Removed. Include stdint.h 
+	and stdbool.h.
+
+	* configure.ac: Don't check for stdint.h, or having a bool type,
+	those are standard c99 features.
+
+2008-03-01  Dalibor Topic  <robilad@kaffe.org>
+
+	* libraries/javalib/logging.properties: Removed.
+	
+	* libraries/javalib/Makefile.am (jrelib_DATA, EXTRA_DIST): Removed.
+
+2008-03-01  Dalibor Topic  <robilad@kaffe.org>
+
+	* kaffe/kaffeh/Makefile.am (AM_CFLAGS): Removed KAFFE_CFLAGS.
+
+2008-03-01  Dalibor Topic  <robilad@kaffe.org>
+
+	* configure.ac (KAFFE_CFLAGS): Removed 
+
+	* kaffe/jvmpi/Makefile.am,
+        kaffe/kaffe/Makefile.am,
+        kaffe/kaffevm/Makefile.am,
+        kaffe/kaffevm/boehm-gc/Makefile.am,
+        kaffe/kaffevm/gcj/Makefile.am,
+        kaffe/kaffevm/intrp/Makefile.am,
+        kaffe/kaffevm/jit/Makefile.am,
+        kaffe/kaffevm/jit3/Makefile.am,
+        kaffe/kaffevm/kaffe-gc/Makefile.am,
+        kaffe/kaffevm/systems/beos-native/Makefile.am,
+        kaffe/kaffevm/systems/drops-l4threads/Makefile.am,
+        kaffe/kaffevm/systems/oskit-pthreads/Makefile.am,
+        kaffe/kaffevm/systems/unix-jthreads/Makefile.am,
+        kaffe/kaffevm/systems/unix-pthreads/Makefile.am,
+        kaffe/xprof/Makefile.am,
+        libraries/clib/awt/Makefile.am,
+        libraries/clib/awt/X/Makefile.am,
+        libraries/clib/zip/Makefile.am,
+        replace/Makefile.am,
+        test/internal/Makefile.am,
+        test/jni/Makefile.am: Removed KAFFE_CFLAGS.
+
+	Reported by:  Kiyo Inaba  <inaba@src.ricoh.co.jp>
+
+2008-03-01  Dalibor Topic  <robilad@kaffe.org>
+
+	* include/Makefile.am (NOINSTALL_DERIVED_HDRS): Added 
+	java_lang_ThreadGroup.h.
+
+	* kaffe/jvmpi/jvmpi_kaffe.c: Include java_lang_ThreadGroup.h
+	for the declaration of fields.
+
+	Reported by:  Michael Koch  <mkoch@kaffe.org>
+
+2008-03-01  Dalibor Topic  <robilad@kaffe.org>
+
+	* kaffe/kaffevm/constants.c (readConstantPool): Fixed typo.
+
+	Reported by:  Michael Koch  <mkoch@kaffe.org>
+
+2008-02-27  Dalibor Topic  <robilad@kaffe.org>
+
+	* Makefile.am (EXTRA_DIST): Added ChangeLog.20. 
+
+	* ChangeLog.20: New file for the 1.1.9 change log.
+
+2008-02-27  Dalibor Topic  <robilad@kaffe.org>
+
+        * configure.ac, RELEASE-NOTES, README, WHATSNEW: Updated.
+
+See ChangeLog.20 for earlier messages.
+

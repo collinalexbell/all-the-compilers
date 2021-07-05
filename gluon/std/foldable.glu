@@ -1,0 +1,72 @@
+//@NO-IMPLICIT-PRELUDE
+//! Implementation of the `Foldable` type
+
+let { Bool, Option } = import! std.types
+let { Semigroup, append } = import! std.semigroup
+let { Monoid, empty } = import! std.monoid
+let { wrap } = import! std.applicative
+let { Monad, flat_map } = import! std.monad
+let { Eq, (==) } = import! std.cmp
+
+/// Operations over a data structure that can be folded which means that a functions gets called on
+/// each element to reduce the structure to a single value (`Array`, `List` and `Map` are all `Foldable`)
+#[implicit]
+type Foldable (f : Type -> Type) = {
+    foldr : forall a b . (a -> b -> b) -> b -> f a -> b,
+    foldl : forall a b . (b -> a -> b) -> b -> f a -> b
+}
+
+let foldr ?fold : forall a b . [Foldable f] -> (a -> b -> b) -> b -> f a -> b = fold.foldr
+let foldl ?fold : forall a b . [Foldable f] -> (b -> a -> b) -> b -> f a -> b = fold.foldl
+
+let concat : [Foldable t] -> [Monoid m] -> t m -> m =
+    foldr append empty
+
+let concat_map f : [Foldable t] -> [Monoid m] -> (a -> m) -> t a -> m =
+    foldr (\x -> append (f x)) empty
+
+let fold_m ?fold ?monad f z : [Foldable t] -> [Monad m] -> (a -> b -> m a) -> a -> t b -> m a =
+    foldl (\acc y -> flat_map (\x -> f x y) acc) (wrap z)
+
+let find ?fold pred : [Foldable t] -> (a -> Bool) -> t a -> Option a =
+    let go acc next =
+        match acc with
+        | None -> if pred next then Some next else None
+        | Some _ -> acc
+
+    fold.foldl go None
+
+let find_map ?fold pred : [Foldable t] -> (a -> Option b) -> t a -> Option b =
+    let go acc next =
+        match acc with
+        | None -> pred next
+        | Some _ -> acc
+
+    fold.foldl go None
+
+let all pred : [Foldable t] -> (a -> Bool) -> t a -> Bool =
+    foldl (\acc x -> acc && pred x) True
+
+let any pred : [Foldable t] -> (a -> Bool) -> t a -> Bool =
+    foldl (\acc x -> acc || pred x) False
+
+let elem x : [Foldable t] -> [Eq a] -> a -> t a -> Bool =
+    any ((==) x)
+
+let count : [Foldable t] -> t a -> Int =
+    foldl (\acc _ -> acc #Int+ 1) 0
+
+{
+    Foldable,
+    foldr,
+    foldl,
+    fold_m,
+    concat,
+    concat_map,
+    find,
+    find_map,
+    all,
+    any,
+    elem,
+    count,
+}

@@ -1,0 +1,15 @@
+FAQ for FreeBSD
+===============
+
+BufferedInputStreamAvailableTest.java fails.
+--------------------------------------------
+
+This is due to GNU Classpath's native library. See this bug report
+for details.
+
+http://gcc.gnu.org/bugzilla/show_bug.cgi?id=31927
+
+This bug has been fixed, but the fixed files have not been imported
+to Kaffe yet.  Install GNU Classpath from the CVS repository, then
+install Kaffe with the configuration option "--with-system-classpath".
+

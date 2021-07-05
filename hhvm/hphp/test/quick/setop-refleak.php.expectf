@@ -1,0 +1,7 @@
+string(50) "Object of class Dtor could not be converted to int"
+object(Foo) (1) {
+  ["bug"]=>
+  object(Dtor) (0) {
+  }
+}
+done

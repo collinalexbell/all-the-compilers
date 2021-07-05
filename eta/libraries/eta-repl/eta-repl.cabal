@@ -1,0 +1,48 @@
+name:           eta-repl
+-- @VERSION_CHANGE@
+-- @BUILD_NUMBER@
+version:        0.8.6.5
+license:        BSD3
+license-file:   LICENSE
+category:       Eta Tools
+maintainer:     typeleadhq@gmail.com
+bug-reports:    http://github.com/typelead/eta/issues
+synopsis:       The library supporting Eta's interactive interpreter
+description:    This library offers interfaces which mediate interactions between the
+                @eta-repl@ interactive shell and @eta-repl-serv@, Eta's out-of-process
+                interpreter backend.
+cabal-version:  >=1.10
+build-type:     Simple
+
+library
+    default-language: Haskell2010
+    ghc-options:      -Wall -Werror
+    other-extensions: BangPatterns
+                      CPP
+                      DeriveGeneric
+                      ExistentialQuantification
+                      FlexibleInstances
+                      GADTs
+                      GeneralizedNewtypeDeriving
+                      InstanceSigs
+                      MagicHash
+                      MultiParamTypeClasses
+                      RecordWildCards
+                      ScopedTypeVariables
+                      StandaloneDeriving
+                      TupleSections
+                      UnboxedTuples
+    exposed-modules:  Eta.REPL.ClassInfo
+                      Eta.REPL.Map
+                      Eta.REPL.Message
+                      Eta.REPL.RemoteTypes
+
+    if impl(eta)
+       exposed-modules: Eta.REPL.Utils
+       java-sources:  java/Utils.java
+
+    build-depends:    base       >= 4.8 && < 4.12,
+                      binary     == 0.8.*,
+                      bytestring == 0.10.*,
+                      deepseq    == 1.4.*,
+                      eta-boot-meta

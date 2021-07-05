@@ -1,0 +1,16 @@
+--- ../../movfuscator/lcc/etc/lcc.c	2017-09-05 15:08:32.258654206 -0400
++++ lcc/etc/lcc.c	2019-04-12 12:47:53.130761991 -0400
+@@ -587,6 +587,13 @@
+ xx(unsigned_short,2)
+ xx(unsigned_int,4)
+ #undef xx
++				/* compiling with --no-mov-flow requires linking against
++				 * --no-mov-flow compiled libraries; pass the option to the
++				 * linker option processing */
++				/* it's a kludgy solution, but the lcc flag parsing is rather
++				 * kludgy to begin with */
++				if (strcmp(&arg[3], "--no-mov-flow") == 0)
++					option(&arg[3]);
+ 				return;
+ 			case 'a':
+ 				alist = append(&arg[3], alist);

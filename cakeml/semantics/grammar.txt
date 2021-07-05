@@ -1,0 +1,195 @@
+Infixes are assigned to 9 different levels.  From tightest to loosest, they are
+
+9 : (‘multiplication’)  "div" "mod" and symbolic tokens beginning with "*",
+                        "/", "%" or "&".  Left associative
+8 : (‘addition’)        symbolic tokens beginning with "+", "-", or "^", or
+                        tokens of at least two characters beginning
+                        with "|". On its own, "|" is used to separate
+                        patterns.  Left associative
+7 : (‘list-ops’)        symbolic tokens other than ":" and ":=" that begin
+                        with ":" or "@".  *Right* associative
+6 : (‘relations’)       symbolic tokens beginning with "<", ">", "=", or "~"
+                        (except that exactly "~" can't be an infix; it is used
+                        for unary negation). Left associative
+5 : (‘composition’)     "o" and ":=" only.  Left associative
+4 : (‘before’)          "before" only.  Left associative
+3 : (‘typing’)          the ":" of type annotation. Not associative.
+2 : (‘andalso’)         "andalso".  Left associative
+1 : (‘orelse’)          "orelse".   Left associative
+
+Other symbol tokens are possible as prefixes. These are "~" (exactly), and those that begin with "?" or "!".
+
+The 5 token-infix classes are defined in gramScript under the names
+
+  valid{Add,Mult,Prefix,List,Rel}Sym
+
+They can be adjusted safely as long as the mutual incompatibility
+result is proved, and ":=" isn't claimed by any of them.
+
+----------------------------------------------------------------------
+
+V ::= "op" ID | ID
+
+InfixOp ::= "*" | "+" | "-" | "/" | "::" | ":=" | "<" | "<="
+         |  "<>" | "=" | ">" | ">=" | "@" | "before" | "div"
+         | "mod" | "o"
+// some of these are boolean (Opb), some numeric (Opn)
+
+
+Error ::= "Bind"            // Bind_error
+       | "Div"              // Div_error
+
+LogicalOp ::= "andalso"     // And
+           |  "orelse"      // Or
+
+Literal ::= IntegerLiteral    // IntLit i
+         |  "True"            // Bool T
+         |  "False"           // Bool F
+         |  "()"              // Unit
+         |  StringLiteral     // String s
+
+(* See http://www.mlton.org/OperatorPrecedence *)
+Ebase ::=
+   "(" E ")"
+ | V
+ | Literal
+ | "let" LetDecs "in" Eseq "end"
+
+Eseq ::= E | E ";" Eseq
+
+Eapp ::=
+  Eapp Ebase | Ebase | ConstructorName Etuple
+
+Etuple ::= "(" Elist2 ")"
+Elist2 ::= Elist1 "," E
+Elist1 ::= E | Elist1 "," E
+
+(* level 7 *)
+Emult ::=
+  Emult MultOp Ebase | Ebase
+
+(* level 6 *)
+Eadd ::=
+  Eadd AddOp Emult | Emult
+
+(* level 5 - note, right associative *)
+Econs ::=
+  Eadd ListOp Econs | Eadd
+
+(* level 4 *)
+Erel ::=
+  Erel RelOp Econs | Econs
+
+(* level 3 *)
+Ecomp ::=
+  Ecomp CompOp Erel | Erel
+
+(* level 0 *)
+Ebefore ::=
+  Ebefore BeforeOp Ecomp | Ecomp
+
+Etyped ::=
+  Ebefore
+| Ebefore ":" Type
+
+(* logical connectives *)
+ElogicAND ::=
+  ElogicAND "andalso" Etyped
+| Etyped
+
+ElogicOR ::=
+| ElogicOR "orelse" ElogicAND
+| ElogicAND
+
+E ::=
+   "if" E "then" E "else" E
+ | "case" E "of" PEs
+ | "fn" V "=>" E
+ | "raise" E
+ | ElogicOR
+
+Fdecl ::= V V "=" E                    // (V,V,E)
+                                       // second V is parameter
+
+AndFDecls ::= FDecl                    // ([FDecl])
+           |  FDecl "and" AndFDecls    // FDecl :: AndFDecls
+
+LetDec ::= "val" V "=" E
+         | "fun" AndFDecls
+
+LetDecs ::= LetDec LetDecs
+          | ";" LetDecs
+          |
+
+PEs ::= PE                             // ([PE])
+     |  PE "|" PEs                     // PE::PEs
+
+PE ::= Pattern "=>" E                  // (Pattern, E)
+
+Pattern ::= E
+  // operators must be constructors and variables used linearly.
+  // constructors are Pvar, Plit and Pcon
+
+Type ::=
+       DType                          // DType
+     | DType "->" Type                // Ast_Tfn DType Type
+
+DType ::=
+        TyVar                          // Ast_Tvar
+      | DType TyOp                     // Ast_Tapp [DType] TyOp
+      | "(" TypeList ")" Tyop          // Ast_Tapp TypeList TyOp
+      | "(" Type ")"                   // Type
+
+TypeList ::=
+           Type                        // [Type]
+         | Type "," TypeList           // Type::TypeList
+
+TypeDec ::=
+          "datatype" DtypeDecls        // DtypeDeclList
+
+DtypeDecls ::=
+      DtypeDecl                        // [DtypeDecl]
+    | DtypeDecl "and" DtypeDecls       // DtypeDecl :: DtypeDecls
+
+DtypeDecl ::= TypeName "=" DtypeCons
+
+TypeName ::= TyOp
+           | TyVar TyOp
+           | "(" TyVarList ")" TyOp
+
+TyVarList ::= TyVar | TyVarList "," TyVar
+
+Dconstructor ::= ConstructorName "of" StarTypesP
+               | ConstructorName
+
+DtypeCons ::= Dconstructor
+            | Dconstructor "|" DtypeCons
+
+StarTypesP ::= "(" StarTypes ")" | StarTypes
+
+StarTypes ::=
+            | DType
+            | StarTypes "*" DType
+
+Decl ::= "val" Pattern "=" E
+       | "fun" AndFDecls
+       | TypeDec
+       | "type" TypeName "=" Type
+
+SpecLine ::= "val" V ":" Type
+           | "type" TypeName OptTypEqn
+           | "exception" Dconstructor
+           | TypeDec
+
+OptTypEqn ::= "=" Type |
+
+SpecLineList ::= SpecLine SpecLineList
+               | ";" SpecLineList
+               |
+
+SignatureValue ::= "sig" SpecLineList "end"
+
+OptionalSignatureAscription ::= ":>" SignatureValue
+                              |
+
+Structure ::= "structure" StructName OptionalSignatureAscription "=" "struct" Decls "end"

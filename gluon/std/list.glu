@@ -1,0 +1,231 @@
+//! A linked list type.
+
+let prelude @ { Ordering, ? } = import! std.prelude
+let { Semigroup, Monoid, Eq, Show } = prelude
+let { Functor, Applicative, Alternative, Monad } = prelude
+let { Foldable } = import! std.foldable
+let { Traversable } = import! std.traversable
+let { Bool } = import! std.bool
+let array @ { ? } = import! std.array
+let { (<>) } = import! std.semigroup
+let { compare } = import! std.cmp
+
+let { map } = import! std.functor
+let { (<*>), wrap } = import! std.applicative
+let { (<|>) } = import! std.alternative
+
+/// A linked list type
+///
+/// ```
+/// let list @ { List, ? } = import! std.list
+/// let { assert_neq } = import! std.test
+///
+/// assert_neq (Cons 1 Nil) Nil
+/// ```
+#[derive(Eq, Show)]
+type List a =
+    | Nil
+    | Cons a (List a)
+
+/// Constructs a list from an array. Useful to emulate list literals
+///
+/// ```
+/// let { ? } = import! std.effect
+/// let list @ { List, ? } = import! std.list
+/// let { assert_eq, ? } = import! std.test
+///
+/// seq assert_eq (list.of [1, 2]) (Cons 1 (Cons 2 Nil))
+/// let xs : List String = list.of []
+/// assert_eq xs Nil
+/// ```
+let of xs : Array a -> List a =
+    let len = array.len xs
+    rec let of_ i ys =
+        if i == 0 then ys
+        else
+            let x = array.index xs (i - 1)
+            of_ (i - 1) (Cons x ys)
+    of_ len Nil
+
+let semigroup : Semigroup (List a) =
+    rec let append xs ys =
+        match xs with
+        | Cons x zs -> Cons x (append zs ys)
+        | Nil -> ys
+
+    { append }
+
+let monoid : Monoid (List a) = {
+    semigroup = semigroup,
+    empty = Nil,
+}
+
+let ord ?ord : [Ord a] -> Ord (List a) =
+    rec let list_cmp l r =
+        match (l, r) with
+        | (Nil, Nil) -> EQ
+        | (Cons x xs, Cons y ys) ->
+            match ord.compare x y with
+            | EQ -> list_cmp xs ys
+            | o -> o
+        | (Cons _ _, Nil) -> GT
+        | (Nil, Cons _ _) -> LT
+    { eq = eq_List, compare = list_cmp }
+
+let functor : Functor List =
+    rec let map f xs =
+        match xs with
+        | Cons y ys -> Cons (f y) (map f ys)
+        | Nil -> Nil
+    { map }
+
+let applicative : Applicative List =
+    rec let apply f xs =
+        match f with
+        | Cons g gs -> (functor.map g xs) <> (apply gs xs)
+        | Nil -> Nil
+    in
+    let wrap x = Cons x Nil
+
+    { functor = functor, apply, wrap }
+
+let many ?alt x : [Alternative f] -> f a -> f (List a) =
+    rec
+    let many_v _ =
+        some_v () <|> wrap Nil
+    let some_v _ =
+        map (\h l -> Cons h l) x <*> many_v ()
+    many_v ()
+
+let some ?alt x : [Alternative f] -> f a -> f (List a) =
+    rec
+    let many_v _ =
+        some_v () <|> wrap Nil
+    let some_v _ =
+        map (\h l -> Cons h l) x <*> many_v ()
+    some_v ()
+
+let alternative : Alternative List = {
+    applicative = applicative,
+    empty = Nil,
+    or = semigroup.append,
+}
+
+let monad : Monad List =
+    rec let flat_map f xs =
+        match xs with
+        | Cons x ys -> (f x) <> (flat_map f ys)
+        | Nil -> Nil
+
+    { applicative = applicative, flat_map }
+
+let show ?d : [Show a] -> Show (List a) =
+
+    {
+        show = \xs ->
+            rec let show_elems ys =
+                match ys with
+                | Cons y ys2 ->
+                    match ys2 with
+                    | Cons z zs -> d.show y <> ", " <> show_elems ys2
+                    | Nil -> d.show y
+                | Nil -> ""
+
+            "[" <> show_elems xs <> "]",
+    }
+
+let foldable : Foldable List =
+    rec let foldr f x xs =
+        match xs with
+        | Cons y ys -> f y (foldr f x ys)
+        | Nil -> x
+    in
+    rec let foldl f x xs =
+        match xs with
+        | Cons y ys -> foldl f (f x y) ys
+        | Nil -> x
+
+    { foldr, foldl }
+
+let traversable : Traversable List = {
+    functor = functor,
+    foldable = foldable,
+    traverse = \app f ->
+        foldable.foldr
+            (\a b -> app.apply (app.functor.map Cons (f a)) b)
+            (app.wrap Nil),
+}
+
+rec
+/// Applies `predicate` to each element in the list and returns a new list containing only of the
+/// elements where `predicate` returns `True`
+///
+/// ```
+/// let { ? } = import! std.effect
+/// let list @ { List, ? } = import! std.list
+/// let { assert_eq, ? } = import! std.test
+/// seq assert_eq (list.filter (\x -> x /= 2) (list.of [1, 2, 3])) (list.of [1, 3])
+/// assert_eq (list.filter (\x -> False) (list.of [1, 2, 3])) Nil
+/// ```
+let filter predicate xs : (a -> Bool) -> List a -> List a =
+    match xs with
+    | Nil -> Nil
+    | Cons y ys ->
+        let rest = filter predicate ys
+        if predicate y then Cons y rest
+        else rest
+in
+rec let scan compare xs less equal greater : (a -> Ordering)
+        -> List a
+        -> List a
+        -> List a
+        -> List a
+        -> (List a, List a, List a)
+    =
+    match xs with
+    | Nil -> (less, equal, greater)
+    | Cons y ys ->
+        match compare y with
+        | LT -> scan compare ys (Cons y less) equal greater
+        | EQ -> scan compare ys less (Cons y equal) greater
+        | GT -> scan compare ys less equal (Cons y greater)
+in
+rec /// Sorts the list using `ord`.
+///
+/// ```
+/// let list @ { List, ? } = import! std.list
+/// let { assert_eq, ? } = import! std.test
+/// assert_eq (list.sort (list.of [2, 1, 3])) (list.of [1, 2, 3])
+/// ```
+let sort xs : [Ord a] -> List a -> List a =
+    match xs with
+    | Nil -> Nil
+    | Cons pivot ys ->
+        let (less, equal, greater) = scan (\a -> compare a pivot) ys Nil (Cons pivot Nil) Nil
+        sort less <> equal <> sort greater
+
+
+{
+    List,
+    of,
+    many,
+    some,
+    filter,
+    sort,
+
+    eq = eq_List,
+    ord,
+
+    semigroup,
+    monoid,
+
+    functor,
+    applicative,
+    alternative,
+    monad,
+
+    foldable,
+    traversable,
+
+    show,
+}

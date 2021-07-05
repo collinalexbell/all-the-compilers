@@ -1,0 +1,13 @@
+--- 'Reader' monad and monad transformer, based on 'Kleisli'
+package frege.control.monad.Reader where
+
+import frege.Prelude hiding (Reader)
+import frege.control.arrow.Kleisli
+import frege.data.wrapper.Identity
+
+type Reader a b = Kleisli Identity a b
+
+type ReaderT m a b = Kleisli m a b
+
+ask :: Monad m => ReaderT m e e
+ask = id

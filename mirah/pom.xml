@@ -1,0 +1,84 @@
+<?xml version="1.0"?>
+<project xmlns="http://maven.apache.org/POM/4.0.0" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance" xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/maven-v4_0_0.xsd">
+
+  <parent>
+    <groupId>org.sonatype.oss</groupId>
+    <artifactId>oss-parent</artifactId>
+    <version>7</version>
+  </parent>
+
+  <modelVersion>4.0.0</modelVersion>
+  <groupId>org.mirah</groupId>
+  <artifactId>shared</artifactId>
+  <packaging>pom</packaging>
+  <version>0.2.2-SNAPSHOT</version>
+  <name>Mirah Shared</name>
+  <url>http://mirah.org</url>
+  <description>The Mirah Programming Language</description>
+
+  <issueManagement>
+    <system>Github issues</system>
+    <url>https://github.com/mirah/mirah/issues</url>
+  </issueManagement>
+
+  <scm>
+    <connection>scm:git:git://github.com/mirah/mirah.git</connection>
+    <developerConnection>scm:git:git@github.com:mirah/mirah.git</developerConnection>
+    <url>http://github.com/mirah/mirah</url>
+  </scm>
+
+  <licenses>
+    <license>
+      <name>Apache License, Version 2</name>
+      <url>http://www.apache.org/licenses/LICENSE-2.0.html</url>
+      <distribution>repo</distribution>
+    </license>
+  </licenses>
+
+  <developers>
+    <developer>
+      <id>headius</id>
+      <name>Charles Nutter</name>
+      <email>headius@headius.com</email>
+    </developer>
+    <!-- TODO: Add other developers -->
+  </developers>
+
+  <modules>
+    <module>maven/mirah</module>
+    <module>maven/mirah-complete</module>
+  </modules>
+
+  <properties>
+    <jruby.version>1.7.19</jruby.version>
+  </properties>
+
+  <build>
+    <defaultGoal>install</defaultGoal>
+
+    <pluginManagement>
+      <plugins>
+        <plugin>
+          <artifactId>maven-jar-plugin</artifactId>
+          <version>2.4</version>
+          <configuration>
+            <archive>
+              <manifest>
+                <mainClass>org.mirah.MirahCommand</mainClass>
+              </manifest>
+            </archive>
+          </configuration>
+        </plugin>
+        <plugin>
+          <artifactId>maven-compiler-plugin</artifactId>
+          <version>3.0</version>
+          <configuration>
+            <excludes><exclude>**/*.*</exclude></excludes>
+          </configuration>
+        </plugin>
+      </plugins>
+    </pluginManagement>
+
+  </build>
+
+</project>

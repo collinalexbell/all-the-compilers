@@ -1,0 +1,27 @@
+<!DOCTYPE suite SYSTEM "http://testng.org/testng-1.0.dtd" >
+
+<!--
+The packages are fictitious, but everything seems to work alright.
+-->
+<suite name="autumn" verbose="1">
+    <test name="autumn">
+        <packages>
+            <package name="norswap.autumn.test" />
+        </packages>
+        <classes>
+            <class name="TestParsers"/>
+            <class name="TestLineMapString"/>
+            <class name="TestWellFormedness"/>
+        </classes>
+    </test>
+    <test name="java8">
+        <packages>
+            <package name="norswap.lang.java.test" />
+        </packages>
+        <classes>
+            <class name="lang.java.TestGrammar"/>
+            <class name="lang.java.TestGrammarTokens"/>
+            <class name="lang.java.TestLexUtils"/>
+        </classes>
+    </test>
+</suite>

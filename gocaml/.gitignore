@@ -1,0 +1,10 @@
+/gocaml
+/y.output
+/cover.out
+/syntax/grammar.go
+/runtime/gocamlrt.o
+/runtime/gocamlrt.a
+/cpu.prof
+/codegen.test
+/prof.png
+/codegen/testdata/piyo.txt

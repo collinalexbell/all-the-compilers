@@ -1,0 +1,97 @@
+--- Expressions after transformation of source definitions
+module frege.compiler.types.Expression where 
+
+import  frege.compiler.types.Positions
+import  frege.compiler.types.Tokens
+import  frege.compiler.enums.Visibility
+import  frege.compiler.enums.Literals
+import  frege.compiler.enums.CaseKind
+import  frege.compiler.types.SNames
+import  frege.compiler.types.QNames
+import  frege.compiler.types.Types
+import  frege.compiler.types.Patterns
+import  frege.compiler.types.ConstructorField
+
+--- create 'App' with default type 'Nothing'
+nApp a b = App a b Nothing
+
+infixl 16 `App` `nApp`  `TApp`  
+
+
+{--
+    Alternatives (constructors) in a data declaration.
+    
+    Note: every field has its own strictness information, the overall strictness 
+    of the data constructor is derived from that.
+ -}
+data DCon = DCon {pos::Position, vis::Visibility, name::String,
+                  flds::[ConField SName], doc::Maybe String}
+
+
+{--
+    expressions
+ -}
+data ExprT =
+      !Vbl      { pos::Position, name::QName, typ::Maybe (SigmaT QName) }
+    | !Con      { pos::Position, name::QName, typ::Maybe (SigmaT QName) }
+    | !App      { fun::ExprT, arg::ExprT,  typ::Maybe (SigmaT QName)}
+    | !Lit      { pos∷Position, kind∷Literalkind, value∷String, negated∷Bool, typ∷Maybe (SigmaT QName)}
+    | !Let      { env::[QName],  ex::ExprT, typ::Maybe (SigmaT QName)}
+    | !Lam      { pat:: PatternT QName,   ex::ExprT, typ::Maybe (SigmaT QName)}
+    | !Ifte     { cnd::ExprT, thn::ExprT, els::ExprT, typ::Maybe (SigmaT QName)}
+    | !Mem      { ex::ExprT, member::Token, typ::Maybe (SigmaT QName)}
+    | !Case     { ckind::CKind, ex::ExprT, alts::[CAltT], typ::Maybe (SigmaT QName)}
+    | !Ann      { ex::ExprT,  typ::Maybe (SigmaT QName)}
+
+
+type Expr = ExprT
+
+
+{--
+    case alternative 
+ -}
+data CAltT = CAlt {!pat::PatternT QName, !ex::ExprT}
+
+
+type CAlt  = CAltT
+
+
+instance Positioned (ExprT) where
+    is x = "expression"
+    --- get the line number of an expression
+    getpos (App a b _)    = (getpos a).merge (getpos b)
+    getpos (Mem {ex})     = getpos ex
+    getpos (Lam p x _)    = p.getpos.merge x.getpos
+    getpos (Case _ e alts _) = (getpos e).merge (Position.merges (map Positioned.getrange alts))
+    getpos (Let e x _)  = getpos x
+    getpos (Ifte c a b _) = Position.merges (map getpos [c, a, b])
+    getpos (Ann e s)      = (getpos e).merge (maybe Position.null Sigma.getpos s)
+    getpos e | e.{pos?}   = e.pos
+             | otherwise  = Prelude.error ("can't determine expr pos " ++ show (constructor e))
+    getrange x = getpos x
+
+
+instance Positioned (CAltT) where
+    is _ = "case alternative"
+    getpos   c = c.pat.getpos.merge   c.ex.getpos
+    getrange c = c.pat.getrange.merge c.ex.getrange
+
+
+--##################### pattern support functions ######################################
+
+--##################### expr support functions #########################################
+
+--- convert an application to flat form:
+--- > ((f::a->b->c) (g::a) (h::b) :: c) = [(f, a->b->c), (g, b->c), (h,c)]
+flatx ∷ ExprT → [(ExprT,Maybe Sigma)]
+flatx app = flat app []
+    where
+        flat (App a b t) xs = flat a ((b,t):xs)
+        flat e           xs = (e,e.typ):xs
+
+--- convert a 'flatx'-ed expression back to normal
+unflatx ∷ [(ExprT,Maybe Sigma)] → ExprT
+unflatx xs = unflat (reverse xs) where
+    unflat [(e,t)] = e.{typ=t}
+    unflat ((h,t):es) = App (unflat es) h t
+    unflat [] = Prelude.error "unflat: cannot happen"

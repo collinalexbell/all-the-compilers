@@ -1,0 +1,583 @@
+#+title: Rabbit VM Implementation
+#+author: Maxwell Bernstein
+#+OPTIONS: ':t toc:nil num:0
+
+#+html_head: <link rel="stylesheet" type="text/css" href="blogstyle.css" />
+
+Our emulator can exit or abort with a couple of status codes. They are as
+follows:
+
+#+name: status_enum
+#+begin_src c :exports code
+/* Exit/error codes and statuses. */
+typedef enum rabbits {
+    RB_SUCCESS = 0, RB_FAIL, RB_OVERFLOW, RB_ILLEGAL,
+} rabbits;
+#+end_src
+
+~RB_SUCCESS~ indicates no error. ~RB_FAIL~ indicates a generic
+failure. ~RB_OVERFLOW~ indicates a stack overflow. ~RB_ILLEGAL~ indicates an
+illegal instruction.
+
+* Emulator structure
+
+#+name: getabc
+#+begin_src c :exports none
+/* Most instructions have a destination address and two operands. This struct
+ * holds those. */
+struct abc_s {
+    rabbitw *dst, b, c;
+};
+
+/* Using the options/modes given by the user, fetch the destination address and
+ * operands. */
+static struct abc_s getabc(rabbitw *regs, rabbitw *mem, struct unpacked_s i) {
+    rabbitw *dst = i.modes.rega_deref ? &mem[regs[i.rega]] : &regs[i.rega];
+    rabbitw bval = i.modes.regb_deref ? mem[regs[i.regb]] : regs[i.regb];
+    rabbitw cval = i.modes.immediate ? fetch_immediate() : regs[i.regc];
+    cval = i.modes.regc_deref ? mem[cval] : cval;
+    return (struct abc_s) { .dst = dst, .b = bval, .c = cval };
+}
+#+end_src
+
+#+name: fetch_immediate
+#+begin_src c :exports none
+#define fetch_immediate() mem[regs[RB_IP]++]
+#+end_src
+
+#+name: macro_cleanup
+#+begin_src c :exports none
+#undef fetch_immediate
+#+end_src
+
+#+name: declarations
+#+begin_src c :exports none
+{{{status_enum}}}
+
+{{{register_enum}}}
+
+{{{instruction_enum}}}
+
+{{{fetch_immediate}}}
+
+{{{getabc}}}
+#+end_src
+
+#+name: builtin_functions
+#+begin_src c :exports none
+rabbitw hello(rabbitw *regs, rabbitw *mem) {
+    (void)regs;
+    (void)mem;
+    fprintf(stdout, "hello\n");
+    return 0;
+}
+
+typedef rabbitw (*bif)(rabbitw *regs, rabbitw *mem);
+
+const static struct {
+    const char *name;
+    bif f;
+} biftable[] = {
+    { "hello", hello },
+    { NULL, NULL },
+};
+
+const unsigned int NUM_BIFS = 1;
+
+/*
+static bif biflookup(const char *name) {
+    for (int i = 0; biftable[i].name; i++) {
+        if (strcmp(biftable[i].name, name) == 0) {
+            return biftable[i].f;
+        }
+    }
+
+    return NULL;
+}
+*/
+#+end_src
+
+#+name: rabbit_io_h
+#+begin_src c :tangle rabbit_io.h :exports none :noweb tangle
+#ifndef RABBIT_IO_H
+#define RABBIT_IO_H
+
+#include <stdio.h>
+
+#include "rabbit_types.h"
+
+int read_word(FILE *fp, rabbitw *w);
+
+#endif
+#+end_src
+
+#+name: rabbit_io_c
+#+begin_src c :tangle rabbit_io.c :exports none :noweb tangle
+#include "rabbit_io.h"
+
+int read_word(FILE *fp, rabbitw *w) {
+    int nread = 0;
+    unsigned char *wordp = (unsigned char *)w;
+    for (int i = 3; i >= 0; i--) {
+        int tempread = fread(&wordp[i], sizeof wordp[i], 1, fp);
+        if (tempread == 0) {
+            return 0;
+        }
+
+        nread += tempread;
+    }
+
+    return nread;
+}
+#+end_src
+
+#+begin_src c :tangle rabbit.c :exports code :noweb tangle
+#include <stdio.h>
+#include <inttypes.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/stat.h>
+
+#include "rabbit_types.h"
+#include "rabbit_io.h"
+#include "rabbit_codewords.h"
+
+{{{declarations}}}
+
+{{{builtin_functions}}}
+
+int main(int argc, char **argv) {
+    {{{check_cli_arguments}}}
+
+    {{{open_code_file}}}
+
+    {{{stat_code_file}}}
+
+    {{{allocate_memory}}}
+
+    {{{read_code_into_memory}}}
+
+    {{{fetch_decode_execute_loop}}}
+
+    return 0;
+}
+
+{{{macro_cleanup}}}
+#+end_src
+
+* Registers
+
+#+name: register_enum
+#+begin_src c :exports code
+/* Registers available for use. */
+typedef enum rabbitr {
+    RB_ZERO = 0, RB_R1, RB_R2, RB_R3, RB_R4, RB_R5, RB_R6, RB_R7, RB_R8, RB_R9,
+    RB_IP, RB_SP, RB_RET, RB_TMP, RB_FLAGS, RB_NUMREGS,
+} rabbitr;
+#+end_src
+
+* Instructions
+
+There are four types of instructions:
+
+#+begin_src
+instr %rA, %rB, %rC
+instr %rA, %rB
+instr %rA
+instr
+#+end_src
+
+There is only one instruction in the last category: ~halt~.
+
+All instructions are represented as 32-bit words:
+
+#+name: rabbitw_typedef
+#+begin_src c :tangle rabbit_types.h :exports code
+#ifndef RABBIT_TYPES_H
+#define RABBIT_TYPES_H
+
+#include <inttypes.h>
+
+typedef uint32_t rabbitw;
+
+#endif
+#+end_src
+
+These 32 bits are laid out as follows:
+
+#+begin_src
+     +-----Immediate bit
+     |+----Addressing mode bit C
+     ||+---Addressing mode bit B
+     |||+--Addressing mode bit A
+     |||| +Dead space+     regB
+     vvvv vvvvvvvvvvvv     vvvv
+IIII MDDD 000000000000 CCCCBBBBAAAA
+^^^^                   ^^^^    ^^^^
+Opcode                 regC    regA
+
+VVVVVVVVVVVVVVVVVVVVVVVVVVVVVVVV
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+Immediate value
+#+end_src
+
+*Note that every bit in "Dead space" must be turned off.* If one is turned on,
+the result of executing that instruction is undefined.
+
+Internally, the emulator uses structs with
+[[http://en.cppreference.com/w/cpp/language/bit_field][bit fields]] to
+represent instructions. It uses bit fields only to save space; they can be
+removed with no consequences.
+
+#+name: mode_representation
+#+begin_src c :exports code
+/* Options for operand use. Is space C an immediate value or a register? Should
+ * any of spaces A, B, and C be dereferenced? */
+struct modes_s {
+    uint8_t immediate;
+    uint8_t regc_deref;
+    uint8_t regb_deref;
+    uint8_t rega_deref;
+};
+#+end_src
+
+The full unpacked representation of the instruction includes this unpacked
+modes struct along with the opcode and three operands.
+
+#+name: instruction_representation
+#+begin_src c :exports code
+/* Holds an unpacked representation of an instruction (sans immediate value, if
+ * it has one). */
+struct unpacked_s {
+    struct modes_s modes;
+    uint8_t opcode;
+    uint8_t regc;
+    uint8_t regb;
+    uint8_t rega;
+};
+#+end_src
+
+The immediate value follows the instruction in memory; the emulator fetches it
+upon execution.
+
+#+name: unpacked_representation
+#+begin_src c :exports none
+{{{mode_representation}}}
+
+{{{instruction_representation}}}
+#+end_src
+
+** Decoding
+
+With the knowledge of the instruction format and its in-emulator representation,
+it is not difficult to write a ~decode~ function that takes an instruction and
+returns the unpacked representation.
+
+First, ~decode~ fetches the mode from the instruction. Its least significant bit
+is 24 and it contains at most four bits.
+
+#+name: fetch_modes
+#+begin_src c :exports code
+/* Fetch the space modes from the instruction. */
+uint8_t modes = (instr >> 24) & 0xF;
+#+end_src
+
+As the modes are stored in a bit vector, it's useful to have masks for each of
+the addressing modes and the immediate mode.
+
+#+name: mode_offsets
+#+begin_src c :exports code
+/* Offsets of the space modes in the mode nibble. */
+static const uint8_t
+    RB_ADDRA_LSB = 0,
+    RB_ADDRB_LSB = 1,
+    RB_ADDRC_LSB = 2,
+    RB_IMMED_LSB = 3;
+#+end_src
+
+From here it's reasonably trivial to fill the ~unpacked_s~ struct. ~instr~ needs
+to be shifted and masked a couple of times to fetch the opcode and registers,
+but nothing major.
+
+#+name: rabbit_codewords_h
+#+begin_src c :tangle rabbit_codewords.h :exports none :noweb tangle
+#ifndef RABBIT_CODEWORDS_H
+#define RABBIT_CODEWORDS_H
+
+#include "rabbit_types.h"
+
+{{{unpacked_representation}}}
+
+struct unpacked_s decode(rabbitw instr);
+
+#endif
+#+end_src
+
+#+name: rabbit_codewords_c
+#+begin_src c :tangle rabbit_codewords.c :exports code :noweb tangle
+#include "rabbit_codewords.h"
+
+/* Transform the packed representation of an instruction into the unpacked
+ * representation. */
+struct unpacked_s decode(rabbitw instr) {
+    {{{fetch_modes}}}
+
+    {{{mode_offsets}}}
+
+    return (struct unpacked_s) {
+        .modes = {
+            .immediate  = (modes >> RB_IMMED_LSB) & 0x1,
+            .regc_deref = (modes >> RB_ADDRC_LSB) & 0x1,
+            .regb_deref = (modes >> RB_ADDRB_LSB) & 0x1,
+            .rega_deref = (modes >> RB_ADDRA_LSB) & 0x1,
+        },
+        .opcode = instr >> 28,
+        .regc =  (instr >> 8) & 0xF,
+        .regb =  (instr >> 4) & 0xF,
+        .rega = instr & 0xF,
+    };
+}
+#+end_src
+
+** Modes
+
+** Following mode rules
+
+* VM setup
+
+** Check CLI arguments
+
+#+name: check_cli_arguments
+#+begin_src c :exports code
+if (argc != 2) {
+    fprintf(stderr, "Need to pass file to execute.\n");
+    return RB_FAIL;
+}
+#+end_src
+
+** Open code file
+
+#+name: open_code_file
+#+begin_src c :exports code
+char *fn = argv[1];
+FILE *fp = fopen(fn, "rb");
+if (fp == NULL) {
+    fprintf(stderr, "Can't open `%s'.\n", fn);
+    return RB_FAIL;
+}
+#+end_src
+
+** Get size of code file
+
+#+name: stat_code_file
+#+begin_src c :exports code
+/* Get the size of the file so that we can allocate memory for it. */
+struct stat st;
+if (fstat(fileno(fp), &st) != 0) {
+    fprintf(stderr, "Can't stat `%s'.\n", fn);
+    fclose(fp);
+    return RB_FAIL;
+}
+#+end_src
+
+** Allocate memory
+
+#+name: allocate_memory
+#+begin_src c :exports code
+/* Allocate memory with program first, stack second. */
+size_t stacksize = 1000;
+off_t size = st.st_size;
+rabbitw *mem = malloc(stacksize + size * sizeof *mem);
+if (mem == NULL) {
+    fprintf(stderr, "Not enough memory. Could not allocate stack of size"
+                    "%zu + program of size %lld.\n", stacksize, size);
+    return RB_FAIL;
+}
+#+end_src
+
+** Read code into memory
+
+#+name: read_code_into_memory
+#+begin_src c :exports code
+/* Read the file into memory. */
+size_t i = 0;
+rabbitw word = 0;
+/* We cannot use fread because of endian-ness issues. */
+while (read_word(fp, &word) != 0) {
+    mem[i++] = word;
+}
+fclose(fp);
+#+end_src
+
+#+name: instruction_enum
+#+begin_src c :exports code
+/* Instructions available for use. */
+typedef enum rabbiti {
+    RB_HALT = 0, RB_MOVE, RB_ADD, RB_SUB, RB_MUL, RB_DIV, RB_SHR, RB_SHL,
+    RB_NAND, RB_XOR, RB_BR, RB_BRZ, RB_BRNZ, RB_IN, RB_OUT, RB_BIF,
+    RB_NUMINSTRS,
+} rabbiti;
+#+end_src
+
+** Fetch-decode-execute loop
+
+#+name: fetch_decode_execute_loop
+#+begin_src c :exports code
+struct abc_s abc;
+rabbitw regs[RB_NUMINSTRS] = { 0 };
+regs[RB_SP] = i;
+
+/* Main fetch-decode-execute loop. */
+while (1) {
+    /* Fetch the current instruction word. */
+    rabbitw word = mem[regs[RB_IP]++];
+
+    /* Decode it. */
+    struct unpacked_s i = decode(word);
+
+    /* Execute it. */
+    switch (i.opcode) {
+    case RB_HALT:
+        free(mem);
+        return RB_SUCCESS;
+        break;
+    case RB_MOVE: {
+        /* Move is special because it has one source instead of two
+         * operands. */
+        rabbitw src = i.modes.immediate   ? fetch_immediate()  : regs[i.regc];
+        rabbitw *dst = i.modes.regb_deref ? &mem[regs[i.regb]] : &regs[i.regb];
+        *dst = i.modes.regc_deref ? mem[src] : src;
+        break;
+    }
+    case RB_ADD:
+        abc = getabc(regs, mem, i);
+        *abc.dst = abc.b + abc.c;
+        break;
+    case RB_SUB:
+        abc = getabc(regs, mem, i);
+        rabbitw res = abc.b - abc.c;
+        *abc.dst = res;
+        if (res == 0) {
+            /* Set zero flag. */
+            regs[RB_FLAGS] |= 0x2U;
+        }
+        break;
+    case RB_MUL:
+        abc = getabc(regs, mem, i);
+        *abc.dst = abc.b * abc.c;
+        break;
+    case RB_DIV:
+        abc = getabc(regs, mem, i);
+        if (abc.c == 0) {
+            free(mem);
+            return RB_ILLEGAL;
+        }
+
+        *abc.dst = abc.b / abc.c;
+        break;
+    case RB_SHR:
+        abc = getabc(regs, mem, i);
+        *abc.dst = abc.b >> abc.c;
+        break;
+    case RB_SHL:
+        abc = getabc(regs, mem, i);
+        *abc.dst = abc.b << abc.c;
+        break;
+    case RB_NAND:
+        abc = getabc(regs, mem, i);
+        *abc.dst = ~(abc.b & abc.c);
+        break;
+    case RB_XOR:
+        abc = getabc(regs, mem, i);
+        *abc.dst = abc.b ^ abc.c;
+        break;
+    case RB_BR: {
+        /* Branch is special because it only has one argument. */
+        rabbitw src = i.modes.immediate  ? fetch_immediate() : regs[i.regc];
+        regs[RB_IP] = i.modes.regc_deref ? mem[src] : src;
+        break;
+    }
+    case RB_BRZ:
+        /* Branch if zero is special because it only has one argument. */
+        if ((regs[RB_FLAGS] & 0x2U) == 0) {
+            rabbitw src = i.modes.immediate  ? fetch_immediate() : regs[i.regc];
+            regs[RB_IP] = i.modes.regc_deref ? mem[src] : src;
+        }
+        break;
+    case RB_BRNZ:
+        /* Branch not zero is special because it only has one argument. */
+        if ((regs[RB_FLAGS] & 0x2U) != 0) {
+            rabbitw src = i.modes.immediate ? fetch_immediate() : regs[i.regc];
+            regs[RB_IP] = i.modes.regc_deref ? mem[src] : src;
+        }
+        break;
+    case RB_IN: {
+        /* Input is special because it does not have an argument. */
+        rabbitw *dstp = i.modes.regc_deref ? &mem[regs[i.regc]] : &regs[i.regc];
+        *dstp = getchar();
+        break;
+    }
+    case RB_OUT: {
+        /* Output is special because it has one argument and no
+         * destination. */
+        rabbitw src = i.modes.immediate ? fetch_immediate() : regs[i.regc];
+        src = i.modes.regc_deref ? mem[src] : src;
+        putchar(src);
+        break;
+    }
+    case RB_BIF: {
+        rabbitw src = i.modes.immediate ? fetch_immediate() : regs[i.regc];
+        src = i.modes.regc_deref ? mem[src] : src;
+        if (src > NUM_BIFS) {
+            fprintf(stderr, "Invalid bif: `%u'.\n", src);
+            return RB_FAIL;
+        }
+        bif f = biftable[src].f;
+        f(regs, mem);
+        break;
+    }
+/*    case RB_CFF:
+        break;
+*/
+    default:
+        free(mem);
+        return RB_ILLEGAL;
+        break;
+    }
+}
+#+end_src
+
+* Building the VM
+
+#+begin_src make :tangle Makefile :exports code
+CC=gcc
+CFLAGS=-Wall -Wextra -Wpedantic
+LFLAGS=
+RABBIT_OBJS=rabbit.o rabbit_io.o rabbit_codewords.o
+ASSEMBLER_OBJS=assembler.o rabbit_io.o
+DISASSEMBLER_OBJS=disassembler.o rabbit_io.o rabbit_codewords.o
+
+all: rabbit assembler disassembler
+
+clean:
+	rm -f rabbit rabbit-asm rabbit-dis
+	rm -f $(RABBIT_OBJS) $(ASSEMBLER_OBJS) $(DISASSEMBLER_OBJS)
+
+rabbit: $(RABBIT_OBJS)
+	$(CC) $(CFLAGS) $(LFLAGS) $(RABBIT_OBJS) -o rabbit
+
+assembler: $(ASSEMBLER_OBJS)
+	$(CC) $(CFLAGS) $(LFLAGS) $(ASSEMBLER_OBJS) -o rabbit-asm
+
+disassembler: $(DISASSEMBLER_OBJS)
+	$(CC) $(CFLAGS) $(LFLAGS) $(DISASSEMBLER_OBJS) -o rabbit-dis
+
+%.o: %.c
+	$(CC) $(CFLAGS) -o $@ -c $<
+#+end_src
+
+# Local Variables:
+# org-src-preserve-indentation: t
+# org-babel-noweb-wrap-start: "{{{"
+# org-babel-noweb-wrap-end: "}}}"
+# End:

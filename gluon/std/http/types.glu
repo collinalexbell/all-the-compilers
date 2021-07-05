@@ -1,0 +1,29 @@
+let { Body, ResponseBody, StatusCode, Method, Request, Response, Headers, HttpState, Uri } =
+    import! std.http.prim_types
+
+let { Eff } = import! std.effect
+let { Error } = import! std.effect.error
+let { Alt } = import! std.effect.alt
+let { State } = import! std.effect.state
+let { Lift } = import! std.effect.lift
+
+/// Type used by handlers to indicate why they could not process a request
+type Failure =
+    | DontProcess
+    | Error String
+
+
+type HttpEffect r a = [| alt : Alt, state : State HttpState, lift : Lift IO | r |] a
+
+{
+    Method,
+    Failure,
+    Request,
+    StatusCode,
+    Headers,
+    Response,
+    ResponseBody,
+    HttpEffect,
+    HttpState,
+    Uri,
+}

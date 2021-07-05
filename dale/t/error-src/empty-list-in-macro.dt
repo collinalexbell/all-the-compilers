@@ -1,0 +1,10 @@
+(import macros)
+
+(using-namespace std.macros
+  (def def-type-alias (macro extern (new old)
+    (qq def (uq new) (macro extern ()
+      (uq old))))))
+
+(def b (var intern int 0))
+
+(def-type-alias a b)

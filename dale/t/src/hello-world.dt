@@ -1,0 +1,6 @@
+(import cstdio-core)
+
+(def main
+  (fn extern-c int (void)
+    (printf "Hello world!\n")
+    0))

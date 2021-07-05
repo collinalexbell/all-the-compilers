@@ -1,0 +1,153 @@
+
+To use all functionality provided by Kaffe, you need some freely available
+libraries installed on your system.
+
+Some of these libraries are absolutely required, in other cases, the
+configure script detects whether the library is available and uses it
+if so.  If your library is not installed in a standard place where
+your compiler and linker finds it, you need to tell configure where to
+find it, using the --with-libraries="/my/dir1/lib /my/dir2/lib ..." 
+flag.  You may also have to specify the location of C header files,
+--with-includes="/my/dir1/include /my/dir2/include ...".
+
+Some operating system vendors, mostly Linux distributors, split their
+packages of libraries into 'runtime' and 'development' versions. You
+may have to install both on your system in order to successfully
+compile kaffe to use the libraries. If you are looking for precompiled
+versions of these libraries for your Linux distribution, and your
+distributor uses the RPM packaging format, you should check out
+http://www.rpmfind.net.
+
+glib
+----
+
+You'll need glib for Kaffe's atomic operations support. It is available 
+from http://www.gtk.org/ .
+
+zziplib
+-------
+
+You'll need zziplib for Kaffe to be able to load classes from JAR files.
+It is available from http://zziplib.sourceforge.net/ .
+
+libltdl
+-------
+
+You'll need GNU libtool's libltdl library for Kaffe to be able to
+dynamically open JNI libraries. It is available from 
+http://www.gnu.org/software/libtool/ .
+
+GNU Classpath
+-------------
+
+You'll need GNU Classpath 0.96.1 or later. It is available from 
+http://www.classpath.org . GNU Classpath is used as the core class
+library for Kaffe.
+
+JAR tool
+--------
+
+You'll need a tool to create JAR achives of class libraries. Such a tool
+is available in many distributions and the ports system as 'fastjar', or
+alternatively at:
+http://savannah.nongnu.org/projects/fastjar/
+
+
+AWT backends
+------------
+
+Kaffe offers the choice between two AWT backends.
+
+X11/XFree:
+    If you are going to use the standard AWt backend, you need the X
+    Window System. It is the most common graphical environment on Unix
+    systems. It is available at:
+    http://www.x.org/ 
+
+    A very popular implementation is XFree86, available at :
+    http://www.xfree86.org
+
+Qt:
+    If you are going to use the Qt tookit based AWT backend you can
+    get the toolkit from:
+    http://www.trolltech.com 
+
+    More information on supported versions of the Qt toolkit is
+    available in FAQ.awt.
+
+Other AWT backends:
+    PocketLinux kaffe comes with more AWT backends. You can get it
+    from kaffe's CVS tree. It is no longer supported, though, as the
+    company behind it, Transvirtual, has gone out of business.
+
+    We would welcome contributions to merge these AWT backends with
+    kaffe's own CVS tree. Please join the kaffe mailing list
+    kaffe@kaffe.org, and read FAQ.awt if you have questions or want to
+    help out.
+
+Image libraries
+---------------
+
+You need the libraries if you want Kaffe to be able to decompress
+images stored in GIF, JPEG or PNG formats.
+
+libungif: 
+    You need libungif 4.0 or newer if you want Kaffe's awt to be able
+    to decompress gif images.  Note that earlier versions will not work.
+    You can get libungif from:
+    http://prtr-13.ucsc.edu/~badger/software/libungif/index.shtml
+
+jpeg:
+    Used by Kaffe's awt to decompress jpeg images.  Available at:
+    http://www.ijg.org/
+
+libpng:
+    Ditto for png images.  Available at
+    http://www.libpng.org/pub/png/libpng.html
+
+Internationalization libraries
+------------------------------
+
+If you want to use native character set encoders and decoders, you
+need to install these libraries.
+
+libiconv:
+    This library provides an iconv() implementation for converting
+    text between native character set encodings and Unicode. It is
+    available at:
+    http://www.gnu.org/software/libiconv/
+
+Optional Boehm-Weiser garbage collector support
+-----------------------------------------------
+
+In order to use the Boehm-Weiser garbage collector, you'll need to
+install the corresponding library. It is available from 
+http://www.hpl.hp.com/personal/Hans_Boehm/gc/
+
+Optional java developement tool support
+-----------------------------
+
+In order to provide a complete environment for development of 
+applications written in the Java programming language, Kaffe symlinks
+various tools under their typical names in the bin directory of an
+installation.
+
+If the configure script detects a gjdoc or javadoc tool, the 'javadoc'
+binary will be symlinked to it on installation.
+
+Gjdoc is available from http://www.gnu.org/software/classpath/cp-tools/
+
+If the configure script detects a javap tool, the 'javap' binary will be
+symlinked to it on installation.
+
+javap is available from http://www.gnu.org/software/classpath/cp-tools/
+
+Other tools
+-----------
+
+If you want to debug kaffe, you need to have mktemp installed, in
+order to allow creation of safe temporary files.
+
+mktemp:
+    A utility to create safe temporary files. Available at
+    http://www.mktemp.org .

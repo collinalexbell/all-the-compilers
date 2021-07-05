@@ -1,0 +1,117 @@
+Name:                hoopl
+Version:             3.10.2.3
+-- NOTE: Don't forget to update ./changelog.md
+Description:
+  Higher-order optimization library
+  .
+  See /Norman Ramsey, Joao Dias, and Simon Peyton Jones./
+  <http://research.microsoft.com/en-us/um/people/simonpj/Papers/c--/hoopl-haskell10.pdf "Hoopl: A Modular, Reusable Library for Dataflow Analysis and Transformation"> /(2010)/ for more details.
+
+License:             BSD3
+License-File:        LICENSE
+Author:              Norman Ramsey, Joao Dias, Simon Marlow and Simon Peyton Jones
+Maintainer:          Ning Wang <email@ningwang.org>, Michal Terepeta <michal.terepeta@gmail.com>, Norman Ramsey <nr@cs.tufts.edu>
+Homepage:            https://github.com/haskell/hoopl
+Bug-Reports:         https://github.com/haskell/hoopl/issues/
+Build-Type:          Simple
+Cabal-Version:       >=1.10
+Synopsis:            A library to support dataflow analysis and optimization
+Category:            Compilers/Interpreters
+Extra-Source-Files:  README.md, changelog.md,
+                     testing/tests/if-test,  testing/tests/if-test.expected,
+                     testing/tests/if-test2, testing/tests/if-test2.expected,
+                     testing/tests/if-test3, testing/tests/if-test3.expected,
+                     testing/tests/if-test4, testing/tests/if-test4.expected,
+                     testing/tests/test1, testing/tests/test1.expected,
+                     testing/tests/test2, testing/tests/test2.expected,
+                     testing/tests/test3, testing/tests/test3.expected,
+                     testing/tests/test4, testing/tests/test4.expected,
+                     testing/tests/test5, testing/tests/test5.expected,
+                     testing/tests/test6, testing/tests/test6.expected,
+                     testing/tests/test7, testing/tests/test7.expected
+tested-with:         GHC == 7.0.4,
+                     GHC == 7.2.2,
+                     GHC == 7.4.2,
+                     GHC == 7.6.3,
+                     GHC == 7.8.4,
+                     GHC == 7.10.3,
+                     GHC == 8.0.2,
+                     GHC == 8.2.2,
+                     GHC == 8.4.3,
+                     GHC == 8.6.1
+
+Source-repository head
+  Type:       git
+  Location:   http://git.haskell.org/packages/hoopl.git
+
+Library
+  Default-Language:  Haskell2010
+  Other-Extensions:  CPP
+                     FlexibleContexts
+                     FlexibleInstances
+                     GADTs
+                     LiberalTypeSynonyms
+                     MultiParamTypeClasses
+                     RankNTypes
+                     ScopedTypeVariables
+                     TypeFamilies
+                     TypeSynonymInstances
+  If impl(ghc>=7.2)
+    Other-Extensions: Safe Trustworthy
+
+  Hs-Source-Dirs:    src
+  Build-Depends:     base >= 4.3 && < 4.13,
+                     containers >= 0.5 && < 0.7
+  Exposed-Modules:   Compiler.Hoopl,
+                     Compiler.Hoopl.Internals,
+                     Compiler.Hoopl.Wrappers,
+                     Compiler.Hoopl.Passes.Dominator,
+                     Compiler.Hoopl.Passes.DList
+
+  -- The remaining modules are hidden *provisionally*
+  Other-modules:     Compiler.Hoopl.Checkpoint,
+                     Compiler.Hoopl.Collections,
+                     Compiler.Hoopl.Combinators,
+                     Compiler.Hoopl.Dataflow,
+                     Compiler.Hoopl.Debug,
+                     Compiler.Hoopl.Block,
+                     Compiler.Hoopl.Graph,
+                     Compiler.Hoopl.Label,
+                     Compiler.Hoopl.MkGraph,
+                     Compiler.Hoopl.Fuel,
+                     Compiler.Hoopl.Pointed,
+                     Compiler.Hoopl.Shape,
+                     Compiler.Hoopl.Show,
+                     Compiler.Hoopl.Unique,
+                     Compiler.Hoopl.XUtil
+
+  Ghc-Options:       -Wall -fno-warn-name-shadowing
+
+Test-Suite hoopl-test
+  Default-Language:  Haskell2010
+  Type:              exitcode-stdio-1.0
+  Main-Is:           Main.hs
+  Other-modules:     Ast
+                     Ast2ir
+                     ConstProp
+                     Eval
+                     EvalMonad
+                     Expr
+                     IR
+                     Ir2ast
+                     Live
+                     OptSupport
+                     Parse
+                     PP
+                     Simplify
+                     Test
+  Hs-Source-Dirs:    testing
+  Build-Depends:     base >= 4.3 && < 4.13,
+                     containers >= 0.5 && < 0.7,
+                     filepath,
+                     hoopl,
+                     mtl >= 2.1.3.1,
+                     mtl-compat,
+                     parsec >= 3.1.7,
+                     test-framework < 0.9,
+                     test-framework-hunit < 0.4

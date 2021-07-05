@@ -1,0 +1,30 @@
+This file records the current, linear dependency order between the
+translation/CF theories making up the basis library verification.
+
+This unnatural linear dependency graph is required by the concrete mode
+translator (which provides only translation_extends as a method for joining two
+translations). Eventually, when we have an abstract mode translator, the
+different modules can be made more independent and different combinations can
+be selected than simple prefixes of the current ordering.
+
+std_prelude
+Runtime
+Option
+List
+Vector
+String
+mlbasics (defines Bool, Pair)
+Int
+Rat
+Char
+Word64
+Word8
+Word8Array
+Array
+Map
+Hashtable
+CommandLine
+Double
+TextIO
+PrettyPrinter
+basis

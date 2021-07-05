@@ -1,0 +1,22 @@
+{
+  "name": "operators",
+  "version": "1.0.0",
+  "description": "An example showing four ways to implement a language with an operator precedence hiearchy",
+  "scripts": {
+    "test": "ava"
+  },
+  "keywords": [
+    "ohm",
+    "precedence",
+    "associativity",
+    "javascript",
+    "parsing"
+  ],
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+  },
+  "dependencies": {
+    "ohm-js": "^15.0.1"
+  }
+}

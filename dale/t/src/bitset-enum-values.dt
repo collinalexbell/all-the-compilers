@@ -1,0 +1,11 @@
+(import cstdio)
+(import bitset-enum)
+
+(def-bitset-enum myenum intern int ((a 2) b (c 0x10) d))
+
+(def main (fn extern-c int (void)
+  (printf "%d\n" a)
+  (printf "%d\n" b)
+  (printf "%d\n" c)
+  (printf "%d\n" d)
+  0))

@@ -1,0 +1,101 @@
+##########################
+# those should be ignored
+##########################
+*~
+.DS_Store
+*.class
+*.jar
+pg.conf
+pgapp.conf
+frege.mk
+makedoc
+dist/
+build/
+build6/
+save/
+doc/*.html
+doc/frege/
+doc/resources/
+doc/*.css
+doc/package-list
+### latex stuff
+doc/Language.aux
+doc/Language.idx
+doc/Language.ilg
+doc/Language.ind
+doc/Language.lof
+doc/Language.log
+doc/Language.lot
+doc/Language.out
+doc/Language.pdf
+doc/Language.synctex.gz
+doc/Language.toc
+doc/Language.dvi
+doc/Language.bbl
+doc/Language.blg
+doc/Language.synctex.gz
+doc/_minted-Language/
+### frege sources generated in the course of compiler making
+frege/Version.fr
+### some people don't have a berkely yacc and are happy to find it in the repo, so let it be there
+# frege/compiler/grammar/Frege.fr
+### Misc
+y.*
+frege/Scrap.fr
+shadow/META-INF/
+lib/
+
+#################
+## Eclipse
+#################
+
+*.pydevproject
+.metadata
+bin/
+tmp/
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+
+.settings/
+.loadpath
+
+# External tool builders
+.externalToolBuilders/
+
+# Locally stored "Eclipse launch configurations"
+*.launch
+
+# CDT-specific
+.cproject
+
+# PDT-specific
+.buildpath
+
+
+############
+## Intellij
+############
+
+.idea
+*.iml
+
+############
+## Gradle
+############
+
+.gradle
+
+############
+## Windows
+############
+
+# Windows image file caches
+Thumbs.db
+
+# Folder config file
+Desktop.ini
+
+

@@ -1,0 +1,72 @@
+//@NO-IMPLICIT-PRELUDE
+//! Composable effect types
+let { error } = import! std.prim
+let option = import! std.option
+let { Result, ? } = import! std.result
+let { (<<), (|>) } = import! std.function
+let { (<>) } = import! std.semigroup
+let monoid @ { Monoid } = import! std.monoid
+
+let { Functor, map } = import! std.functor
+let { Applicative, wrap } = import! std.applicative
+let { Monad } = import! std.monad
+
+rec
+/// An effectful function `a -> b`
+type Arr r a b = a -> Eff r b
+
+/// The `Eff` monad provides composable effect via a `Row` of effects (`r`) and produces a value of type `a`.
+type Eff r a =
+    | Pure a
+    | Impure : forall x . r x -> Arr r x a -> Eff r a
+in
+let compose f g : Arr r a b -> Arr r b c -> Arr r a c = \a ->
+    match f a with
+    | Pure b -> g b
+    | Impure r h -> Impure r (compose h g)
+
+let wrap_eff x : a -> Eff r a = Pure x
+let flat_map_eff f m : (a -> Eff r b) -> Eff r a -> Eff r b =
+    match m with
+    | Pure x -> f x
+    | Impure row g -> Impure row (compose g f)
+
+let functor : Functor (Eff r) = {
+    map = \f m -> flat_map_eff (\x -> wrap_eff (f x)) m,
+}
+
+let applicative : Applicative (Eff r) = {
+    functor,
+    apply = \f g -> flat_map_eff (\f1 -> flat_map_eff (\g1 -> wrap_eff (f1 g1)) g) f,
+    wrap = wrap_eff,
+}
+
+let monad : Monad (Eff r) = {
+    applicative,
+    flat_map = flat_map_eff,
+}
+
+type OpenVariant r a = .. r
+#[doc(hidden)]
+let inject_rest x : forall e . OpenVariant r a -> [| | r |] a = convert_effect! x
+
+/// Extracts the value of type `a` from an effectful computation. Can only be done once all other
+/// effects have been eliminated from the row (leaving `[| |]` as the empty effect). See each
+/// individual effects module on how to eliminate the effect.
+let run_pure eff : Eff [| |] a -> a =
+    match eff with
+    | Pure v -> v
+    | Impure _ _ -> error "Impossible: run_pure"
+
+{
+    Eff,
+    Arr,
+
+    functor,
+    applicative,
+    monad,
+
+    run_pure,
+
+    inject_rest,
+}

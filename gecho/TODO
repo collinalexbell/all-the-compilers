@@ -1,0 +1,8 @@
+ TODO:
+  - Comments
+  - Lookahead words...needed for function definitions
+	- { } braces
+  - recursion
+  - if statement
+  - GMP bignum
+  - words in separate stack/storage

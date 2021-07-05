@@ -1,0 +1,16 @@
+{
+  "name": "@babel/eslint-config-internal",
+  "version": "7.14.5",
+  "description": "The Babel Team's ESLint configuration. Since it's internal, it might not respect semver.",
+  "private": true,
+  "main": "./index.js",
+  "type": "commonjs",
+  "exports": {
+    ".": "./index.js",
+    "./package.json": "./package.json"
+  },
+  "peerDependencies": {
+    "@babel/eslint-parser": "^7.10.4",
+    "eslint-plugin-flowtype": "^4.6.0"
+  }
+}

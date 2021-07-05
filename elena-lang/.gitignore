@@ -1,0 +1,10 @@
+/lib50
+/lib50_64
+*.exe
+*.nl
+*.dnl
+*.dn
+*.o
+*.obj
+*.so
+.vs/

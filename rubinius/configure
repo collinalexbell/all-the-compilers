@@ -1,0 +1,16 @@
+#!/bin/bash
+
+# The configure script will be a permanent stub that invokes the actual build
+# system to conform to common expectations about building software by running:
+#
+#  configure && make && make install
+
+export RBX_SUPRESS_DEPRECATION=1
+
+for f in $(find build/rubinius/codedb build/codetools/ build/stdlib/ -name extconf.rb)
+do
+  pushd $(dirname $f) && make clean
+  popd
+done
+
+./configure.rb $@

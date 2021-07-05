@@ -1,0 +1,42 @@
+%define	LOOP	0x70
+%define	CNT	0x10
+
+_main:
+	; loop counter
+	push	LOOP
+	push	CNT
+	store
+
+	push	_loop
+	call
+	ret
+
+_loop:
+	push	LOOP		; load loop counter
+	load
+	dup
+	push	_exit
+	jz
+
+	;pop
+	push	_print_num	; print the counter
+	call
+
+	push	0xa		; newline
+	out
+
+	; decrement loop counter
+	push	LOOP
+	load
+	push	0x1		; by 1
+	sub
+	push	LOOP
+	swap
+	store
+
+	push	_loop
+	jmp
+
+_exit:
+	ret
+

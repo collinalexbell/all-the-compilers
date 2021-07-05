@@ -1,0 +1,10 @@
+--- Differences in layout
+module tests.hcm.Layout where 
+
+g = 3 where
+
+neg = [ n | p ← [0..], let n = -p, n > 2  ] -- no } inserted before ]
+
+main = do
+    print x
+    where x = 1

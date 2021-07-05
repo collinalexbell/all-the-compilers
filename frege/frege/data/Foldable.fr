@@ -1,0 +1,258 @@
+--- Data structures that can be folded.
+package Data.Foldable where
+
+import frege.Prelude hiding (fold, foldr, foldr1, foldl, foldl1, 
+   mapM_, forM_, sequence_, msum, concat, concatMap, and, or,
+   any, all, sum, product, maximum, minimum, elem, notElem)
+
+import frege.data.wrapper.Identity
+import frege.data.wrapper.Dual
+import frege.data.wrapper.Boolean
+import frege.data.wrapper.Num
+import frege.data.wrapper.Endo
+
+import Data.Monoid
+
+{--
+    Data structures that can be folded.
+
+    Minimal complete definition: 'foldMap' or 'foldr'.
+
+    For example, given a data type
+
+    > data Tree a = Empty | Leaf a | Node (Tree a) a (Tree a)
+
+    a suitable instance would be
+
+    > instance Foldable Tree where
+    >    foldMap f Empty = mempty
+    >    foldMap f (Leaf x) = f x
+    >    foldMap f (Node l k r) = foldMap f l `mappend` f k `mappend` foldMap f r
+
+    This is suitable even for abstract types, as the monoid is assumed
+    to satisfy the monoid laws.  Alternatively, one could define @foldr@:
+
+    > instance Foldable Tree where
+    >    foldr f z Empty = z
+    >    foldr f z (Leaf x) = f x z
+    >    foldr f z (Node l k r) = foldr f (f k (foldr f z r)) l
+-}
+class Foldable t where
+    -- nowarn: recurses deeply
+    --- Combine the elements of a structure using a monoid.  
+    fold :: Monoid m => t m -> m
+    fold ts = foldMap id ts
+  
+    -- nowarn: recurses deeply
+    --- Map each element of the structure to a monoid, and combine the results. 
+    foldMap :: Monoid m => (a -> m) -> t a -> m
+    foldMap f ts = foldr (mappend . f) mempty ts
+  
+    --- Right-associative fold of a structure. 
+    foldr :: (a -> b -> b) -> b -> t a -> b
+    foldr f z ts = appEndo (foldMap (Endo . f) ts) z
+  
+    --- Left-associative fold of a structure. 
+    foldl :: (a -> b -> a) -> a -> t b -> a
+    foldl f z ts = appEndo (Dual.unwrap (foldMap (Dual . Endo . flip f) ts)) z 
+    
+    --- versions without base case    
+    --- A variant of fold that has no base case, and thus may only be applied to non-empty structures. 
+    --- (not in Haskell's Foldable, because they have no Semigroup)
+    fold1 :: Semigroup m => t m -> m  
+    fold1 ts = foldMap1 id ts  
+    
+    --- A variant of foldMap that has no base case, and thus may only be applied to non-empty structures. 
+    --- (not in Haskell's Foldable, because they have no Semigroup)
+    foldMap1 :: Semigroup m => (a -> m) -> t a -> m
+    foldMap1 f ts = Prelude.maybe (error "foldMap1") id $ foldMap (Just . f) ts    
+    
+    --- nowarn: not easy enough
+    --- A variant of foldr that has no base case, and thus may only be applied to non-empty structures. 
+    foldr1 :: (a -> a -> a) -> t a -> a
+    foldr1 f ts = fromMaybe (error "foldr1: empty structure") (foldr mf Nothing ts) where
+        mf x Nothing = Just x
+        mf x (Just y) = Just (f x y)
+    
+    --- nowarn: not easy enough
+    --- A variant of foldl that has no base case, and thus may only be applied to non-empty structures. 
+    foldl1 :: (a -> a -> a) -> t a -> a
+    foldl1 f ts = fromMaybe (error "foldl1: empty structure") (foldl mf2 Nothing ts) where
+        mf2 mb y = Just $! maybe y (`f` y) mb
+        -- mf Nothing y = Just y
+        -- mf (Just x) y = Just (f x y)
+
+{-- 
+    Fold over the elements of a structure,
+    associating to the right, but strictly.
+-}    
+foldr' :: Foldable t => (a -> b -> b) -> b -> t a -> b
+foldr' f z0 xs = foldl f' id xs z0  where 
+   f' k x z = k $! f x z
+
+{-- 
+    Monadic fold over the elements of a structure,
+    associating to the right, i.e. from right to left.
+-}
+foldrM :: (Foldable t, Monad m) => (a -> b -> m b) -> b -> t a -> m b
+foldrM f z0 xs = foldl f' return xs z0 where 
+   f' k x z = f x z >>= k
+
+{-- 
+    Fold over the elements of a structure,
+    associating to the left, but strictly.
+-}
+foldl' :: Foldable t => (a -> b -> a) -> a -> t b -> a
+foldl' f z0 xs = foldr f' id xs z0 where 
+   f' x k z = k $! f z x
+
+{--
+    Monadic fold over the elements of a structure,
+    associating to the left, i.e. from left to right.
+-}
+foldlM :: (Foldable t, Monad m) => (a -> b -> m a) -> a -> t b -> m a
+foldlM f z0 xs = foldr f' return xs z0 where 
+   f' x k z = f z x >>= k
+
+{--
+    Map each element of a structure to an action, evaluate
+    these actions from left to right, and ignore the results.
+-}
+traverse_ :: (Foldable t, Applicative f) => (a -> f b) -> t a -> f ()
+traverse_ f ts = foldr ((*>) . f) (pure ()) ts
+
+--- 'for_' is 'traverse_' with its arguments flipped.
+for_ :: (Foldable t, Applicative f) => t a -> (a -> f b) -> f ()
+for_ ts f = traverse_ f ts
+
+{--
+    Map each element of a structure to a monadic action, evaluate
+    these actions from left to right, and ignore the results.
+-}
+mapM_ :: (Foldable t, Monad m) => (a -> m b) -> t a -> m ()
+mapM_ f ts = foldr ((>>) . f) (return ()) ts
+
+--- 'forM_' is 'mapM_' with its arguments flipped.
+forM_ :: (Foldable t, Monad m) => t a -> (a -> m b) -> m ()
+forM_ ts f = mapM_ f ts
+
+{-- 
+   Evaluate each action in the structure from left to right,
+   and ignore the results.
+-}   
+sequenceA_ :: (Foldable t, Applicative f) => t (f a) -> f ()
+sequenceA_ ts = foldr (*>) (pure ()) ts
+
+{--
+    Evaluate each monadic action in the structure from left to right,
+    and ignore the results.
+-}
+sequence_ :: (Foldable t, Monad m) => t (m a) -> m ()
+sequence_ ts = foldr (>>) (return ()) ts
+
+-- | The sum of a collection of actions, generalizing 'concat'.
+-- asum :: (Foldable t, Alternative f) => t (f a) -> f a
+-- asum = foldr (<|>) empty
+
+--- The sum of a collection of actions, generalizing 'concat'.
+msum :: (Foldable t, MonadPlus m) => t (m a) -> m a
+msum ts = foldr mplus mzero ts
+
+--- The concatenation of all the elements of a container of lists.
+concat :: Foldable t => t [a] -> [a]
+concat ts = fold ts
+
+{--
+    Map a function over all the elements of a container and concatenate
+    the resulting lists.
+-}
+concatMap :: Foldable t => (a -> [b]) -> t a -> [b]
+concatMap f ts = foldMap f ts
+
+{-- 
+   'and' returns the conjunction of a container of Bools.  For the
+   result to be *true*, the container must be finite; *false*, however,
+   results from a *false* value finitely far from the left end.
+-}
+and :: Foldable t => t Bool -> Bool
+and ts = All.unwrap $ foldMap All ts
+
+{--
+    'or' returns the disjunction of a container of Bools.  For the
+    result to be *false*, the container must be finite; *true*, however,
+    results from a *true* value finitely far from the left end.
+-}
+or :: Foldable t => t Bool -> Bool
+or ts = getAny $ foldMap Any ts
+
+---  Determines whether any element of the structure satisfies the predicate.
+any :: Foldable t => (a -> Bool) -> t a -> Bool
+any p ts = getAny $ foldMap (Any . p) ts
+
+--- Determines whether all elements of the structure satisfy the predicate.
+all :: Foldable t => (a -> Bool) -> t a -> Bool
+all p ts = getAll $ foldMap (All . p) ts
+
+--- The 'sum' function computes the sum of the numbers of a structure.
+sum :: (Foldable t, Num a) => t a -> a
+sum ts = getSum $ foldMap Sum ts
+
+---  The 'product' function computes the product of the numbers of a structure.
+product :: (Foldable t, Num a) => t a -> a
+product ts = getProduct $ foldMap Product ts
+
+--- The largest element of a non-empty structure.
+maximum :: (Foldable t, Ord a) => t a -> a
+maximum ts = foldr1 Prelude.max ts
+
+{-- The largest element of a non-empty structure with respect to the
+    given comparison function. -}
+maximumBy :: Foldable t => (a -> a -> Ordering) -> t a -> a
+maximumBy cmp ts = foldr1 max' ts where
+   max' x y = case cmp x y of
+                   Gt -> x
+                   _  -> y
+                        
+--- The least element of a non-empty structure.
+minimum :: (Foldable t, Ord a) => t a -> a
+minimum ts = foldr1 Prelude.min ts
+
+{-- 
+    The least element of a non-empty structure with respect to the
+    given comparison function.
+-}
+minimumBy :: Foldable t => (a -> a -> Ordering) -> t a -> a
+minimumBy cmp ts = foldr1 min' ts where
+   min' x y = case cmp x y of
+                   Gt -> y
+                   _  -> x
+
+---  Does the element occur in the structure?
+elem :: (Foldable t, Eq a) => a -> t a -> Bool
+elem t ts = any (t ==) ts
+
+---  'notElem' is the negation of 'elem'.
+notElem :: (Foldable t, Eq a) => a -> t a -> Bool
+notElem t ts = not $ elem t ts
+
+{--
+    The 'find' function takes a predicate and a structure and returns
+    the leftmost element of the structure matching the predicate, or
+    'Nothing' if there is no such element.
+-}
+find :: Foldable t => (a -> Bool) -> t a -> Maybe a
+find p ts = listToMaybe $ concatMap (\ x -> if p x then [x] else []) ts
+    
+instance Foldable Maybe where
+    foldr _ z Nothing = z
+    foldr f z (Just x) = f x z
+
+    foldl _ z Nothing = z
+    foldl f z (Just x) = f z x
+  
+instance Foldable [] where
+    foldr = Prelude.foldr
+    foldl = Prelude.fold    -- Prelude.foldl is considered harmful
+      
+instance Foldable Identity where
+    foldMap f (Identity x) = f x

@@ -1,0 +1,1360 @@
+%%
+%% %CopyrightBegin%
+%%
+%% Copyright Ericsson AB 2008-2020. All Rights Reserved.
+%%
+%% Licensed under the Apache License, Version 2.0 (the "License");
+%% you may not use this file except in compliance with the License.
+%% You may obtain a copy of the License at
+%%
+%%     http://www.apache.org/licenses/LICENSE-2.0
+%%
+%% Unless required by applicable law or agreed to in writing, software
+%% distributed under the License is distributed on an "AS IS" BASIS,
+%% WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+%% See the License for the specific language governing permissions and
+%% limitations under the License.
+%%
+%% %CopyrightEnd%
+%%
+
+%%
+-module(public_key_SUITE).
+
+-include_lib("common_test/include/ct.hrl").
+-include_lib("public_key/include/public_key.hrl").
+
+-export([
+         suite/0,
+         all/0,
+         groups/0,
+         init_per_suite/1,
+         end_per_suite/1,
+         init_per_group/2,
+         end_per_group/2,
+         init_per_testcase/2,
+         init_common_per_testcase/1,
+         end_per_testcase/2,
+         app/0,
+         app/1,
+         appup/0,
+         appup/1,
+         dsa_pem/0,
+         dsa_pem/1,
+         dsa_priv_pkcs8/0,
+         dsa_priv_pkcs8/1,
+         rsa_pem/0,
+         rsa_pem/1,
+         rsa_pss_pss_pem/0,
+         rsa_pss_pss_pem/1,
+         rsa_priv_pkcs8/0,
+         rsa_priv_pkcs8/1,
+         ec_pem/0,
+         ec_pem/1,
+         ec_pem2/0,
+         ec_pem2/1,
+         ec_priv_pkcs8/0,
+         ec_priv_pkcs8/1,
+         eddsa_priv_pkcs8/0,
+         eddsa_priv_pkcs8/1,
+         eddsa_priv_rfc5958/0,
+         eddsa_priv_rfc5958/1,
+         init_ec_pem_encode_generated/1,
+         ec_pem_encode_generated/0,
+         ec_pem_encode_generated/1,
+         encrypted_pem/0,
+         encrypted_pem/1,
+         dh_pem/0,
+         dh_pem/1,
+         pkcs10_pem/0,
+         pkcs10_pem/1,
+         pkcs7_pem/0,
+         pkcs7_pem/1,
+         cert_pem/0,
+         cert_pem/1,
+         encrypt_decrypt/0,
+         encrypt_decrypt/1,
+         rsa_sign_verify/0,
+         rsa_sign_verify/1,
+         rsa_pss_sign_verify/0,
+         rsa_pss_sign_verify/1,
+         dsa_sign_verify/0,
+         dsa_sign_verify/1,
+         pkix/0,
+         pkix/1,
+         pkix_countryname/0,
+         pkix_countryname/1,
+         pkix_emailaddress/0,
+         pkix_emailaddress/1,
+         pkix_path_validation/0,
+         pkix_path_validation/1,
+         pkix_path_validation_root_expired/0,
+         pkix_path_validation_root_expired/1,
+         pkix_verify_hostname_cn/1,
+         pkix_verify_hostname_subjAltName/1,
+         pkix_verify_hostname_options/1,
+         pkix_verify_hostname_subjAltName_IP/1,
+         pkix_iso_rsa_oid/0,
+         pkix_iso_rsa_oid/1,
+         pkix_iso_dsa_oid/0,
+         pkix_iso_dsa_oid/1,
+         pkix_dsa_sha2_oid/0,
+         pkix_dsa_sha2_oid/1,
+         pkix_crl/0,
+         pkix_crl/1,
+         general_name/0,
+         general_name/1,
+         pkix_hash_type/0,
+         pkix_hash_type/1,
+         pkix_test_data_all_default/0,
+         pkix_test_data_all_default/1,
+         pkix_test_data/0,
+         pkix_test_data/1,
+         short_cert_issuer_hash/0,
+         short_cert_issuer_hash/1,
+         short_crl_issuer_hash/0,
+         short_crl_issuer_hash/1,
+         gen_ec_param_prime_field/0,
+         gen_ec_param_prime_field/1,
+         gen_ec_param_char_2_field/0,
+         gen_ec_param_char_2_field/1
+        ]).
+
+-define(TIMEOUT, 120000). % 2 min
+
+
+%%--------------------------------------------------------------------
+%% Common Test interface functions -----------------------------------
+%%--------------------------------------------------------------------
+
+suite() -> 
+    [].
+
+all() -> 
+    [app, 
+     appup,
+     {group, pem_decode_encode},
+     encrypt_decrypt,
+     {group, sign_verify},
+     pkix, 
+     pkix_countryname, 
+     pkix_emailaddress, 
+     pkix_path_validation,
+     pkix_path_validation_root_expired,
+     pkix_iso_rsa_oid, 
+     pkix_iso_dsa_oid, 
+     pkix_dsa_sha2_oid,
+     pkix_crl, 
+     pkix_hash_type,
+     general_name,
+     pkix_verify_hostname_cn,
+     pkix_verify_hostname_subjAltName,
+     pkix_verify_hostname_subjAltName_IP,
+     pkix_verify_hostname_options,
+     pkix_test_data_all_default,
+     pkix_test_data,
+     short_cert_issuer_hash, 
+     short_crl_issuer_hash
+    ].
+
+groups() -> 
+    [{pem_decode_encode, [], [dsa_pem, rsa_pem, rsa_pss_pss_pem, ec_pem, encrypted_pem,
+			      dh_pem, cert_pem, pkcs7_pem, pkcs10_pem, ec_pem2,
+			      rsa_priv_pkcs8, dsa_priv_pkcs8, ec_priv_pkcs8,
+                              eddsa_priv_pkcs8, eddsa_priv_rfc5958,
+                              ec_pem_encode_generated,
+                              gen_ec_param_prime_field, gen_ec_param_char_2_field
+                             ]},
+     {sign_verify, [], [rsa_sign_verify, rsa_pss_sign_verify, dsa_sign_verify]}
+    ].
+%%-------------------------------------------------------------------
+init_per_suite(Config) ->
+    application:stop(crypto),
+    try crypto:start() of
+	ok ->
+	    application:start(asn1),
+	    Config
+    catch _:_ ->
+	    {skip, "Crypto did not start"}
+    end.
+
+end_per_suite(_Config) ->
+    application:stop(asn1),
+    application:stop(crypto).
+
+%%-------------------------------------------------------------------
+init_per_group(_GroupName, Config) ->
+    Config.
+
+end_per_group(_GroupName, Config) ->
+    Config.
+%%-------------------------------------------------------------------
+
+init_per_testcase(pkix_test_data_all_default, Config) ->
+     case crypto:ec_curves() of
+         [] ->
+             {skip, missing_ecc_support};
+         _ ->
+             init_common_per_testcase(Config)
+     end;
+
+init_per_testcase(gen_ec_param_prime_field=TC, Config) ->
+    init_per_testcase_gen_ec_param(TC, secp521r1, Config);
+
+init_per_testcase(gen_ec_param_char_2_field=TC, Config) ->
+    init_per_testcase_gen_ec_param(TC, sect571r1, Config);
+
+init_per_testcase(rsa_pss_sign_verify, Config) ->
+    Supports = crypto:supports(),
+    RSAOpts = proplists:get_value(rsa_opts, Supports),
+
+    case lists:member(rsa_pkcs1_pss_padding, RSAOpts) 
+        andalso lists:member(rsa_pss_saltlen, RSAOpts) 
+        andalso lists:member(rsa_mgf1_md, RSAOpts) of
+        true ->
+            Config;
+        false ->
+            {skip, not_supported_by_crypto}
+    end;
+init_per_testcase(TestCase, Config) ->
+    case TestCase of
+        ec_pem_encode_generated ->
+            init_ec_pem_encode_generated(Config);
+	_ -> init_common_per_testcase(Config)
+    end.
+	
+init_common_per_testcase(Config0) ->
+    Config = lists:keydelete(watchdog, 1, Config0),
+    Dog = ct:timetrap(?TIMEOUT),
+    [{watchdog, Dog} | Config].
+
+
+end_per_testcase(_TestCase, _Config) ->
+    ok.
+
+%%--------------------------------------------------------------------
+%% Test Cases --------------------------------------------------------
+%%--------------------------------------------------------------------
+
+app() ->
+    [{doc, "Test that the public_key app file is ok"}].
+app(Config) when is_list(Config) ->
+    ok = ?t:app_test(public_key).
+
+%%--------------------------------------------------------------------
+
+appup() ->
+    [{doc, "Test that the public_key appup file is ok"}].
+appup(Config) when is_list(Config) ->
+    ok = ?t:appup_test(public_key).
+
+%%--------------------------------------------------------------------
+
+dsa_pem() ->
+    [{doc, "DSA PEM-file decode/encode"}].
+dsa_pem(Config) when is_list(Config) ->
+    Datadir = proplists:get_value(data_dir, Config),
+
+     [{'DSAPrivateKey', DerDSAKey, not_encrypted} = Entry0 ] =
+	erl_make_certs:pem_to_der(filename:join(Datadir, "dsa.pem")),
+
+    DSAKey = public_key:der_decode('DSAPrivateKey', DerDSAKey),
+
+    DSAKey = public_key:pem_entry_decode(Entry0),
+
+    {ok, DSAPubPem} = file:read_file(filename:join(Datadir, "dsa_pub.pem")),
+    [{'SubjectPublicKeyInfo', _, _} = PubEntry0] =
+        public_key:pem_decode(DSAPubPem),
+    DSAPubKey = public_key:pem_entry_decode(PubEntry0),
+    true = check_entry_type(DSAPubKey, 'DSAPublicKey'),
+    PubEntry0 = public_key:pem_entry_encode('SubjectPublicKeyInfo', DSAPubKey),
+    DSAPubPemNoEndNewLines = strip_superfluous_newlines(DSAPubPem),
+    DSAPubPemNoEndNewLines = strip_superfluous_newlines(public_key:pem_encode([PubEntry0])).
+
+dsa_priv_pkcs8() ->
+    [{doc, "DSA PKCS8 private key decode/encode"}].
+dsa_priv_pkcs8(Config) when is_list(Config) ->
+    Datadir = proplists:get_value(data_dir, Config),
+    {ok, DsaPem} = file:read_file(filename:join(Datadir, "dsa_key_pkcs8.pem")),
+    [{'PrivateKeyInfo', DerDSAKey, not_encrypted} = Entry0 ] = public_key:pem_decode(DsaPem),
+    DSAKey = public_key:der_decode('PrivateKeyInfo', DerDSAKey),
+    DSAKey = public_key:pem_entry_decode(Entry0),
+    true = check_entry_type(DSAKey, 'DSAPrivateKey'),
+    PrivEntry0 = public_key:pem_entry_encode('PrivateKeyInfo', DSAKey),
+    DSAPemNoEndNewLines = strip_superfluous_newlines(DsaPem),
+    DSAPemNoEndNewLines = strip_superfluous_newlines(public_key:pem_encode([PrivEntry0])).
+
+%%--------------------------------------------------------------------
+
+rsa_pem() ->
+    [{doc, "RSA PEM-file decode/encode"}].
+rsa_pem(Config) when is_list(Config) ->
+    Datadir = proplists:get_value(data_dir, Config),
+    [{'RSAPrivateKey', DerRSAKey, not_encrypted} =  Entry0 ] =
+	erl_make_certs:pem_to_der(filename:join(Datadir, "client_key.pem")),
+
+    RSAKey0 = public_key:der_decode('RSAPrivateKey', DerRSAKey),
+
+    RSAKey0 = public_key:pem_entry_decode(Entry0),
+    
+    [{'RSAPrivateKey', _, {_,_}} = Entry1] =
+	erl_make_certs:pem_to_der(filename:join(Datadir, "rsa.pem")),
+
+    true = check_entry_type(public_key:pem_entry_decode(Entry1, "abcd1234"),
+			    'RSAPrivateKey'),
+
+    {ok, RSAPubPem} = file:read_file(filename:join(Datadir, "rsa_pub.pem")),
+    [{'SubjectPublicKeyInfo', _, _} = PubEntry0] =
+        public_key:pem_decode(RSAPubPem),
+    RSAPubKey = public_key:pem_entry_decode(PubEntry0),
+    true = check_entry_type(RSAPubKey, 'RSAPublicKey'),
+    PubEntry0 = public_key:pem_entry_encode('SubjectPublicKeyInfo', RSAPubKey),
+    RSAPubPemNoEndNewLines = strip_superfluous_newlines(RSAPubPem),
+    RSAPubPemNoEndNewLines = strip_superfluous_newlines(public_key:pem_encode([PubEntry0])),
+
+    {ok, RSARawPem} = file:read_file(filename:join(Datadir, "rsa_pub_key.pem")),
+    [{'RSAPublicKey', _, _} = PubEntry1] =
+        public_key:pem_decode(RSARawPem),
+    RSAPubKey = public_key:pem_entry_decode(PubEntry1),
+    RSARawPemNoEndNewLines = strip_superfluous_newlines(RSARawPem),
+    RSARawPemNoEndNewLines = strip_superfluous_newlines(public_key:pem_encode([PubEntry1])).
+
+rsa_pss_pss_pem() ->
+    [{doc, "RSA PKCS8 RSASSA-PSS private key decode/encode"}].
+rsa_pss_pss_pem(Config) when is_list(Config) ->
+    Datadir = proplists:get_value(data_dir, Config),
+    {ok, RsaPem} = file:read_file(filename:join(Datadir, "rsa_pss_pss_key.pem")),
+    [{'PrivateKeyInfo', DerRSAKey, not_encrypted} = Entry0 ] = public_key:pem_decode(RsaPem),
+    {RSAKey, Parms} = public_key:der_decode('PrivateKeyInfo', DerRSAKey),
+    {RSAKey, Parms} = public_key:pem_entry_decode(Entry0),
+    true = check_entry_type(RSAKey, 'RSAPrivateKey'),
+    PrivEntry0 = public_key:pem_entry_encode('PrivateKeyInfo', {RSAKey, Parms}),
+    RSAPemNoEndNewLines = strip_superfluous_newlines(RsaPem),
+    RSAPemNoEndNewLines = strip_superfluous_newlines(public_key:pem_encode([PrivEntry0])).
+
+rsa_priv_pkcs8() ->
+    [{doc, "RSA PKCS8 private key decode/encode"}].
+rsa_priv_pkcs8(Config) when is_list(Config) ->
+    Datadir = proplists:get_value(data_dir, Config),
+    {ok, RsaPem} = file:read_file(filename:join(Datadir, "rsa_key_pkcs8.pem")),
+    [{'PrivateKeyInfo', DerRSAKey, not_encrypted} = Entry0 ] = public_key:pem_decode(RsaPem),
+    RSAKey = public_key:der_decode('PrivateKeyInfo', DerRSAKey),
+    RSAKey = public_key:pem_entry_decode(Entry0),
+    true = check_entry_type(RSAKey, 'RSAPrivateKey'),
+    PrivEntry0 = public_key:pem_entry_encode('PrivateKeyInfo', RSAKey),
+    RSAPemNoEndNewLines = strip_superfluous_newlines(RsaPem),
+    RSAPemNoEndNewLines = strip_superfluous_newlines(public_key:pem_encode([PrivEntry0])).
+
+%%--------------------------------------------------------------------
+
+ec_pem() ->
+    [{doc, "EC key PEM-file decode/encode"}].
+ec_pem(Config) when is_list(Config) ->
+    Datadir = proplists:get_value(data_dir, Config),
+    {ok, ECPubPem} = file:read_file(filename:join(Datadir, "ec_pubkey.pem")),
+    [{'SubjectPublicKeyInfo', _, _} = PubEntry0] =
+        public_key:pem_decode(ECPubPem),
+    ECPubKey = public_key:pem_entry_decode(PubEntry0),
+    true = check_entry_type(ECPubKey, 'ECPoint'),
+    PubEntry0 = public_key:pem_entry_encode('SubjectPublicKeyInfo', ECPubKey),
+    ECPubPemNoEndNewLines = strip_superfluous_newlines(ECPubPem),
+    ECPubPemNoEndNewLines = strip_superfluous_newlines(public_key:pem_encode([PubEntry0])),
+    
+    {ok, ECPrivPem} = file:read_file(filename:join(Datadir, "ec_key.pem")),
+    [{'EcpkParameters', _, not_encrypted} = Entry1,
+     {'ECPrivateKey', _, not_encrypted} = Entry2] = public_key:pem_decode(ECPrivPem),
+    
+    ECParams = public_key:pem_entry_decode(Entry1),
+    true = check_entry_type(ECParams, 'EcpkParameters'),
+    ECPrivKey = public_key:pem_entry_decode(Entry2),
+    true = check_entry_type(ECPrivKey, 'ECPrivateKey'),
+    true = check_entry_type(ECPrivKey#'ECPrivateKey'.parameters, 'EcpkParameters'),
+    ECPemNoEndNewLines = strip_superfluous_newlines(ECPrivPem),
+    ECPemNoEndNewLines = strip_superfluous_newlines(public_key:pem_encode([Entry1, Entry2])).
+    
+ec_pem2() ->
+    [{doc, "EC key w/explicit params PEM-file decode/encode"}].
+ec_pem2(Config) when is_list(Config) ->
+    Datadir = proplists:get_value(data_dir, Config),
+
+    %% Load key with explicit curve parameters.  Generated with...
+    %% openssl ecparam -name secp521r1 -genkey -param_enc explicit -out ec_key2.pem
+    {ok, ECPrivPem} = file:read_file(filename:join(Datadir, "ec_key2.pem")),
+    [{'EcpkParameters', _, not_encrypted} = Entry1,
+     {'ECPrivateKey', _, not_encrypted} = Entry2] = public_key:pem_decode(ECPrivPem),
+
+    ECParams = public_key:pem_entry_decode(Entry1),
+    true = check_entry_type(ECParams, 'EcpkParameters'),
+    ECPrivKey = public_key:pem_entry_decode(Entry2),
+    true = check_entry_type(ECPrivKey, 'ECPrivateKey'),
+    true = check_entry_type(ECPrivKey#'ECPrivateKey'.parameters, 'EcpkParameters'),
+    ECPemNoEndNewLines = strip_superfluous_newlines(ECPrivPem),
+    ECPemNoEndNewLines = strip_superfluous_newlines(public_key:pem_encode([Entry1, Entry2])).
+
+ec_priv_pkcs8() ->
+    [{doc, "EC PKCS8 private key decode/encode"}].
+ec_priv_pkcs8(Config) when is_list(Config) ->
+    Datadir = proplists:get_value(data_dir, Config),
+    {ok, ECPrivPem} = file:read_file(filename:join(Datadir, "ec_key_pkcs8.pem")),
+    [{'PrivateKeyInfo', _, not_encrypted} = PKCS8Key] = public_key:pem_decode(ECPrivPem),
+    ECPrivKey = public_key:pem_entry_decode(PKCS8Key),
+    true = check_entry_type(ECPrivKey, 'ECPrivateKey'),
+    true = check_entry_type(ECPrivKey#'ECPrivateKey'.parameters, 'EcpkParameters'),
+    PrivEntry0 = public_key:pem_entry_encode('PrivateKeyInfo', ECPrivKey),
+    ECPemNoEndNewLines = strip_superfluous_newlines(ECPrivPem),
+    ECPemNoEndNewLines = strip_superfluous_newlines(public_key:pem_encode([PrivEntry0])).
+
+eddsa_priv_pkcs8() ->
+    [{doc, "EDDSA PKCS8 private key decode/encode"}].
+eddsa_priv_pkcs8(Config) when is_list(Config) ->
+    Datadir = proplists:get_value(data_dir, Config),
+    {ok, ECPrivPem} = file:read_file(filename:join(Datadir, "eddsa_key_pkcs8.pem")),
+    [{'PrivateKeyInfo', _, not_encrypted} = PKCS8Key] = public_key:pem_decode(ECPrivPem),
+    ECPrivKey = public_key:pem_entry_decode(PKCS8Key),
+    true = check_entry_type(ECPrivKey, 'ECPrivateKey'),
+    true = ECPrivKey#'ECPrivateKey'.parameters == {namedCurve, ?'id-Ed25519'},
+    PrivEntry0 = public_key:pem_entry_encode('PrivateKeyInfo', ECPrivKey),
+    ECPemNoEndNewLines = strip_superfluous_newlines(ECPrivPem),
+    ECPemNoEndNewLines = strip_superfluous_newlines(public_key:pem_encode([PrivEntry0])).
+
+eddsa_priv_rfc5958() ->
+    [{doc, "EDDSA PKCS8 private key decode/encode"}].
+eddsa_priv_rfc5958(Config) when is_list(Config) ->
+    Datadir = proplists:get_value(data_dir, Config),
+    {ok, ECPrivPem} = file:read_file(filename:join(Datadir, "eddsa_key_rfc5958.pem")),
+    [{'PrivateKeyInfo', _, not_encrypted} = PKCS8Key] = public_key:pem_decode(ECPrivPem),
+    ECPrivKey = public_key:pem_entry_decode(PKCS8Key),
+    true = check_entry_type(ECPrivKey, 'ECPrivateKey'),
+    true = ECPrivKey#'ECPrivateKey'.parameters == {namedCurve, ?'id-Ed25519'},
+    PrivEntry0 = public_key:pem_entry_encode('OneAsymmetricKey', ECPrivKey),
+    ECPemNoEndNewLines = strip_superfluous_newlines(ECPrivPem),
+    ECPemNoEndNewLines = strip_superfluous_newlines(public_key:pem_encode([PrivEntry0])).
+
+init_ec_pem_encode_generated(Config) ->
+    case catch true = lists:member('secp384r1', crypto:ec_curves()) of
+        {'EXIT', _} -> {skip, {'secp384r1', not_supported}};
+        _           -> init_common_per_testcase(Config)
+    end.
+
+ec_pem_encode_generated() ->
+    [{doc, "PEM-encode generated EC key"}].
+ec_pem_encode_generated(_Config) ->
+
+    Key1 = public_key:generate_key({namedCurve, 'secp384r1'}),
+    public_key:pem_entry_encode('ECPrivateKey', Key1),
+
+    Key2 = public_key:generate_key({namedCurve, ?'secp384r1'}),
+    public_key:pem_entry_encode('ECPrivateKey', Key2).
+
+
+%%--------------------------------------------------------------------
+
+encrypted_pem() ->
+    [{doc, "Encrypted PEM-file decode/encode"}].
+encrypted_pem(Config) when is_list(Config) ->
+    Datadir = proplists:get_value(data_dir, Config),
+
+    [{'RSAPrivateKey', DerRSAKey, not_encrypted}] =
+	erl_make_certs:pem_to_der(filename:join(Datadir, "client_key.pem")),
+
+    RSAKey = public_key:der_decode('RSAPrivateKey', DerRSAKey),
+
+    Salt0 = crypto:strong_rand_bytes(8),
+    Entry0 = public_key:pem_entry_encode('RSAPrivateKey', RSAKey,
+					 {{"DES-EDE3-CBC", Salt0}, "1234abcd"}),
+    RSAKey = public_key:pem_entry_decode(Entry0,"1234abcd"),
+    Des3KeyFile = filename:join(Datadir, "des3_client_key.pem"),
+    erl_make_certs:der_to_pem(Des3KeyFile, [Entry0]),
+    [{'RSAPrivateKey', _, {"DES-EDE3-CBC", Salt0}}] =
+	erl_make_certs:pem_to_der(Des3KeyFile),
+
+    Salt1 = crypto:strong_rand_bytes(8),
+    Entry1 = public_key:pem_entry_encode('RSAPrivateKey', RSAKey,
+					   {{"DES-CBC", Salt1}, "4567efgh"}),
+    DesKeyFile = filename:join(Datadir, "des_client_key.pem"),
+    erl_make_certs:der_to_pem(DesKeyFile, [Entry1]),
+    [{'RSAPrivateKey', _, {"DES-CBC", Salt1}} =Entry2] =
+	erl_make_certs:pem_to_der(DesKeyFile),
+    {ok, Pem} = file:read_file(DesKeyFile),
+    check_encapsulated_header(Pem),
+    true = check_entry_type(public_key:pem_entry_decode(Entry2, "4567efgh"),
+			     'RSAPrivateKey').
+    
+%%--------------------------------------------------------------------
+
+dh_pem() ->
+    [{doc, "DH parametrs PEM-file decode/encode"}].
+dh_pem(Config) when is_list(Config) ->
+    Datadir = proplists:get_value(data_dir, Config),
+    [{'DHParameter', _DerDH, not_encrypted} = Entry] =
+	erl_make_certs:pem_to_der(filename:join(Datadir, "dh.pem")),
+    asn1_encode_decode(Entry).
+
+%%--------------------------------------------------------------------
+
+pkcs10_pem() ->
+   [{doc, "PKCS-10 PEM-file decode/encode"}].
+pkcs10_pem(Config) when is_list(Config) ->
+    Datadir = proplists:get_value(data_dir, Config),
+    [{'CertificationRequest', _DerPKCS10, not_encrypted} = Entry] =
+	erl_make_certs:pem_to_der(filename:join(Datadir, "req.pem")),
+    asn1_encode_decode(Entry).
+%%--------------------------------------------------------------------
+pkcs7_pem() ->
+    [{doc, "PKCS-7 PEM-file decode/encode"}].
+pkcs7_pem(Config) when is_list(Config) ->
+    Datadir = proplists:get_value(data_dir, Config),
+    [{'ContentInfo', _, not_encrypted} = Entry0] =
+	erl_make_certs:pem_to_der(filename:join(Datadir, "pkcs7_cert.pem")),
+    [{'ContentInfo', _, not_encrypted} = Entry1] =
+	erl_make_certs:pem_to_der(filename:join(Datadir, "pkcs7_ext.pem")),
+    asn1_encode_decode(Entry0),
+    asn1_encode_decode(Entry1).
+      
+%%--------------------------------------------------------------------
+cert_pem() ->
+    [{doc, "Certificate PEM-file decode/encode"}].
+cert_pem(Config) when is_list(Config) ->
+    Datadir = proplists:get_value(data_dir, Config),
+   
+    [{'Certificate', _, not_encrypted} = Entry0] =  
+	erl_make_certs:pem_to_der(filename:join(Datadir, "client_cert.pem")),
+    
+    asn1_encode_decode(Entry0),
+    
+    [{'Certificate', _, not_encrypted} = Entry1, 
+     {'Certificate', _, not_encrypted} = Entry2] = 
+        erl_make_certs:pem_to_der(filename:join(Datadir, "cacerts.pem")),
+    
+    asn1_encode_decode(Entry1),
+    asn1_encode_decode(Entry2).
+
+%%--------------------------------------------------------------------
+encrypt_decrypt() ->
+    [{doc, "Test public_key:encrypt_private and public_key:decrypt_public"}].
+encrypt_decrypt(Config) when is_list(Config) -> 
+    {PrivateKey, _DerKey} = erl_make_certs:gen_rsa(64),
+    #'RSAPrivateKey'{modulus=Mod, publicExponent=Exp} = PrivateKey,
+    PublicKey = #'RSAPublicKey'{modulus=Mod, publicExponent=Exp},
+    Msg = list_to_binary(lists:duplicate(5, "Foo bar 100")),
+    RsaEncrypted = public_key:encrypt_private(Msg, PrivateKey),
+    Msg = public_key:decrypt_public(RsaEncrypted, PublicKey),
+    RsaEncrypted2 = public_key:encrypt_public(Msg, PublicKey),
+    Msg = public_key:decrypt_private(RsaEncrypted2, PrivateKey),
+    ok.
+       
+%%--------------------------------------------------------------------
+rsa_sign_verify() ->
+    [{doc, "Checks that we can sign and verify rsa signatures."}].
+rsa_sign_verify(Config) when is_list(Config) ->
+    Ca = {_, CaKey} = erl_make_certs:make_cert([]),
+    {Cert1, _} = erl_make_certs:make_cert([{key, dsa}, {issuer, Ca}]),
+    PrivateRSA = #'RSAPrivateKey'{modulus=Mod, publicExponent=Exp} = 
+	public_key:pem_entry_decode(CaKey),
+    PublicRSA = #'RSAPublicKey'{modulus=Mod, publicExponent=Exp},
+    true = public_key:pkix_verify(Cert1, PublicRSA),
+
+    Msg = list_to_binary(lists:duplicate(5, "Foo bar 100")),
+    RSASign = public_key:sign(Msg, sha, PrivateRSA),
+    true = public_key:verify(Msg, sha, RSASign, PublicRSA), 
+    false = public_key:verify(<<1:8, Msg/binary>>, sha, RSASign, PublicRSA), 
+    false = public_key:verify(Msg, sha, <<1:8, RSASign/binary>>, PublicRSA), 
+
+    RSASign1 = public_key:sign(Msg, md5, PrivateRSA),
+    true = public_key:verify(Msg, md5, RSASign1, PublicRSA).
+    
+%%--------------------------------------------------------------------
+rsa_pss_sign_verify() ->
+    [{doc, "Checks that we can sign and verify rsa pss signatures."}].
+rsa_pss_sign_verify(Config) when is_list(Config) ->
+    CertChainConf  = #{server_chain => 
+                           #{root => [{digest, sha256}, {hardcode_rsa_key(1), pss_params(sha256)}],
+                             intermediates => [[]],
+                             peer => [{digest, sha256}, {hardcode_rsa_key(2), pss_params(sha256)}]},
+                       client_chain => 
+                           #{root => [{digest, sha256}, {hardcode_rsa_key(3), pss_params(sha256)}],
+                             intermediates => [[]],
+                             peer => [{digest, sha256}, {hardcode_rsa_key(4), pss_params(sha256)}]}},
+    #{client_config := ClientConf} = public_key:pkix_test_data(CertChainConf),
+    Cert = proplists:get_value(cert, ClientConf),
+    {#'RSAPrivateKey'{modulus=Mod, publicExponent=Exp}, Parms} = {hardcode_rsa_key(4), pss_params(sha256)},
+           
+    public_key:pkix_verify(Cert, {#'RSAPublicKey'{modulus=Mod, publicExponent=Exp}, Parms}).
+    
+%%--------------------------------------------------------------------
+
+dsa_sign_verify() ->
+    [{doc, "Checks that we can sign and verify dsa signatures."}].
+dsa_sign_verify(Config) when is_list(Config) ->
+    Ca = erl_make_certs:make_cert([]),
+    CertInfo = {_,CertKey1} = erl_make_certs:make_cert([{key, dsa}, {issuer, Ca}]),
+    {Cert2,_CertKey} = erl_make_certs:make_cert([{issuer, CertInfo}]),
+
+    #'DSAPrivateKey'{p=P, q=Q, g=G, y=Y, x=_X} =
+	public_key:pem_entry_decode(CertKey1),
+    true = public_key:pkix_verify(Cert2, {Y, #'Dss-Parms'{p=P, q=Q, g=G}}),
+
+    Datadir = proplists:get_value(data_dir, Config),
+    [DsaKey = {'DSAPrivateKey', _, _}] = 
+	erl_make_certs:pem_to_der(filename:join(Datadir, "dsa.pem")), 
+    DSAPrivateKey = public_key:pem_entry_decode(DsaKey),
+    #'DSAPrivateKey'{p=P1, q=Q1, g=G1, y=Y1, x=_X1} = DSAPrivateKey,
+
+    Msg = list_to_binary(lists:duplicate(5, "Foo bar 100")),
+    DSASign = public_key:sign(Msg, sha, DSAPrivateKey),
+    DSAPublicKey = Y1,
+    DSAParams = #'Dss-Parms'{p=P1, q=Q1, g=G1},
+    true = public_key:verify(Msg, sha, DSASign, {DSAPublicKey, DSAParams}), 
+    false = public_key:verify(<<1:8, Msg/binary>>, sha, DSASign, 
+			      {DSAPublicKey, DSAParams}), 
+    false = public_key:verify(Msg, sha, <<1:8, DSASign/binary>>, 
+			      {DSAPublicKey, DSAParams}), 
+    
+    Digest = crypto:hash(sha,Msg),
+    DigestSign = public_key:sign(Digest, none, DSAPrivateKey),
+    true = public_key:verify(Digest, none, DigestSign, {DSAPublicKey, DSAParams}), 
+    <<_:8, RestDigest/binary>> = Digest,
+    false = public_key:verify(<<1:8, RestDigest/binary>>, none, DigestSign, 
+			      {DSAPublicKey, DSAParams}), 
+    false = public_key:verify(Digest, none, <<1:8, DigestSign/binary>>, 
+			      {DSAPublicKey, DSAParams}).
+
+%%--------------------------------------------------------------------
+pkix() ->
+    [{doc, "Misc pkix tests not covered elsewhere"}].
+pkix(Config) when is_list(Config) ->
+    Datadir = proplists:get_value(data_dir, Config),
+    Certs0 = erl_make_certs:pem_to_der(filename:join(Datadir, "cacerts.pem")),
+    Certs1 = erl_make_certs:pem_to_der(filename:join(Datadir, "client_cert.pem")),
+    TestTransform = fun({'Certificate', CertDer, not_encrypted}) ->
+			    PlainCert = public_key:pkix_decode_cert(CertDer, plain),
+			    OtpCert = public_key:pkix_decode_cert(CertDer, otp),
+			    CertDer = 
+				public_key:pkix_encode('OTPCertificate', OtpCert, otp),
+			    CertDer = 
+				public_key:pkix_encode('Certificate', PlainCert, plain),
+			    OTPTBS = OtpCert#'OTPCertificate'.tbsCertificate,
+			    OTPSubj = OTPTBS#'OTPTBSCertificate'.subject, 
+			    DNEncoded = public_key:pkix_encode('Name', OTPSubj, otp),
+			    PlainTBS = PlainCert#'Certificate'.tbsCertificate,
+			    Subj2 = PlainTBS#'TBSCertificate'.subject,
+			    DNEncoded = public_key:pkix_encode('Name', Subj2, plain),
+
+			    false = public_key:pkix_is_fixed_dh_cert(CertDer)
+		    end,
+    [TestTransform(Cert) || Cert <- Certs0 ++ Certs1],
+
+    Root = element(2, hd(Certs0)),
+    Peer = element(2, hd(Certs1)), 
+
+    true = public_key:pkix_is_self_signed(Root),
+    false = public_key:pkix_is_self_signed(Peer),
+
+    CaIds = [element(2, public_key:pkix_issuer_id(Cert, self)) || 
+		{'Certificate', Cert, _} <- Certs0],
+    {ok, IssuerId} = 
+	public_key:pkix_issuer_id(Peer, other),
+    
+    {ok, Id} = public_key:pkix_issuer_id(Root, self),
+    Id = public_key:pkix_subject_id(Root),
+
+    true = lists:member(IssuerId, CaIds),
+
+    %% Should be normalized allready
+    TestStr   = {rdnSequence, 
+		 [[{'AttributeTypeAndValue', {2,5,4,3},{printableString,"ERLANGCA"}}],
+		  [{'AttributeTypeAndValue', {2,5,4,3},{printableString," erlang  ca "}}]]},
+    VerifyStr = {rdnSequence, 
+		 [[{'AttributeTypeAndValue', {2,5,4,3},{printableString,"erlangca"}}],
+		  [{'AttributeTypeAndValue', {2,5,4,3},{printableString,"erlang ca"}}]]},   
+    VerifyStr = public_key:pkix_normalize_name(TestStr).
+    
+  
+%%--------------------------------------------------------------------
+pkix_countryname() ->
+    [{doc, "Test workaround for certs that code x509countryname as utf8"}].
+pkix_countryname(Config) when is_list(Config) ->
+    Cert = incorrect_countryname_pkix_cert(),
+    OTPCert = public_key:pkix_decode_cert(Cert, otp),
+    TBSCert = OTPCert#'OTPCertificate'.tbsCertificate,
+    Issuer = TBSCert#'OTPTBSCertificate'.issuer,
+    Subj   = TBSCert#'OTPTBSCertificate'.subject,
+    check_countryname(Issuer),
+    check_countryname(Subj).
+
+%%--------------------------------------------------------------------
+pkix_emailaddress() ->
+    [{doc, "Test workaround for certs that code emailAddress as utf8"}].
+pkix_emailaddress(Config) when is_list(Config) ->
+    Cert = incorrect_emailaddress_pkix_cert(),
+    OTPCert = public_key:pkix_decode_cert(Cert, otp),
+    TBSCert = OTPCert#'OTPCertificate'.tbsCertificate,
+    Issuer = TBSCert#'OTPTBSCertificate'.issuer,
+    Subj   = TBSCert#'OTPTBSCertificate'.subject,
+    check_emailaddress(Issuer),
+    check_emailaddress(Subj).
+
+%%--------------------------------------------------------------------
+pkix_path_validation() ->
+    [{doc, "Test PKIX path validation"}].
+pkix_path_validation(Config) when is_list(Config) ->
+    CaK = {Trusted,_} = 
+	erl_make_certs:make_cert([{key, dsa},
+			     {subject, [
+					{name, "Public Key"},
+					{?'id-at-name', {printableString, "public_key"}},
+					{?'id-at-pseudonym', {printableString, "pubkey"}},
+					{city, "Stockholm"},
+					{country, "SE"},
+					{org, "erlang"},
+					{org_unit, "testing dep"}
+				       ]}
+			    ]),
+    ok = erl_make_certs:write_pem("./", "public_key_cacert", CaK),
+
+    CertK1 = {Cert1, _} = erl_make_certs:make_cert([{issuer, CaK}]),
+    CertK2 = {Cert2,_} = erl_make_certs:make_cert([{issuer, CertK1}, 
+					      {digest, md5}, {extensions, false}]),
+    ok = erl_make_certs:write_pem("./", "public_key_cert", CertK2),
+    
+    {ok, _} = public_key:pkix_path_validation(Trusted, [Cert1], []),
+    
+    {error, {bad_cert,invalid_issuer}} = 
+	public_key:pkix_path_validation(Trusted, [Cert2], []),
+    
+    {ok, _} = public_key:pkix_path_validation(Trusted, [Cert1, Cert2], []),    
+    {error, issuer_not_found} = public_key:pkix_issuer_id(Cert2, other),
+
+    CertK3 = {Cert3,_}  = erl_make_certs:make_cert([{issuer, CertK1}, 
+					       {extensions, [{basic_constraints, false}]}]),
+    {Cert4,_}  = erl_make_certs:make_cert([{issuer, CertK3}, {extensions, [{key_usage, undefined}]}]),
+
+    {error, {bad_cert,missing_basic_constraint}} =
+	public_key:pkix_path_validation(Trusted, [Cert1, Cert3,Cert4], []),
+
+    VerifyFunAndState0  = {fun(_,{bad_cert, missing_basic_constraint}, UserState) ->
+				   {valid, UserState};
+			      (_,{bad_cert, _} = Reason, _) ->
+				   {fail, Reason};
+			      (_,{extension, _}, UserState) ->
+				   {unknown, UserState};
+			      (_, valid, UserState) ->
+				   {valid, UserState};
+			      (_, valid_peer, UserState) ->
+				   {valid, UserState}
+			   end, []},
+    {ok, _} =
+	public_key:pkix_path_validation(Trusted, [Cert1, Cert3,Cert4],
+					[{verify_fun, VerifyFunAndState0}]),
+
+    {error, {bad_cert, unknown_ca}} =
+	public_key:pkix_path_validation(unknown_ca, [Cert1, Cert3, Cert4], []),
+
+    VerifyFunAndState1 =
+	{fun(_,{bad_cert, unknown_ca}, UserState) ->
+		 {valid, UserState};
+	    (_,{bad_cert, _} = Reason, _) ->
+		 {fail, Reason};
+	    (_,{extension, _}, UserState) ->
+		 {unknown, UserState};
+	    (_, valid, UserState) ->
+		 {valid, UserState}
+	 end, []},
+
+    {ok, _} =
+	public_key:pkix_path_validation(unknown_ca, [Cert1], [{verify_fun,
+							      VerifyFunAndState1}]),
+
+    VerifyFunAndState2 =
+        {fun(_, {bad_cert, selfsigned_peer}, _UserState) ->
+                  {fail, custom_reason};
+            (_,{extension, _}, UserState) ->
+		          {unknown, UserState};
+	        (_, valid, UserState) ->
+		          {valid, UserState}
+        end, []},
+
+    {error, custom_reason} =
+        public_key:pkix_path_validation(selfsigned_peer, [Trusted], [{verify_fun,
+                                                                      VerifyFunAndState2}]).
+pkix_path_validation_root_expired() ->
+    [{doc, "Test root expiration so that it does not fall between chairs"}].
+pkix_path_validation_root_expired(Config) when is_list(Config) ->
+    {Year, Month, Day} = date(),
+    SRoot = public_key:pkix_test_root_cert("OTP test server ROOT", [{validity, {{Year-2, Month, Day}, 
+                                                                                {Year-1, Month, Day}}}]),
+    #{server_config := Conf} = public_key:pkix_test_data(#{server_chain => #{root => SRoot,
+                                                                             intermediates => [],
+                                                                             peer => []},
+                                                           client_chain => #{root => [], 
+                                                                             intermediates => [],
+                                                                             peer => []}}),
+    [ICA, Root] = proplists:get_value(cacerts, Conf),
+    true = public_key:pkix_is_self_signed(Root),
+    Peer = proplists:get_value(cert, Conf),
+    {error, {bad_cert, cert_expired}} = public_key:pkix_path_validation(Root, [ICA, Peer], []).
+    
+%%--------------------------------------------------------------------
+%% To generate the PEM file contents:
+%%
+%% openssl req -x509 -nodes -newkey rsa:1024 -keyout /dev/null -subj '/C=SE/CN=example.com/CN=*.foo.example.com/CN=a*b.bar.example.com/O=erlang.org' > public_key_SUITE_data/pkix_verify_hostname_cn.pem
+%%
+%% Note that the same pem-file is used in pkix_verify_hostname_options/1
+%%
+%% Subject: C=SE, CN=example.com, CN=*.foo.example.com, CN=a*b.bar.example.com, O=erlang.org
+%% extensions = no subjAltName
+
+pkix_verify_hostname_cn(Config) ->
+    DataDir = proplists:get_value(data_dir, Config),
+    {ok,Bin} = file:read_file(filename:join(DataDir,"pkix_verify_hostname_cn.pem")),
+    Cert = public_key:pkix_decode_cert(element(2,hd(public_key:pem_decode(Bin))), otp),
+
+    %% Check that 1) only CNs are checked,
+    %%            2) an empty label does not match a wildcard and
+    %%            3) a wildcard does not match more than one label
+    false = public_key:pkix_verify_hostname(Cert, [{dns_id,"erlang.org"},
+						   {dns_id,"foo.EXAMPLE.com"},
+						   {dns_id,"b.a.foo.EXAMPLE.com"}]),
+
+    %% Check that a hostname is extracted from a https-uri and used for checking:
+    true =  public_key:pkix_verify_hostname(Cert, [{uri_id,"HTTPS://EXAMPLE.com"}]),
+
+    %% Check wildcard matching one label:
+    true =  public_key:pkix_verify_hostname(Cert, [{dns_id,"a.foo.EXAMPLE.com"}]),
+
+    %% Check wildcard with surrounding chars matches one label:
+    true =  public_key:pkix_verify_hostname(Cert, [{dns_id,"accb.bar.EXAMPLE.com"}]),
+
+    %% Check that a wildcard with surrounding chars matches an empty string:
+    true =  public_key:pkix_verify_hostname(Cert, [{uri_id,"https://ab.bar.EXAMPLE.com"}]).
+
+%%--------------------------------------------------------------------
+%% To generate the PEM file contents:
+%%
+%% openssl req -x509 -nodes -newkey rsa:1024 -keyout /dev/null -extensions SAN -config  public_key_SUITE_data/verify_hostname.conf 2>/dev/null > public_key_SUITE_data/pkix_verify_hostname_subjAltName.pem
+%%
+%% Subject: C=SE, CN=example.com
+%% Subject Alternative Name: DNS:kb.example.org, DNS:*.example.org, URI:http://www.example.org, URI:https://wws.example.org
+
+pkix_verify_hostname_subjAltName(Config) ->
+    DataDir = proplists:get_value(data_dir, Config),
+    {ok,Bin} = file:read_file(filename:join(DataDir,"pkix_verify_hostname_subjAltName.pem")),
+    Cert = public_key:pkix_decode_cert(element(2,hd(public_key:pem_decode(Bin))), otp),
+
+    %% Check that neither a uri nor dns hostname matches a CN if subjAltName is present:
+    false = public_key:pkix_verify_hostname(Cert, [{uri_id,"https://example.com"},
+						   {dns_id,"example.com"}]),
+
+    %% Check that a uri_id matches a URI subjAltName:
+    true =  public_key:pkix_verify_hostname(Cert, [{uri_id,"https://wws.example.org"}]),
+
+    %% Check that a dns_id does not match a URI subjAltName:
+    false = public_key:pkix_verify_hostname(Cert, [{dns_id,"www.example.org"},
+						   {dns_id,"wws.example.org"}]),
+
+    %% Check that a dns_id matches a DNS subjAltName:
+    true =  public_key:pkix_verify_hostname(Cert, [{dns_id,"kb.example.org"}]),
+    true =  public_key:pkix_verify_hostname(Cert, [{dns_id,"KB.EXAMPLE.ORG"}]),
+
+    %% Check that a dns_id does not match a DNS subjAltName wiht wildcard
+    false =  public_key:pkix_verify_hostname(Cert, [{dns_id,"other.example.org"}]),
+
+    %% Check that a dns_id does match a DNS subjAltName wiht wildcard with matchfun
+    MatchFun = {match_fun, public_key:pkix_verify_hostname_match_fun(https)},
+    true =  public_key:pkix_verify_hostname(Cert, [{dns_id,"other.example.org"}], [MatchFun]),
+    true =  public_key:pkix_verify_hostname(Cert, [{dns_id,"OTHER.EXAMPLE.ORG"}], [MatchFun]),
+
+    %% Check that a uri_id does not match a DNS subjAltName wiht wildcard
+    false =  public_key:pkix_verify_hostname(Cert, [{uri_id,"https://other.example.org"}]),
+    false =  public_key:pkix_verify_hostname(Cert, [{uri_id,"https://OTHER.EXAMPLE.ORG"}]),
+
+    %% Check that a dns_id does match a DNS subjAltName wiht wildcard with matchfun
+    true =  public_key:pkix_verify_hostname(Cert, [{uri_id,"https://other.example.org"}], [MatchFun]),
+    true =  public_key:pkix_verify_hostname(Cert, [{uri_id,"https://OTHER.EXAMPLE.ORG"}], [MatchFun]),
+    true =  public_key:pkix_verify_hostname(Cert, [{uri_id,"https://OTHER.example.org"}], [MatchFun]),
+
+    ok.
+
+%%--------------------------------------------------------------------
+%% Uses the pem-file for pkix_verify_hostname_cn
+%% Subject: C=SE, CN=example.com, CN=*.foo.example.com, CN=a*b.bar.example.com, O=erlang.org
+pkix_verify_hostname_options(Config) ->
+    DataDir = proplists:get_value(data_dir, Config),
+    {ok,Bin} = file:read_file(filename:join(DataDir,"pkix_verify_hostname_cn.pem")),
+    Cert = public_key:pkix_decode_cert(element(2,hd(public_key:pem_decode(Bin))), otp),
+    
+    %% Check that the fail_callback is called and is presented the correct certificate:
+    true = public_key:pkix_verify_hostname(Cert, [{dns_id,"erlang.org"}],
+					   [{fail_callback,
+					     fun(#'OTPCertificate'{}=C) when C==Cert -> 
+						     true; % To test the return value matters
+						(#'OTPCertificate'{}=C) -> 
+						     ct:log("~p:~p: Wrong cert:~n~p~nExpect~n~p",
+							    [?MODULE, ?LINE, C, Cert]),
+						     ct:fail("Wrong cert, see log");
+						(C) -> 
+						     ct:log("~p:~p: Bad cert: ~p",[?MODULE,?LINE,C]),
+						     ct:fail("Bad cert, see log")
+					     end}]),
+    
+    %% Check the callback for user-provided match functions:
+    true =  public_key:pkix_verify_hostname(Cert, [{dns_id,"very.wrong.domain"}],
+					    [{match_fun,
+					      fun("very.wrong.domain", {cn,"example.com"}) ->
+						      true;
+						 (_, _) ->
+						      false
+					      end}]),
+    false = public_key:pkix_verify_hostname(Cert, [{dns_id,"not.example.com"}],
+					    [{match_fun, fun(_, _) -> default end}]),
+    true =  public_key:pkix_verify_hostname(Cert, [{dns_id,"example.com"}],
+					    [{match_fun, fun(_, _) -> default end}]),
+
+    %% Check the callback for user-provided fqdn extraction:
+    true =  public_key:pkix_verify_hostname(Cert, [{uri_id,"some://very.wrong.domain"}],
+					    [{fqdn_fun,
+					      fun({uri_id, "some://very.wrong.domain"}) ->
+						      "example.com";
+						 (_) ->
+						      ""
+					      end}]),
+    true =  public_key:pkix_verify_hostname(Cert, [{uri_id,"https://example.com"}],
+					    [{fqdn_fun, fun(_) -> default end}]),
+    false =  public_key:pkix_verify_hostname(Cert, [{uri_id,"some://very.wrong.domain"}]),
+
+    true = public_key:pkix_verify_hostname(Cert, [{dns_id,"example.com"}]),
+    true = public_key:pkix_verify_hostname(Cert, [{dns_id,"abb.bar.example.com"}]),
+    false = public_key:pkix_verify_hostname(Cert, [{dns_id,"example.com"},
+                                                   {dns_id,"abb.bar.example.com"}],
+                                            [{fqdn_fun,fun(_)->undefined end}]).
+    
+
+%%--------------------------------------------------------------------
+%% To generate the PEM file contents:
+%%
+%% openssl req -x509 -nodes -newkey rsa:1024 -keyout /dev/null -extensions SAN -config  public_key_SUITE_data/verify_hostname_ip.conf 2>/dev/null > public_key_SUITE_data/pkix_verify_hostname_subjAltName_IP.pem
+%%
+%% Subject: C=SE, CN=example.com
+%% Subject Alternative Name: DNS:1.2.3.4, DNS: abcd:ef::1, IP:10.67.16.75, URI:https://10.11.12.13
+
+pkix_verify_hostname_subjAltName_IP(Config) ->
+    DataDir = proplists:get_value(data_dir, Config),
+    {ok,Bin} = file:read_file(filename:join(DataDir,"pkix_verify_hostname_subjAltName_IP.pem")),
+    Cert = public_key:pkix_decode_cert(element(2,hd(public_key:pem_decode(Bin))), otp),
+
+    %% Print the tests that a matchfun has to handle
+    catch public_key:pkix_verify_hostname(Cert, [{some_tag,"some.domain"},
+                                                 {ip, {10,67,16,75}}
+                                                ],
+                                          [{match_fun,
+                                            fun(Ref,Pres) -> 
+                                                    ct:pal("~p:~p:~nRef : ~p~nPres: ~p",[?MODULE,?LINE,Ref,Pres]),
+                                                    false
+                                            end}]),
+
+    false =  public_key:pkix_verify_hostname(Cert, [{uri_id,"https://1.2.3.4"}]),
+    true  =  public_key:pkix_verify_hostname(Cert, [{uri_id,"https://10.11.12.13"}]),
+    true  =  public_key:pkix_verify_hostname(Cert, [{dns_id,"1.2.3.4"}]),
+    true  =  public_key:pkix_verify_hostname(Cert, [{dns_id,<<"1.2.3.4">>}]),
+    false =  public_key:pkix_verify_hostname(Cert, [{dns_id,"10.67.16.75"}]),
+    true  =  public_key:pkix_verify_hostname(Cert, [{ip, "aBcD:ef:0::0:1"}]),
+    true  =  public_key:pkix_verify_hostname(Cert, [{ip, {16#abcd,16#ef,0,0,0,0,0,1}}]),
+    true  =  public_key:pkix_verify_hostname(Cert, [{ip, "10.67.16.75"}]),
+    true  =  public_key:pkix_verify_hostname(Cert, [{ip, <<"10.67.16.75">>}]),
+    true  =  public_key:pkix_verify_hostname(Cert, [{ip, {10,67,16,75}}]),
+    false =  public_key:pkix_verify_hostname(Cert, [{ip, {1,2,3,4}}]),
+    false =  public_key:pkix_verify_hostname(Cert, [{ip, {10,11,12,13}}]).
+%%--------------------------------------------------------------------
+pkix_iso_rsa_oid() ->
+ [{doc, "Test workaround for supporting certs that use ISO oids"
+   " 1.3.14.3.2.29 instead of PKIX/PKCS oid"}].
+pkix_iso_rsa_oid(Config) when is_list(Config) ->
+    Datadir = proplists:get_value(data_dir, Config),
+    {ok, PemCert} = file:read_file(filename:join(Datadir, "rsa_ISO.pem")),
+    [{_, Cert, _}] = public_key:pem_decode(PemCert),
+    OTPCert = public_key:pkix_decode_cert(Cert, otp),
+    SigAlg = OTPCert#'OTPCertificate'.signatureAlgorithm,
+    {_, rsa} = public_key:pkix_sign_types(SigAlg#'SignatureAlgorithm'.algorithm).
+
+%%--------------------------------------------------------------------
+pkix_iso_dsa_oid() ->
+ [{doc, "Test workaround for supporting certs that use ISO oids"
+   "1.3.14.3.2.27 instead of PKIX/PKCS oid"}].
+pkix_iso_dsa_oid(Config) when is_list(Config) ->
+    Datadir = proplists:get_value(data_dir, Config),
+    {ok, PemCert} = file:read_file(filename:join(Datadir, "dsa_ISO.pem")),
+    [{_, Cert, _}] = public_key:pem_decode(PemCert),
+    OTPCert = public_key:pkix_decode_cert(Cert, otp),
+    SigAlg = OTPCert#'OTPCertificate'.signatureAlgorithm,
+    {_, dsa} = public_key:pkix_sign_types(SigAlg#'SignatureAlgorithm'.algorithm).
+
+%%--------------------------------------------------------------------
+pkix_dsa_sha2_oid() ->
+ [{doc, "Test support dsa_sha2 oid"}].
+pkix_dsa_sha2_oid(Config) when is_list(Config) ->
+    {sha224, dsa} = public_key:pkix_sign_types(?'id-dsa-with-sha224'),
+    {sha256, dsa} = public_key:pkix_sign_types(?'id-dsa-with-sha256').
+    
+%%--------------------------------------------------------------------
+
+pkix_crl() ->
+    [{doc, "test pkix_crl_* functions"}].
+
+pkix_crl(Config) when is_list(Config) ->
+    Datadir = proplists:get_value(data_dir, Config),
+    {ok, PemCRL} = file:read_file(filename:join(Datadir, "idp_crl.pem")),
+    [{_, CRL, _}] = public_key:pem_decode(PemCRL),
+    
+    {ok, IDPPemCert} = file:read_file(filename:join(Datadir, "idp_cert.pem")),
+    [{_, IDPCert, _}] = public_key:pem_decode(IDPPemCert),
+
+    {ok, SignPemCert} = file:read_file(filename:join(Datadir, "crl_signer.pem")),
+    [{_, SignCert, _}] = public_key:pem_decode(SignPemCert),
+    
+    OTPIDPCert = public_key:pkix_decode_cert(IDPCert, otp),
+    OTPSignCert = public_key:pkix_decode_cert(SignCert, otp),
+    ERLCRL = public_key:der_decode('CertificateList',CRL),
+
+    {rdnSequence,_} = public_key:pkix_crl_issuer(CRL),
+    {rdnSequence,_} = public_key:pkix_crl_issuer(ERLCRL),
+    
+    true = public_key:pkix_crl_verify(CRL, SignCert),
+    true = public_key:pkix_crl_verify(ERLCRL, OTPSignCert),
+
+    [#'DistributionPoint'{}|_] = public_key:pkix_dist_points(IDPCert),
+    [#'DistributionPoint'{}|_] = public_key:pkix_dist_points(OTPIDPCert),
+
+    #'DistributionPoint'{cRLIssuer = asn1_NOVALUE,
+     			 reasons = asn1_NOVALUE,
+			 distributionPoint =  Point} = public_key:pkix_dist_point(IDPCert),
+    #'DistributionPoint'{cRLIssuer = asn1_NOVALUE,
+			 reasons = asn1_NOVALUE,
+			 distributionPoint =  Point} = public_key:pkix_dist_point(OTPIDPCert).
+
+general_name() ->
+    [{doc, "Test that decoding of general name filed may have other values"
+      " than {rdnSequence,  Seq}"}].
+
+general_name(Config) when is_list(Config) ->
+    DummyRfc822Name = "CN=CNDummy, OU=OUDummy, O=ODummy, C=SE",
+    {ok, {1,  DummyRfc822Name}} = 
+	pubkey_cert:cert_auth_key_id(
+	  #'AuthorityKeyIdentifier'{authorityCertIssuer = 
+					[{rfc822Name, DummyRfc822Name}],
+				    authorityCertSerialNumber = 
+					1}).
+
+%%--------------------------------------------------------------------
+
+pkix_hash_type() ->
+     [{doc, "Test API function pkix_hash_type/1"}].
+
+pkix_hash_type(Config) when is_list(Config) ->
+    sha = public_key:pkix_hash_type(?'id-sha1'), 
+    sha512 = public_key:pkix_hash_type(?'id-sha512'),
+    sha384 = public_key:pkix_hash_type(?'id-sha384'),
+    sha256 = public_key:pkix_hash_type(?'id-sha256'), 
+    sha224 = public_key:pkix_hash_type('id-sha224'),
+    md5 = public_key:pkix_hash_type('id-md5').
+
+
+%%--------------------------------------------------------------------
+
+pkix_test_data_all_default() ->
+    [{doc, "Test API function pkix_test_data/1"}].
+
+pkix_test_data_all_default(Config) when is_list(Config) ->
+    #{server_config := ServerConf0,
+      client_config := ClientConf0} = public_key:pkix_test_data(#{server_chain => 
+                                                                     #{root => [],
+                                                                       intermediates => [[]],
+                                                                       peer => []},
+                                                                 client_chain => 
+                                                                     #{root => [],
+                                                                       intermediates => [[]],
+                                                                       peer => []}}),
+    check_conf_member(ServerConf0, [key, cert, cacerts]),
+    check_conf_member(ClientConf0, [key, cert, cacerts]),
+    
+    3 = length(proplists:get_value(cacerts, ServerConf0)),
+    3 = length(proplists:get_value(cacerts, ServerConf0)),
+
+    #{server_config := ServerConf1,
+      client_config := ClientConf1} = public_key:pkix_test_data(#{server_chain => 
+                                                                     #{root => [],
+                                                                       peer => []},
+                                                                 client_chain => 
+                                                                     #{root => [],
+                                                                       peer => []}}),
+    2 = length(proplists:get_value(cacerts, ServerConf1)),
+    2 = length(proplists:get_value(cacerts, ServerConf1)),
+    
+    check_conf_member(ServerConf1, [key, cert, cacerts]),
+    check_conf_member(ClientConf1, [key, cert, cacerts]).
+    
+
+pkix_test_data() ->
+    [{doc, "Test API function pkix_test_data/1"}].
+
+pkix_test_data(Config) when is_list(Config) ->
+    {Year, Month, Day} = date(),
+    Keygen = 
+        case crypto:ec_curves() of
+        [] ->
+            {rsa, 2048, 17};
+        [Curve |_] ->
+            Oid = pubkey_cert_records:namedCurves(Curve),
+            {namedCurve, Oid}
+        end,
+    #{server_config := ServerConf0,
+      client_config := ClientConf0} = 
+        public_key:pkix_test_data(#{server_chain => 
+                                        #{root => [],
+                                          intermediates => [],
+                                          peer => [{key, hardcode_rsa_key(1)}]},
+                                    client_chain => 
+                                        #{root => [{validity, {{Year-2, Month, Day}, 
+                                                               {Year-1, Month, Day}}}],
+                                          intermediates => 
+                                              [[{extensions, [#'Extension'{extnID = ?'id-ce-basicConstraints',
+                                                                           extnValue = #'BasicConstraints'{cA=true, 
+                                                                                             pathLenConstraint = 1},
+                                                                           critical = true}]}]],
+                                               peer => [{key, Keygen}, {digest, sha1}]}}),
+    check_conf_member(ServerConf0, [key, cert, cacerts]),
+    check_conf_member(ClientConf0, [key, cert, cacerts]).
+
+   
+                                 
+check_conf_member(_, []) ->
+    true;
+check_conf_member(Conf, [Member | Rest]) ->
+    case lists:keymember(Member, 1, Conf) of
+        true ->
+            check_conf_member(Conf, Rest);
+        false ->
+            ct:fail({misssing_conf, Member})
+    end.
+                              
+%%--------------------------------------------------------------------
+short_cert_issuer_hash() ->
+    [{doc, "Test OpenSSL-style hash for certificate issuer"}].
+
+short_cert_issuer_hash(Config) when is_list(Config) ->
+    Datadir = ?config(data_dir, Config),
+    [{'Certificate', CertDER, _}] =
+	erl_make_certs:pem_to_der(filename:join(Datadir, "client_cert.pem")),
+
+    %% This hash value was obtained by running:
+    %% openssl x509 -in client_cert.pem -issuer_hash -noout
+    CertIssuerHash = "d4c8d7e5",
+
+    #'OTPCertificate'{tbsCertificate = #'OTPTBSCertificate'{issuer = Issuer}} =
+	public_key:pkix_decode_cert(CertDER, otp),
+
+    CertIssuerHash = public_key:short_name_hash(Issuer).
+
+%%--------------------------------------------------------------------
+short_crl_issuer_hash() ->
+    [{doc, "Test OpenSSL-style hash for CRL issuer"}].
+
+short_crl_issuer_hash(Config) when is_list(Config) ->
+    Datadir = ?config(data_dir, Config),
+    [{'CertificateList', CrlDER, _}] =
+	erl_make_certs:pem_to_der(filename:join(Datadir, "idp_crl.pem")),
+
+    %% This hash value was obtained by running:
+    %% openssl crl -in idp_crl.pem -hash -noout
+    CrlIssuerHash = "d6134ed3",
+
+    Issuer = public_key:pkix_crl_issuer(CrlDER),
+
+    CrlIssuerHash = public_key:short_name_hash(Issuer).
+
+%%--------------------------------------------------------------------
+gen_ec_param_prime_field() ->
+    [{doc, "Generate key with EC prime_field parameters"}].
+gen_ec_param_prime_field(Config) when is_list(Config) ->
+    Datadir = proplists:get_value(data_dir, Config),
+    do_gen_ec_param(filename:join(Datadir, "ec_key_param0.pem")).
+
+%%--------------------------------------------------------------------
+gen_ec_param_char_2_field() ->
+    [{doc, "Generate key with EC characteristic_two_field parameters"}].
+gen_ec_param_char_2_field(Config) when is_list(Config) ->
+    Datadir = proplists:get_value(data_dir, Config),
+    do_gen_ec_param(filename:join(Datadir, "ec_key_param1.pem")).
+
+%%--------------------------------------------------------------------
+%% Internal functions ------------------------------------------------
+%%--------------------------------------------------------------------
+asn1_encode_decode({Asn1Type, Der, not_encrypted} = Entry) ->
+    Decoded = public_key:der_decode(Asn1Type, Der),
+    Decoded = public_key:pem_entry_decode(Entry),
+    Entry = public_key:pem_entry_encode(Asn1Type, Decoded),
+    ok.
+    
+check_countryname({rdnSequence,DirName}) ->
+    do_check_countryname(DirName).
+do_check_countryname([]) ->
+    ok;
+do_check_countryname([#'AttributeTypeAndValue'{type = ?'id-at-countryName',
+					       value = "US"}|_]) ->
+    ok;
+do_check_countryname([#'AttributeTypeAndValue'{type = ?'id-at-countryName',
+					       value =  Value}|_]) ->
+    ct:fail({incorrect_country_name, Value});
+do_check_countryname([_| Rest]) ->
+    do_check_countryname(Rest).
+
+check_emailaddress({rdnSequence,DirName}) ->
+    do_check_emailaddress(DirName).
+do_check_emailaddress([]) ->
+    ok;
+do_check_emailaddress([#'AttributeTypeAndValue'{type = ?'id-emailAddress',
+					       value = "invalid@email.com"}|_]) ->
+    ok;
+do_check_emailaddress([#'AttributeTypeAndValue'{type = ?'id-emailAddress',
+					       value =  Value}|_]) ->
+    ct:fail({incorrect_email_address, Value});
+do_check_emailaddress([_| Rest]) ->
+    do_check_emailaddress(Rest).
+
+check_entry_type(#'DSAPrivateKey'{}, 'DSAPrivateKey') ->
+    true;
+check_entry_type(#'RSAPrivateKey'{}, 'RSAPrivateKey') ->
+    true;
+check_entry_type(#'RSAPublicKey'{}, 'RSAPublicKey') ->
+    true;
+check_entry_type({_Int, #'Dss-Parms'{}}, 'DSAPublicKey') when is_integer(_Int) ->
+    true;
+check_entry_type(#'DHParameter'{}, 'DHParameter') ->
+    true;
+check_entry_type(#'Certificate'{}, 'Certificate') ->
+    true;
+check_entry_type({#'ECPoint'{}, _}, 'ECPoint') ->
+    true;
+check_entry_type(#'ECPrivateKey'{}, 'ECPrivateKey') ->
+    true;
+check_entry_type({namedCurve, _}, 'EcpkParameters') ->
+    true;
+check_entry_type({ecParameters, #'ECParameters'{}}, 'EcpkParameters') ->
+    true;
+check_entry_type(_,_) ->
+    false.
+
+check_encapsulated_header(Pem) when is_binary(Pem)->
+    check_encapsulated_header( binary:split(Pem, <<"\n">>, [global]));
+check_encapsulated_header([<<"DEK-Info: DES-CBC,FB7577791A9056A1">>, <<>> | _]) ->
+    true;
+check_encapsulated_header([ _ | Rest]) ->
+    check_encapsulated_header(Rest);
+check_encapsulated_header([]) ->
+    false.
+
+strip_superfluous_newlines(Bin) ->
+    Str = string:strip(binary_to_list(Bin), right, 10),
+    re:replace(Str,"\n\n","\n", [{return,list}, global]).
+
+do_gen_ec_param(File) ->    
+    {ok, KeyPem} = file:read_file(File),
+    Entries = public_key:pem_decode(KeyPem),
+    [ParamInfo] = [Entry || Entry={'EcpkParameters', _, not_encrypted} <- Entries],
+    {ecParameters, Params} = public_key:pem_entry_decode(ParamInfo),
+    Key = public_key:generate_key(Params),
+    case check_entry_type(Key, 'ECPrivateKey') of
+        true ->
+            ok;
+        false ->
+            ct:fail({key_gen_fail, File})
+    end.
+
+init_per_testcase_gen_ec_param(_TC, Curve, Config) ->
+    case crypto:ec_curves() of
+        [] ->
+            {skip, missing_ec_support};
+        Curves ->
+            case lists:member(Curve, Curves)
+                andalso crypto_supported_curve(Curve, Curves)
+            of
+                true ->
+                    init_common_per_testcase(Config);
+                false ->
+                    {skip, {missing_ec_support, Curve}}
+            end
+    end.
+
+
+crypto_supported_curve(Curve, _Curves) ->
+    try crypto:generate_key(ecdh, Curve) of
+        {error,_} -> false; % Just in case crypto is changed in the future...
+        _-> true
+    catch
+        _:_-> false
+    end.
+        
+incorrect_countryname_pkix_cert() ->
+    <<48,130,5,186,48,130,4,162,160,3,2,1,2,2,7,7,250,61,63,6,140,137,48,13,6,9,42, 134,72,134,247,13,1,1,5,5,0,48,129,220,49,11,48,9,6,3,85,4,6,19,2,85,83,49, 16,48,14,6,3,85,4,8,19,7,65,114,105,122,111,110,97,49,19,48,17,6,3,85,4,7,19, 10,83,99,111,116,116,115,100,97,108,101,49,37,48,35,6,3,85,4,10,19,28,83,116, 97,114,102,105,101,108,100,32,84,101,99,104,110,111,108,111,103,105,101,115, 44,32,73,110,99,46,49,57,48,55,6,3,85,4,11,19,48,104,116,116,112,58,47,47,99, 101,114,116,105,102,105,99,97,116,101,115,46,115,116,97,114,102,105,101,108, 100,116,101,99,104,46,99,111,109,47,114,101,112,111,115,105,116,111,114,121, 49,49,48,47,6,3,85,4,3,19,40,83,116,97,114,102,105,101,108,100,32,83,101,99, 117,114,101,32,67,101,114,116,105,102,105,99,97,116,105,111,110,32,65,117, 116,104,111,114,105,116,121,49,17,48,15,6,3,85,4,5,19,8,49,48,54,56,56,52,51, 53,48,30,23,13,49,48,49,48,50,51,48,49,51,50,48,53,90,23,13,49,50,49,48,50, 51,48,49,51,50,48,53,90,48,122,49,11,48,9,6,3,85,4,6,12,2,85,83,49,11,48,9,6, 3,85,4,8,12,2,65,90,49,19,48,17,6,3,85,4,7,12,10,83,99,111,116,116,115,100, 97,108,101,49,38,48,36,6,3,85,4,10,12,29,83,112,101,99,105,97,108,32,68,111, 109,97,105,110,32,83,101,114,118,105,99,101,115,44,32,73,110,99,46,49,33,48, 31,6,3,85,4,3,12,24,42,46,108,111,103,105,110,46,115,101,99,117,114,101,115, 101,114,118,101,114,46,110,101,116,48,130,1,34,48,13,6,9,42,134,72,134,247, 13,1,1,1,5,0,3,130,1,15,0,48,130,1,10,2,130,1,1,0,185,136,240,80,141,36,124, 245,182,130,73,19,188,74,166,117,72,228,185,209,43,129,244,40,44,193,231,11, 209,12,234,88,43,142,1,162,48,122,17,95,230,105,171,131,12,147,46,204,36,80, 250,171,33,253,35,62,83,22,71,212,186,141,14,198,89,89,121,204,224,122,246, 127,110,188,229,162,67,95,6,74,231,127,99,131,7,240,85,102,203,251,50,58,58, 104,245,103,181,183,134,32,203,121,232,54,32,188,139,136,112,166,126,14,91, 223,153,172,164,14,61,38,163,208,215,186,210,136,213,143,70,147,173,109,217, 250,169,108,31,211,104,238,103,93,182,59,165,43,196,189,218,241,30,148,240, 109,90,69,176,194,52,116,173,151,135,239,10,209,179,129,192,102,75,11,25,168, 223,32,174,84,223,134,70,167,55,172,143,27,130,123,226,226,7,34,142,166,39, 48,246,96,231,150,84,220,106,133,193,55,95,159,227,24,249,64,36,1,142,171,16, 202,55,126,7,156,15,194,22,116,53,113,174,104,239,203,120,45,131,57,87,84, 163,184,27,83,57,199,91,200,34,43,98,61,180,144,76,65,170,177,2,3,1,0,1,163, 130,1,224,48,130,1,220,48,15,6,3,85,29,19,1,1,255,4,5,48,3,1,1,0,48,29,6,3, 85,29,37,4,22,48,20,6,8,43,6,1,5,5,7,3,1,6,8,43,6,1,5,5,7,3,2,48,14,6,3,85, 29,15,1,1,255,4,4,3,2,5,160,48,56,6,3,85,29,31,4,49,48,47,48,45,160,43,160, 41,134,39,104,116,116,112,58,47,47,99,114,108,46,115,116,97,114,102,105,101, 108,100,116,101,99,104,46,99,111,109,47,115,102,115,50,45,48,46,99,114,108, 48,83,6,3,85,29,32,4,76,48,74,48,72,6,11,96,134,72,1,134,253,110,1,7,23,2,48, 57,48,55,6,8,43,6,1,5,5,7,2,1,22,43,104,116,116,112,115,58,47,47,99,101,114, 116,115,46,115,116,97,114,102,105,101,108,100,116,101,99,104,46,99,111,109, 47,114,101,112,111,115,105,116,111,114,121,47,48,129,141,6,8,43,6,1,5,5,7,1, 1,4,129,128,48,126,48,42,6,8,43,6,1,5,5,7,48,1,134,30,104,116,116,112,58,47, 47,111,99,115,112,46,115,116,97,114,102,105,101,108,100,116,101,99,104,46,99, 111,109,47,48,80,6,8,43,6,1,5,5,7,48,2,134,68,104,116,116,112,58,47,47,99, 101,114,116,105,102,105,99,97,116,101,115,46,115,116,97,114,102,105,101,108, 100,116,101,99,104,46,99,111,109,47,114,101,112,111,115,105,116,111,114,121, 47,115,102,95,105,110,116,101,114,109,101,100,105,97,116,101,46,99,114,116, 48,31,6,3,85,29,35,4,24,48,22,128,20,73,75,82,39,209,27,188,242,161,33,106, 98,123,81,66,122,138,215,213,86,48,59,6,3,85,29,17,4,52,48,50,130,24,42,46, 108,111,103,105,110,46,115,101,99,117,114,101,115,101,114,118,101,114,46,110, 101,116,130,22,108,111,103,105,110,46,115,101,99,117,114,101,115,101,114,118, 101,114,46,110,101,116,48,29,6,3,85,29,14,4,22,4,20,138,233,191,208,157,203, 249,85,242,239,20,195,48,10,148,49,144,101,255,116,48,13,6,9,42,134,72,134, 247,13,1,1,5,5,0,3,130,1,1,0,82,31,121,162,49,50,143,26,167,202,143,61,71, 189,201,199,57,81,122,116,90,192,88,24,102,194,174,48,157,74,27,87,210,223, 253,93,3,91,150,109,120,1,110,27,11,200,198,141,222,246,14,200,71,105,41,138, 13,114,122,106,63,17,197,181,234,121,61,89,74,65,41,231,248,219,129,83,176, 219,55,107,55,211,112,98,38,49,69,77,96,221,108,123,152,12,210,159,157,141, 43,226,55,187,129,3,82,49,136,66,81,196,91,234,196,10,82,48,6,80,163,83,71, 127,102,177,93,209,129,26,104,2,84,24,255,248,161,3,244,169,234,92,122,110, 43,4,17,113,185,235,108,219,210,236,132,216,177,227,17,169,58,162,159,182, 162,93,160,229,200,9,163,229,110,121,240,168,232,14,91,214,188,196,109,210, 164,222,0,109,139,132,113,91,16,118,173,178,176,80,132,34,41,199,51,206,250, 224,132,60,115,192,94,107,163,219,212,226,225,65,169,148,108,213,46,174,173, 103,110,189,229,166,149,254,31,51,44,144,108,187,182,11,251,201,206,86,138, 208,59,51,86,132,235,81,225,88,34,190,8,184>>.
+
+incorrect_emailaddress_pkix_cert() ->
+    <<48,130,3,74,48,130,2,50,2,9,0,133,49,203,25,198,156,252,230,48,13,6,9,42,134, 72,134,247,13,1,1,5,5,0,48,103,49,11,48,9,6,3,85,4,6,19,2,65,85,49,19,48,17, 6,3,85,4,8,12,10,83,111,109,101,45,83,116,97,116,101,49,33,48,31,6,3,85,4,10, 12,24,73,110,116,101,114,110,101,116,32,87,105,100,103,105,116,115,32,80,116, 121,32,76,116,100,49,32,48,30,6,9,42,134,72,134,247,13,1,9,1,12,17,105,110, 118,97,108,105,100,64,101,109,97,105,108,46,99,111,109,48,30,23,13,49,51,49, 49,48,55,50,48,53,54,49,56,90,23,13,49,52,49,49,48,55,50,48,53,54,49,56,90, 48,103,49,11,48,9,6,3,85,4,6,19,2,65,85,49,19,48,17,6,3,85,4,8,12,10,83,111, 109,101,45,83,116,97,116,101,49,33,48,31,6,3,85,4,10,12,24,73,110,116,101, 114,110,101,116,32,87,105,100,103,105,116,115,32,80,116,121,32,76,116,100,49, 32,48,30,6,9,42,134,72,134,247,13,1,9,1,12,17,105,110,118,97,108,105,100,64, 101,109,97,105,108,46,99,111,109,48,130,1,34,48,13,6,9,42,134,72,134,247,13, 1,1,1,5,0,3,130,1,15,0,48,130,1,10,2,130,1,1,0,190,243,49,213,219,60,232,105, 1,127,126,9,130,15,60,190,78,100,148,235,246,223,21,91,238,200,251,84,55,212, 78,32,120,61,85,172,0,144,248,5,165,29,143,79,64,178,51,153,203,76,115,238, 192,49,173,37,121,203,89,62,157,13,181,166,30,112,154,40,202,140,104,211,157, 73,244,9,78,236,70,153,195,158,233,141,42,238,2,143,160,225,249,27,30,140, 151,176,43,211,87,114,164,108,69,47,39,195,123,185,179,219,28,218,122,53,83, 77,48,81,184,14,91,243,12,62,146,86,210,248,228,171,146,225,87,51,146,155, 116,112,238,212,36,111,58,41,67,27,6,61,61,3,84,150,126,214,121,57,38,12,87, 121,67,244,37,45,145,234,131,115,134,58,194,5,36,166,52,59,229,32,47,152,80, 237,190,58,182,248,98,7,165,198,211,5,31,231,152,116,31,108,71,218,64,188, 178,143,27,167,79,15,112,196,103,116,212,65,197,94,37,4,132,103,91,217,73, 223,207,185,7,153,221,240,232,31,44,102,108,82,83,56,242,210,214,74,71,246, 177,217,148,227,220,230,4,176,226,74,194,37,2,3,1,0,1,48,13,6,9,42,134,72, 134,247,13,1,1,5,5,0,3,130,1,1,0,89,247,141,154,173,123,123,203,143,85,28,79, 73,37,164,6,17,89,171,224,149,22,134,17,198,146,158,192,241,41,253,58,230, 133,71,189,43,66,123,88,15,242,119,227,249,99,137,61,200,54,161,0,177,167, 169,114,80,148,90,22,97,78,162,181,75,93,209,116,245,46,81,232,64,157,93,136, 52,57,229,113,197,218,113,93,42,161,213,104,205,137,30,144,183,58,10,98,47, 227,177,96,40,233,98,150,209,217,68,22,221,133,27,161,152,237,46,36,179,59, 172,97,134,194,205,101,137,71,192,57,153,20,114,27,173,233,166,45,56,0,61, 205,45,202,139,7,132,103,248,193,157,184,123,43,62,172,236,110,49,62,209,78, 249,83,219,133,1,213,143,73,174,16,113,143,189,41,84,60,128,222,30,177,104, 134,220,52,239,171,76,59,176,36,113,176,214,118,16,44,235,21,167,199,216,200, 76,219,142,248,13,70,145,205,216,230,226,148,97,223,216,179,68,209,222,63, 140,137,24,164,192,149,194,79,119,247,75,159,49,116,70,241,70,116,11,40,119, 176,157,36,160,102,140,255,34,248,25,231,136,59>>.
+
+hardcode_rsa_key(1) ->
+    #'RSAPrivateKey'{
+       version = 'two-prime',
+       modulus = 23995666614853919027835084074500048897452890537492185072956789802729257783422306095699263934587064480357348855732149402060270996295002843755712064937715826848741191927820899197493902093529581182351132392364214171173881547273475904587683433713767834856230531387991145055273426806331200574039205571401702219159773947658558490957010003143162250693492642996408861265758000254664396313741422909188635443907373976005987612936763564996605457102336549804831742940035613780926178523017685712710473543251580072875247250504243621640157403744718833162626193206685233710319205099867303242759099560438381385658382486042995679707669,
+       publicExponent = 17,
+       privateExponent = 11292078406990079542510627799764728892919007311761028269626724613049062486316379339152594792746853873109340637991599718616598115903530750002688030558925094987642913848386305504703012749896273497577003478759630198199473669305165131570674557041773098755873191241407597673069847908861741446606684974777271632545629600685952292605647052193819136445675100211504432575554351515262198132231537860917084269870590492135731720141577986787033006338680118008484613510063003323516659048210893001173583018220214626635609151105287049126443102976056146630518124476470236027123782297108342869049542023328584384300970694412006494684657,
+       prime1 = 169371138592582642967021557955633494538845517070305333860805485424261447791289944610138334410987654265476540480228705481960508520379619587635662291973699651583489223555422528867090299996446070521801757353675026048850480903160224210802452555900007597342687137394192939372218903554801584969667104937092080815197,
+       prime2 = 141675062317286527042995673340952251894209529891636708844197799307963834958115010129693036021381525952081167155681637592199810112261679449166276939178032066869788822014115556349519329537177920752776047051833616197615329017439297361972726138285974555338480581117881706656603857310337984049152655480389797687577,
+       exponent1 = 119556097830058336212015217380447172615655659108450823901745048534772786676204666783627059584226579481512852103690850928442711896738555003036938088452023283470698275450886490965004917644550167427154181661417665446247398284583687678213495921811770068712485038160606780733330990744565824684470897602653233516609,
+       exponent2 = 41669135975672507953822256864985956439473391144599032012999352737636422046504414744027363535700448809435637398729893409470532385959317485048904982111185902020526124121798693043976273393287623750816484427009887116945685005129205106462566511260580751570141347387612266663707016855981760014456663376585234613993,
+       coefficient = 76837684977089699359024365285678488693966186052769523357232308621548155587515525857011429902602352279058920284048929101483304120686557782043616693940283344235057989514310975192908256494992960578961614059245280827077951132083993754797053182279229469590276271658395444955906108899267024101096069475145863928441,
+       otherPrimeInfos = asn1_NOVALUE};
+
+hardcode_rsa_key(2) ->
+    #'RSAPrivateKey'{
+       version = 'two-prime',
+       modulus = 21343679768589700771839799834197557895311746244621307033143551583788179817796325695589283169969489517156931770973490560582341832744966317712674900833543896521418422508485833901274928542544381247956820115082240721897193055368570146764204557110415281995205343662628196075590438954399631753508888358737971039058298703003743872818150364935790613286541190842600031570570099801682794056444451081563070538409720109449780410837763602317050353477918147758267825417201591905091231778937606362076129350476690460157227101296599527319242747999737801698427160817755293383890373574621116766934110792127739174475029121017282777887777,
+       publicExponent = 17,
+       privateExponent = 18832658619343853622211588088997845201745658451136447382185486691577805721584993260814073385267196632785528033211903435807948675951440868570007265441362261636545666919252206383477878125774454042314841278013741813438699754736973658909592256273895837054592950290554290654932740253882028017801960316533503857992358685308186680144968293076156011747178275038098868263178095174694099811498968993700538293188879611375604635940554394589807673542938082281934965292051746326331046224291377703201248790910007232374006151098976879987912446997911775904329728563222485791845480864283470332826504617837402078265424772379987120023773,
+       prime1 = 146807662748886761089048448970170315054939768171908279335181627815919052012991509112344782731265837727551849787333310044397991034789843793140419387740928103541736452627413492093463231242466386868459637115999163097726153692593711599245170083315894262154838974616739452594203727376460632750934355508361223110419,
+       prime2 = 145385325050081892763917667176962991350872697916072592966410309213561884732628046256782356731057378829876640317801978404203665761131810712267778698468684631707642938779964806354584156202882543264893826268426566901882487709510744074274965029453915224310656287149777603803201831202222853023280023478269485417083,
+       exponent1 = 51814469205489445090252393754177758254684624060673510353593515699736136004585238510239335081623236845018299924941168250963996835808180162284853901555621683602965806809675350150634081614988136541809283687999704622726877773856604093851236499993845033701707873394143336209718962603456693912094478414715725803677,
+       exponent2 = 51312467664734785681382706062457526359131540440966797517556579722433606376221663384746714140373192528191755406283051201483646739222992016094510128871300458249756331334105225772206172777487956446433115153562317730076172132768497908567634716277852432109643395464627389577600646306666889302334125933506877206029,
+       coefficient = 30504662229874176232343608562807118278893368758027179776313787938167236952567905398252901545019583024374163153775359371298239336609182249464886717948407152570850677549297935773605431024166978281486607154204888016179709037883348099374995148481968169438302456074511782717758301581202874062062542434218011141540,
+       otherPrimeInfos = asn1_NOVALUE};
+hardcode_rsa_key(3) -> 
+    #'RSAPrivateKey'{ 
+       version = 'two-prime',
+       modulus = 25089040456112869869472694987833070928503703615633809313972554887193090845137746668197820419383804666271752525807484521370419854590682661809972833718476098189250708650325307850184923546875260207894844301992963978994451844985784504212035958130279304082438876764367292331581532569155681984449177635856426023931875082020262146075451989132180409962870105455517050416234175675478291534563995772675388370042873175344937421148321291640477650173765084699931690748536036544188863178325887393475703801759010864779559318631816411493486934507417755306337476945299570726975433250753415110141783026008347194577506976486290259135429,
+       publicExponent = 17,
+       privateExponent = 8854955455098659953931539407470495621824836570223697404931489960185796768872145882893348383311931058684147950284994536954265831032005645344696294253579799360912014817761873358888796545955974191021709753644575521998041827642041589721895044045980930852625485916835514940558187965584358347452650930302268008446431977397918214293502821599497633970075862760001650736520566952260001423171553461362588848929781360590057040212831994258783694027013289053834376791974167294527043946669963760259975273650548116897900664646809242902841107022557239712438496384819445301703021164043324282687280801738470244471443835900160721870265,
+       prime1 = 171641816401041100605063917111691927706183918906535463031548413586331728772311589438043965564336865070070922328258143588739626712299625805650832695450270566547004154065267940032684307994238248203186986569945677705100224518137694769557564475390859269797990555863306972197736879644001860925483629009305104925823,
+       prime2 =146170909759497809922264016492088453282310383272504533061020897155289106805616042710009332510822455269704884883705830985184223718261139908416790475825625309815234508695722132706422885088219618698987115562577878897003573425367881351537506046253616435685549396767356003663417208105346307649599145759863108910523,
+       exponent1 = 60579464612132153154728441333538327425711971378777222246428851853999433684345266860486105493295364142377972586444050678378691780811632637288529186629507258781295583787741625893888579292084087601124818789392592131211843947578009918667375697196773859928702549128225990187436545756706539150170692591519448797349,
+       exponent2 = 137572620950115585809189662580789132500998007785886619351549079675566218169991569609420548245479957900898715184664311515467504676010484619686391036071176762179044243478326713135456833024206699951987873470661533079532774988581535389682358631768109586527575902839864474036157372334443583670210960715165278974609,
+       coefficient = 15068630434698373319269196003209754243798959461311186548759287649485250508074064775263867418602372588394608558985183294561315208336731894947137343239541687540387209051236354318837334154993136528453613256169847839789803932725339395739618592522865156272771578671216082079933457043120923342632744996962853951612,
+       otherPrimeInfos = asn1_NOVALUE};
+hardcode_rsa_key(4) -> 
+    #'RSAPrivateKey'{
+       version ='two-prime',
+       modulus = 28617237755030755643854803617273584643843067580642149032833640135949799721163782522787597288521902619948688786051081993247908700824196122780349730169173433743054172191054872553484065655968335396052034378669869864779940355219732200954630251223541048434478476115391643898092650304645086338265930608997389611376417609043761464100338332976874588396803891301015812818307951159858145399281035705713082131199940309445719678087542976246147777388465712394062188801177717719764254900022006288880246925156931391594131839991579403409541227225173269459173129377291869028712271737734702830877034334838181789916127814298794576266389,
+       publicExponent = 17,
+       privateExponent = 26933870828264240605980991639786903194205240075898493207372837775011576208154148256741268036255908348187001210401018346586267012540419880263858569570986761169933338532757527109161473558558433313931326474042230460969355628442100895016122589386862163232450330461545076609969553227901257730132640573174013751883368376011370428995523268034111482031427024082719896108094847702954695363285832195666458915142143884210891427766607838346722974883433132513540317964796373298134261669479023445911856492129270184781873446960437310543998533283339488055776892320162032014809906169940882070478200435536171854883284366514852906334641,
+       prime1 = 177342190816702392178883147766999616783253285436834252111702533617098994535049411784501174309695427674025956656849179054202187436663487378682303508229883753383891163725167367039879190685255046547908384208614573353917213168937832054054779266431207529839577747601879940934691505396807977946728204814969824442867,
+       prime2 = 161367340863680900415977542864139121629424927689088951345472941851682581254789586032968359551717004797621579428672968948552429138154521719743297455351687337112710712475376510559020211584326773715482918387500187602625572442687231345855402020688502483137168684570635690059254866684191216155909970061793538842967,
+       exponent1 = 62591361464718491357252875682470452982324688977706206627659717747211409835899792394529826226951327414362102349476180842659595565881230839534930649963488383547255704844176717778780890830090016428673547367746320007264898765507470136725216211681602657590439205035957626212244060728285168687080542875871702744541,
+       exponent2 = 28476589564178982426348978152495139111074987239250991413906989738532220221433456358759122273832412611344984605059935696803369847909621479954699550944415412431654831613301737157474154985469430655673456186029444871051571607533040825739188591886206320553618003159523945304574388238386685203984112363845918619347,
+       coefficient = 34340318160575773065401929915821192439103777558577109939078671096408836197675640654693301707202885840826672396546056002756167635035389371579540325327619480512374920136684787633921441576901246290213545161954865184290700344352088099063404416346968182170720521708773285279884132629954461545103181082503707725012,
+       otherPrimeInfos = asn1_NOVALUE}.
+
+pss_params(sha256) ->
+    #'RSASSA-PSS-params'{
+       hashAlgorithm = #'HashAlgorithm'{algorithm = ?'id-sha256'},
+       maskGenAlgorithm = #'MaskGenAlgorithm'{algorithm = ?'id-mgf1',
+                                              parameters = #'HashAlgorithm'{algorithm = ?'id-sha256'}
+                                             },
+       saltLength = 32,
+       trailerField = 1}.
+   

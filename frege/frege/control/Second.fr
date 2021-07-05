@@ -1,0 +1,14 @@
+--- type class 'Second' with 'second' operation
+package frege.control.Second where
+
+import frege.control.Tensor
+
+class (Tensor f) => Second f where
+  {--
+      Send the second component of the input through the argument
+      tensor, and copy the rest unchanged to the output.
+  -}
+  second :: f c d -> f (a, c) (a, d)
+
+instance Second (->) where
+  second f = \(a, c) -> (a, f c)

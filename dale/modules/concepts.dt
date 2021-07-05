@@ -1,0 +1,154 @@
+#|
+@module concepts
+
+Imports the other concept-related modules, and implements the
+following concepts:
+
+  * `Swappable`;
+  * `EqualityComparable`; and
+  * `LessThanComparable`
+
+over the built-in integral types, as well as `char`, `size` and
+`ptrdiff`. Provides `swap` functions to suit, too.
+
+|#
+(module concepts)
+
+(import concept-defs)
+
+(using-namespace std.macros
+(using-namespace std.concepts
+
+#|
+@macro refconst
+
+Expands a form `frm` into `(ref (const frm))`.
+
+|#
+(def refconst
+  (macro extern (frm)
+    (qq ref (const (uq frm)))))
+
+#|
+@macro move@
+
+Expands a form `frm` into `(move (@ frm))`.
+
+|#
+(def move@
+  (macro extern (frm)
+    (qq move (@ (uq frm)))))
+
+(def make-str-node
+  (macro extern (node-name sprintf-str)
+    (qq do
+      (def (uq node-name) (var auto (p DNode)))
+      (let ((name-str (array-of 250 char)))
+        (sprintf name-str (uq sprintf-str) (@:@ S token-str))
+        (setv (uq node-name) (mnfv mc name-str))))))
+
+#|
+@macro prefer-ref-bindings
+
+Takes a type and a suffix as its arguments.  Expands into a series of
+`def` forms: the first is `prefer-refs`, being a boolean indicating
+whether this type implements the `PreferRefs` concept; the second is
+`tpw` (type parameter wrapper), which should be used for parameters of
+the specified type (e.g. `((uq tpw) parameter)`), and the third is
+`tvw` (type value wrapper), which should be used when accessing the
+value of the relevant parameter.  There are additionally `tpw-ro` and
+`tvw-ro`, for when types are used in a read-only fashion.  The form
+names described above each take a hyphen and the string of the suffix
+node, so as to allow disambiguation when multiple calls are required.
+
+There is an additional overload of this macro, which takes two forms
+that should evaluate to either `true` or `false`, representing whether
+copy is disabled for the type and whether the type prefers references,
+as well as a suffix node.  It uses those forms to determine the
+appropriate type parameter and value wrappers, but otherwise operates
+as per the other version.
+
+|#
+(def prefer-ref-bindings
+  (macro extern (T2 S)
+    (make-str-node cd-name-node "copy-disabled-%s")
+    (make-str-node pr-name-node "prefer-refs-%s")
+    (make-str-node tpw-name-node "tpw-%s")
+    (make-str-node tpw-ro-name-node "tpw-ro-%s")
+    (make-str-node tvw-name-node "tvw-%s")
+    (make-str-node tvw-ro-name-node "tvw-ro-%s")
+    (qq do
+      (def (uq cd-name-node) (var auto bool (not (is-copy-permitted mc (qq do (uq T2)) false))))
+      (def (uq pr-name-node) (var auto bool (not (has-errors mc
+                                             (qq std.concepts.implements
+                                               (uq T2) PreferRefs)))))
+      (def (uq tpw-name-node) (var auto (p DNode)
+                             (mnfv mc (if (uq pr-name-node)
+                                          (if (uq cd-name-node)
+                                              "rv-ref"
+                                              "refconst")
+                                          "identity"))))
+      (def (uq tpw-ro-name-node) (var auto (p DNode)
+                             (mnfv mc (if (uq pr-name-node)
+                                          "refconst"
+                                          "identity"))))
+      (def (uq tvw-name-node) (var auto (p DNode)
+                             (mnfv mc (if (uq pr-name-node)
+                                          (if (uq cd-name-node)
+                                              "move@"
+                                              "@")
+                                          "identity"))))
+      (def (uq tvw-ro-name-node) (var auto (p DNode)
+                             (mnfv mc (if (uq pr-name-node)
+                                          "@"
+                                          "identity")))))))
+
+(def prefer-ref-bindings
+  (macro extern (CD PR S)
+    (make-str-node cd-name-node "copy-disabled-%s")
+    (make-str-node pr-name-node "prefer-refs-%s")
+    (make-str-node tpw-name-node "tpw-%s")
+    (make-str-node tpw-ro-name-node "tpw-ro-%s")
+    (make-str-node tvw-name-node "tvw-%s")
+    (make-str-node tvw-ro-name-node "tvw-ro-%s")
+    (qq do
+      (def (uq cd-name-node) (var auto bool (uq CD)))
+      (def (uq pr-name-node) (var auto bool (uq PR)))
+      (def (uq tpw-name-node) (var auto (p DNode)
+                             (mnfv mc (if (uq pr-name-node)
+                                          (if (uq cd-name-node)
+                                              "rv-ref"
+                                              "refconst")
+                                          "identity"))))
+      (def (uq tpw-ro-name-node) (var auto (p DNode)
+                             (mnfv mc (if (uq pr-name-node)
+                                          "refconst"
+                                          "identity"))))
+      (def (uq tvw-name-node) (var auto (p DNode)
+                             (mnfv mc (if (uq pr-name-node)
+                                          (if (uq cd-name-node)
+                                              "move@"
+                                              "@")
+                                          "identity"))))
+      (def (uq tvw-ro-name-node) (var auto (p DNode)
+                             (mnfv mc (if (uq pr-name-node)
+                                          "@"
+                                          "identity")))))))
+
+(mfor T (char
+         int  int8  int16  int32  int64
+         uint uint8 uint16 uint32 uint64
+         float double
+         size ptrdiff)
+  (def swap
+    (fn extern void ((a (ref T))
+                     (b (ref T)))
+      (let ((temp T (@ a)))
+        (setf a (@ b))
+        (setf b temp)
+        (return))))
+  (implement Swappable T)
+  (implement EqualityComparable T)
+  (implement LessThanComparable T))
+
+))

@@ -1,0 +1,14 @@
+--- type level 'const'
+--- 'Const' is a way to use some arbitrary type as an applicative  'Functor' 
+package frege.data.wrapper.Const where
+
+import Data.Monoid
+
+data Const a b = Const { get :: a }
+
+instance Functor (Const m) where
+    fmap _ (Const v) = Const v
+
+instance Monoid m => Applicative (Const m) where
+    pure _ = Const mempty
+    Const f <*> Const v = Const (f `mappend` v)

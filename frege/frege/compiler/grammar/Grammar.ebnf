@@ -1,0 +1,174 @@
+module ::= DOCUMENTATION* (moduleclause (';' definitions|'where' '{' definitions '}')|'{' definitions '}')
+definitions ::= (DOCUMENTATION|topdefinition|visibledefinition) (';' (DOCUMENTATION|topdefinition|visibledefinition))* ';'?
+definition ::= DOCUMENTATION|topdefinition|visibledefinition
+topdefinition ::= import|fixity operators|'native' 'module' typeclause interfaces 'where' '{' jtokens? '}'|publicdefinition
+visibledefinition ::= (PRIVATE|PROTECTED|PUBLIC) publicdefinition|ABSTRACT datainit wheredef
+publicdefinition ::= typedef|(datainit|'instance' insthead) wheredef|classdef|DERIVE insthead|localdef
+classdef ::= 'class' ccontext ('=>' CONID tyvar)? wheredef
+datadef ::= datainit wheredef
+instdef ::= 'instance' insthead wheredef
+wheredef ::= ('where' '{' localdefs? '}')?
+localdefs ::= dplocaldef (';' dplocaldef)* ';'?
+dplocaldef ::= DOCUMENTATION* (DOCUMENTATION|plocaldef)
+plocaldef ::= (PRIVATE|PROTECTED|PUBLIC)? localdef
+localdef ::= annotation|'pure'? 'native' methodspec '::' sigexs|fundef
+appex ::= unex+
+lambdabody ::= lambda|'->' expr
+getfield ::= VARID (('<-'|'=') expr)?
+getfields ::= getfield (',' getfield)* ','?
+dodefs ::= lcqual (';' lcqual)* ';'?
+lcqual ::= gqual|expr '=' expr|'let' '{' letdefs '}'
+lcquals ::= lcqual (',' lcqual)* ','?
+exprSS ::= expr (';' expr)* ';'?
+exprSC ::= expr (',' expr)* ','?
+field ::= VARID ('=' expr)?
+fields ::= field (',' field)* ','?
+term ::= qvarid|literal|'_'|qconid ('{' fields? '}')?|'(' ((','+|'!'|'?'|'-')?|SOMEOP expr?|binex (SOMEOP|'-')|expr (',' exprSC|';' exprSS)?) ')'|'[' ((expr '|' lcquals)?|exprSC ('..' expr?)?) ']'
+primary ::= (term|('do' '{' dodefs|qualifiers '{' (VARID ('?'|'='|'<-')|getfields)) '}') ('.' (VARID|SOMEOP|'!'|'?'|'{' (VARID ('?'|'='|'<-')|getfields) '}'|'[' expr ']'))*
+unex ::= ('!'|'?')* primary
+apats ::= (('!'|'?')* primary)+
+lambda ::= '\' (('!'|'?')* primary)+ lambdabody
+wherelet ::= 'where' '{' letdefs? '}'
+gqual ::= expr ('<-' expr)?
+gquals ::= gqual (',' gqual)* ','?
+guard ::= '|' gquals ('->'|'=') expr
+guards ::= ('|' gquals ('->'|'=') expr)+
+funhead ::= binex
+fundef ::= binex ('=' expr|('|' gquals ('->'|'=') expr)+) ('where' '{' letdefs? '}')*
+letdef ::= annotation|fundef
+letdefs ::= (annotation|fundef) (';' (annotation|fundef))* ';'?
+calts ::= calt (';' calt)* ';'?
+topex ::= ('if' expr ';'? 'then' expr ';'? 'else'|'let' '{' letdefs '}' 'in') expr|'case' expr 'of' '{' calts '}'|'\' (('!'|'?')* primary)+ lambdabody|(('!'|'?')* primary)+
+binex ::= (binex (SOMEOP|'-'))* '-'? topex
+expr ::= binex ('::' (forall|rho))?
+pattern ::= expr
+calt ::= expr (('->'|'=') expr|('|' gquals ('->'|'=') expr)+) ('where' '{' letdefs? '}')*
+aeq ::= '->'|'='
+import ::= 'import' modulename1 (VARID? CONID)? importliste
+importliste ::= ((VARID '(' importspecs|'(' importspecs?) ')'|PUBLIC importliste)?
+importspecs ::= importspec (',' importspec)* ','?
+importspec ::= PUBLIC* importitem (VARID|CONID|SOMEOP)?
+importitem ::= qvarid|CONID '(' memspecs? ')'|qconid|SOMEOP|'!'|'?'
+memspecs ::= memspec (',' memspec)* ','?
+memspec ::= PUBLIC* (VARID|CONID|SOMEOP) (VARID|CONID|SOMEOP)?
+alias ::= VARID|CONID|SOMEOP
+annotation ::= annoitems '::' (forall|rho)
+annoitems ::= annoitem (',' annoitem)*
+nativedef ::= 'pure'? 'native' methodspec '::' sigexs
+impurenativedef ::= 'native' methodspec '::' sigexs
+methodspec ::= fitem ((rawnativename|SOMEOP|'!'|'?') ('{' tauSC? '}')?|'{' tauSC? '}')?
+fitem ::= annoitem|'!'|'?'|'-'|SOMEOP
+annoitem ::= VARID|'(' (SOMEOP|'!'|'?'|'-') ')'
+datainit ::= 'data' CONID tyvar* '=' (nativepur nativespec|dalts)|'newtype' CONID tyvar* '=' dalt
+dalts ::= dalt ('|' dalt)*
+dalt ::= visdalt DOCUMENTATION?|DOCUMENTATION visdalt
+visdalt ::= (PUBLIC|PRIVATE|PROTECTED)? strictdalt
+strictdalt ::= ('!'|'?')? simpledalt
+simpledalt ::= CONID ('{' conflds '}'|simpletype+)?
+conflds ::= confld ((','|DOCUMENTATION) confld)* (','|DOCUMENTATION)?
+confld ::= DOCUMENTATION* fldids '::' (forall|rho)
+sigexs ::= sigex ('|' sigex)*
+sigex ::= (forall|rho) (THROWS tauSC)?
+typedef ::= 'type' CONID tyvar* '=' (forall|rho)
+sigma ::= forall|rho
+derivedef ::= DERIVE insthead
+insthead ::= icontext ('=>' tyname simpletype)?
+icontext ::= qconid simpletype|'(' sicontexts ')'
+sicontexts ::= qconid simpletype (',' qconid simpletype)* ','?
+sicontext ::= qconid simpletype
+contypes ::= simpletype+
+nativespec ::= rawnativename ('{' tauSC? '}')?
+gargs ::= '{' tauSC? '}'
+moduledefinition ::= 'native' 'module' typeclause interfaces 'where' '{' jtokens? '}'
+interfaces ::= ('class' tauSC)?
+typeclause ::= ('type' tau)?
+rhofun ::= simpletype+ ('->' simpletype+)*
+tauSB ::= tau ('|' tau)*
+tauSC ::= tau (',' tau)*
+tau ::= (simpletype+ '->')* (simpletype+|forall)
+simpletype ::= tyvar|tyname|'(' tau (',' tauSC|'|' tauSB)? ')'|'[' tau ']'
+simpletypes ::= simpletype+
+tapp ::= simpletype+
+rho ::= (simpletype+ '=>')? rhofun
+forall ::= FORALL VARID+ ('.'|SOMEOP) rho
+boundvars ::= VARID+
+boundvar ::= VARID
+ccontext ::= qconid tyvar|'(' scontexts ')'
+tyname ::= qconid|'[' ']'|'(' (','+|'->')? ')'
+commata ::= ','+
+docsO ::= DOCUMENTATION*
+docs ::= DOCUMENTATION+
+documentation ::= DOCUMENTATION
+dvars ::= tyvar+
+elsex ::= ';'? 'else'
+infix ::= fixity operators
+fixity ::= (INFIX|INFIXL|INFIXR) INTCONST
+fldids ::= fldid (',' fldid)*
+fldid ::= (PUBLIC|PRIVATE)? strictfldid
+jitem ::= rawnativename|SOMEOP|'!'|'?'
+wheretokens ::= 'where' '{' jtokens? '}'
+jtokens ::= (jtoken|'{' jtokens? '}')+
+jtoken ::= VARID|CONID '.'?|QVARID|QCONID|DOCUMENTATION|'module'|'import'|INFIX|INFIXR|INFIXL|'native'|'data'|'where'|'class'|'instance'|ABSTRACT|'type'|TRUE|FALSE|'if'|'then'|'else'|'case'|'of'|DERIVE|'let'|'in'|'do'|FORALL|PRIVATE|PROTECTED|PUBLIC|'pure'|THROWS|'mutable'|INTCONST|STRCONST|LONGCONST|FLTCONST|DBLCONST|CHRCONST|'->'|'::'|'<-'|'=>'|'..'|SOMEOP|INTERPRET|','|'|'|'['|']'|'('|')'|'.'|'?'|'-'|';'|'!'|'='|'\'
+scontexts ::= qconid tyvar (',' qconid tyvar)* ','?
+scontext ::= qconid tyvar
+tyvar ::= VARID|'(' VARID '::' kind ')'
+simplekind ::= SOMEOP|VARID|'(' kind ')'
+kind ::= simplekind ('->' simplekind)*
+literal ::= TRUE|FALSE|CHRCONST|STRCONST|INTCONST|BIGCONST|LONGCONST|FLTCONST|DBLCONST|REGEXP
+mbdot ::= '.'|SOMEOP
+moduleclause ::= PROTECTED? 'module' modulename1 (VARID+ '(' qvarids ')')*
+modulename ::= modulename1
+modulename1 ::= ((varidkw|CONID) '.')* CONID
+nativename ::= rawnativename
+nativepur ::= ('pure'|'mutable')? 'native'
+operators ::= (SOMEOP|VARID|'-')+
+opstring ::= SOMEOP|VARID|'-'
+qvarids ::= qvarop (',' qvarop)*
+qvarop ::= (CONID '.' (CONID '.')?)? (VARID|'!'|'?')|SOMEOP
+operator ::= SOMEOP
+strictfldid ::= ('!'|'?')? VARID
+plainfldid ::= VARID
+qconid ::= (CONID '.' (CONID '.')?)? CONID
+qualifiers ::= CONID '.' (CONID '.')?
+qvarid ::= CONID '.' (CONID '.')? (VARID|'!'|'?')|VARID
+rawnativename ::= ((VARID|'module'|CONID) '.')* (VARID|CONID|'module'|STRCONST)
+thenx ::= ';'? 'then'
+varop ::= VARID|'!'|'?'
+unop ::= '!'|'?'
+varid ::= VARID
+varidkw ::= VARID|'data'|'type'|'native'|'pure'|'module'|'import'
+words ::= VARID+
+word ::= VARID
+GETS ::= '<-'
+THEN ::= 'then'
+CONID ::= UppercaseLetter (Letter|Digit|'_'|"'")*
+IF ::= 'if'
+LET ::= 'let'
+DCOLON ::= '::'
+TYPE ::= 'type'
+NEWTYPE ::= 'newtype'
+ELSE ::= 'else'
+PURE ::= 'pure'
+UppercaseLetter ::= '«any character in Unicode categories Letter and Uppercase»'
+CLASS ::= 'class'
+OF ::= 'of'
+LowercaseLetter ::= '«any character in Unicode categories Letter and not Uppercase»'
+NATIVE ::= 'native'
+INSTANCE ::= 'instance'
+STRCONST ::= '"' ([^"]|'\"') '"'
+CASE ::= 'case'
+Digit ::= [0-9]
+DO ::= 'do'
+DATA ::= 'data'
+QUALIFIER ::= CONID '.'
+ARROW ::= '->'
+WHERE ::= 'where'
+MUTABLE ::= 'mutable'
+Letter ::= '«any character in Unicode category: Letter»'
+PACKAGE ::= 'module'
+IMPORT ::= 'import'
+IN ::= 'in'
+EARROW ::= '=>'
+VARID ::= (LowercaseLetter|'_') (Letter|Digit|'_'|"'")*
+DOTDOT ::= '..'
+

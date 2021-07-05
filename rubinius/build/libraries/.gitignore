@@ -1,0 +1,59 @@
+# General ignores
+.deps
+*.data
+prebuilt/*
+
+# libffi
+libffi/Makefile
+libffi/config.log
+libffi/config.status
+libffi/fficonfig.h
+libffi/include/Makefile
+libffi/include/ffi.h
+libffi/include/ffitarget.h
+libffi/libffi.pc
+libffi/libtool
+libffi/man/Makefile
+libffi/src/.dirstamp
+libffi/src/x86/.dirstamp
+libffi/testsuite/Makefile
+
+# oniguruma
+oniguruma/Makefile
+oniguruma/config.h
+oniguruma/config.log
+oniguruma/config.status
+oniguruma/libtool
+oniguruma/onig-config
+oniguruma/sample/Makefile
+
+# libudis
+udis86/Makefile
+udis86/config.h
+udis86/config.log
+udis86/config.status
+udis86/docs/Makefile
+udis86/libtool
+udis86/libudis86/Makefile
+udis86/tests/Makefile
+udis86/udcli/Makefile
+udis86/udcli/udcli
+
+# zlib
+zlib/Makefile
+zlib/example
+zlib/examplesh
+zlib/minigzip
+zlib/minigzipsh
+zlib/zconf.h
+zlib/zlib.pc
+
+# libsodium
+libsodium/config.log
+libsodium/config.status
+libsodium/libsodium-uninstalled.pc
+libsodium/libsodium.pc
+libsodium/libtool
+libsodium/src/libsodium/include/sodium/version.h
+libsodium/**/Makefile
+libsodium/**/.dirstamp

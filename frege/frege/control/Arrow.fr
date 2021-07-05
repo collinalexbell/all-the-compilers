@@ -1,0 +1,21 @@
+--- type class for 'Arrow's
+package frege.control.Arrow where
+
+import frege.Prelude
+
+import frege.control.Category (Category())
+import frege.control.First
+import frege.control.Second
+import frege.control.CombineIn
+
+{--
+    Basic arrow definitions, based on
+    Generalising Monads to Arrows, by John Hughes,
+    Science of Computer Programming, pp67-111, May 2000.
+-}
+class (Category a, First a, Second a, CombineIn a) => Arrow a where
+  --- Lift a function to an arrow.
+  arr :: (b -> c) -> a b c
+
+instance Arrow (->) where
+  arr = id

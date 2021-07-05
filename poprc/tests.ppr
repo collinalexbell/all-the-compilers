@@ -1,0 +1,667 @@
+__, Copyright 2012-2020 Dustin DeWeese
+  | This file is part of PoprC.
+  |
+  |  PoprC is free software: you can redistribute it and/or modify
+  |  it under the terms of the GNU General Public License as published by
+  |  the Free Software Foundation, either version 3 of the License, or
+  |  (at your option) any later version.
+  |
+  |  PoprC is distributed in the hope that it will be useful,
+  |  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  |  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  |  GNU General Public License for more details.
+  |
+  |  You should have received a copy of the GNU General Public License
+  |  along with PoprC.  If not, see <http://www.gnu.org/licenses/>.
+  |______________________________________________________________________
+
+module tests:
+
+imports:
+  module list
+  module stack
+  module control
+  module num
+  module logic
+  module algorithm
+  module io
+
+__ f2b: | popr ! cut popr swap drop
+
+__ f5: [] pushl swap2 swap2 | swap pushl popr swap popr swap drop dup swap2 > ! cut
+
+__ x y [z+] should be x + y + z + 1
+__ FIX: for some reason: pull2 != pull pull
+f2: pushl pushl popr 1 + swap pushl pull pull drop +
+
+__ f1: [] [] ifte pushl
+
+f6: swap2
+
+__ apply a quote to a single input yielding a single output
+test_ap11: pushl head
+
+__ apply a quote to two inputs yielding a single output
+test_ap21: pushl pushl head
+
+__ apply a quote to a single input yielding two outputs
+test_ap12: pushl get2
+
+__ this expands forever because laziness expands backwards; assert must be *later* than recursive call
+__ dec: [dup 5 <= !] [dup 5 > ! 1- dec] | pushl popr swap drop
+dec: [dup 5 <= !] [dup 1- dec swap 5 > !] | pushl head
+
+fib: [dup 1 <= !] [dup 1- dup 1- fib swap fib + swap 1 > !] | pushl head
+
+fact: [1 == 1 swap !] [dup dup 1- fact * swap 1 > !] | pushl head
+
+count: [0 == 0 swap !] [dup 1- count 1+ swap 0 > !] | pushl head
+
+qdec: [dup head 5 <= !] [dup [1-] . qdec swap head 5 > !] | pushl head
+
+__ qtest: [1+] . qtest
+__ qtest2: [1+] swap . qtest2
+
+___ these need fixed
+___ from here
+
+__ fact2: [1 == 1 swap !] [dup 1- swap [*] pushl swap pushr pushl get2 fact2] | pushl pushl get2
+
+___ to here
+
+__ len: dup is_nil [0 swap!] [swap popr drop len 1+ swap not!] | pushl pushl popr swap drop
+
+__ iota: [0 == [] swap !] [dup [dup 1- iota swap] pushl swap 0 != !] | pushl popr swap drop
+__ sum: [is_nil 0 swap !] [dup get2 swap sum + swap is_nil not!] | pushl popr swap drop
+
+pushl2: pushl pushl
+
+__[
+range: __ with inputs i and n __
+  __ return i or recursive call with i+1 __
+  dup2 [drop] [swap 1+ swap range] | pushl2
+    -swap2 <= ! __ make sure i <= n
+    head __ get the value
+]__
+
+__[
+nested: [[0 swap False =:= !]
+           [1 swap True  =:= !] | swap False =:= !]
+          [[2 swap False =:= !]
+           [3 swap True  =:= !] | swap True  =:= !] |
+           pushl popr swap drop __ first arg
+           pushl popr swap drop __ second arg
+]__
+
+inl_loop: [3+] [10<] iterate
+inl_loop2: swap [+] pushl swap [<] pushl iterate
+inl_loop3: [3+] [10<] iterate 8*
+inl_loop4: 4+ [3+] [10<] iterate 2*
+
+popr_quote_compose: [popr] .
+id_quote_compose: [id] .
+
+__ test, should return x2
+compose_alt: [1+] [] | . head
+
+__ initial step test base -> result
+binrec: [iterate] dip31 $
+
+__ it10 should optimize to the same code as br10
+it10: [] pushl [[1+] .] [head 10 <] iterate head
+br10: [] pushl [[1+] .] [head 10 <] [head] binrec
+it10b: [[1+] .] [head 10 <] iterate head
+
+__ ap_loop: dup [$] dip21 ap_loop
+__ ap_loop1: [1+] ap_loop
+__ ap_loop2: [[1+] .] ap_loop
+__ ap_loop3: [1+] swap swap ap_loop
+
+__ ERROR: user_func.c:185: unify_exec: Assertion `in == closure_in(pat)' failed.
+__ alt_ap_loop: [dup | 1+] ap_loop
+
+ap_loop4: [] pushl [] ap_loop head
+
+__ dup_ap_alt: [2 |] dup 1 swap $
+
+__ a needlessly expensive `drop`
+drop_loop:
+  [] ap20
+    [[1-] .]
+    [head 0 >]
+    iterate tail head
+
+drop_loop1:
+  [] ap10
+    [[1-] .]
+    [head 0 >]
+    iterate head
+
+drop_loop2:
+  [] ap20
+    [[1-] .]
+    [head 0 >]
+    iterate
+
+drop_loop3:
+  [] ap30
+    [[1-] .]
+    [head 0 >]
+    iterate tail get2
+
+drop_loop4:
+  [] ap40
+    [[1-] .]
+    [head 0 >]
+    iterate tail pull3 drop
+
+drop_loop5:
+  [] ap10
+    [[1-] .] swap swap
+    [head 0 >]
+    iterate head
+
+drop_loop6:
+  [-] pushl [.] pushl
+    [7] swap
+    [head 0 >]
+    iterate head
+
+collatz_step:
+  [dup 2/ swap even]
+    [dup 3* 1+ swap odd]
+    | pushl get2!
+
+collatz:
+  0 swap [] ap20
+    [[swap 1+ swap collatz_step] .]
+    [head 1 >]
+    iterate tail head
+
+decel_step:
+  [dup 1- swap 5<=]
+    [dup 5- swap 5>]
+    | pushl get2!
+
+decel:
+  0 swap [] ap20
+    [[swap 1+ swap decel_step] .]
+    [head 1 >]
+    iterate tail head
+
+leak:
+  0 swap [] ap20
+    [[swap 3+ swap] .]
+    [head 1 >]
+    iterate tail head
+
+altf_loop:
+  [] ap20
+    [[dup | 1-] .]
+    [head 1 >]
+    iterate tail head
+
+__ ERROR: user_func.c:702: func_exec: Assertion `parent_entry' failed: incomplete entry can't be unified without a parent entry
+__ altf_loop2:
+__   [] ap10
+__     [[0 |] .]
+__     [head 1 >]
+__     iterate tail head
+
+__ ERROR: trace.c:179: switch_entry: Assertion `is_ancestor_of(r->value.tc.entry, entry)' failed.
+__ alt_ap_f: [dup 1+] [dup 2+] | pushl
+__ alt_ap: alt_ap_f pull2 drop swap
+
+__ rec_a: rec_b 1 +
+__ rec_b: rec_a 1 -
+
+__ using floats
+pct: ->f 100 /f 1 +f *f
+
+pushl_assert: [] pushl swap !
+
+alt_list: | [dup] pushl
+
+default_max: dup2 < ! swap default
+
+assert_nready: [1+] swap ! $
+
+__ comp_assert: [2] swap ! [1+] swap2 ! . head
+empty_assert: [] swap ! ap22 drop swap drop
+
+__ times_noop: [id] 1 times
+
+after0:
+  [tail]
+    [head 0 !=]
+    iterate tail head
+
+__ bad_deps: [dup] popr swap 1 swap dup swap [ap21] dip32 2 swap ap11
+
+__ equivalent to `True otherwise`
+ow_assert: True swap True otherwise !
+ow_not: False otherwise not
+
+__ both equivalent to `swap otherwise`
+ow_assert2: True False | otherwise not !
+ow_assert3: True otherwise !
+
+imbalanced_assert: 1 swap ! swap 2 swap ! dup swap2 +
+assert_seq: 1 swap ! seq
+
+pushl_swap_assert: pushl swap!
+
+alt_seq: dup [1] swap! swap [2 delay] swap not! | head
+del: 1 2 delay |
+
+__ f7a: [0>] iterate
+__ f7b: [1+] . f7a
+f7c: [1+] swap times
+
+__ should `not` stay in the quote?
+__ f7d: [not] .
+
+ldmult: listdup sum
+
+stream: dup [stream] pushl swap
+box: [box]
+
+__ should't just drop an arg
+f8: . $
+
+__ linear time version of `fib`
+fibl: [0 1] [[tuck +] .] swap2 1- times head
+
+push_input: [getline_std] dip12 pushl
+
+input_times: [] ap31 [[push_input] .] swap times
+
+__ sum_times: [] swap input_times [<-str] map sum
+
+__ maptest: [1] [] map head
+
+quote_str: "'" swap ++ "'" ++
+sum_times2: swap [0] pushl [[[getline_std <-str] dip12 +] .] swap2 times head
+sum_times2v: swap [0] pushl [[[getline_std dup [quote_str write_std] dip21 <-str] dip12 +] .] swap2 times head
+
+spaces: [" " strsplit swap "" =s !] ["" =s not] iterate True swap "" =s ! False default
+
+__ TODO simplify each case
+__ calc_func: [=s] dip21 [.] pushl dip11!
+calc_step:
+  strtrim
+    [<-str int_t pushr]
+    ["+"    =s [[+]    .] dip11 !] |
+    ["-"    =s [[-]    .] dip11 !] |
+    ["*"    =s [[*]    .] dip11 !] |
+    ["/"    =s [[/]    .] dip11 !] |
+    ["gcd"  =s [[gcd]  .] dip11 !] |
+    ["^"    =s [[^]    .] dip11 !] |
+    ["fib"  =s [[fibl] .] dip11 !] |
+    ["fact" =s [[fact] .] dip11 !] |
+    ["len"  =s [dup length pushr] dip11 !] |
+    ["sum"  =s [sum quote] dip11 !] |
+    ["swap" =s [[swap] .] dip11 !] |
+    ["dup"  =s [[dup]  .] dip11 !] |
+    ["drop" =s [[drop] .] dip11 !] | ap21 nip
+
+__ str_list: "[" [->str " " ++ ++] foldl strtrim "]" ++
+
+__ simplified versions of calc_step
+
+calc_step_dummy: strtrim <-str int_t [+] pushl .
+
+calc_step_simple:
+  strtrim
+    [<-str int_t pushr]
+    ["+"    =s [[+]    .] dip11 !] | ap21 nip
+
+calc_step_push:
+  strtrim
+    ["1"    =s [[1]    .] dip11 !]
+    ["+"    =s [[+]    .] dip11 !] | ap21 nip
+
+calc_loop:
+  top swap [int_t ->str "\n" ++ write_std getline_std] dip22 swap  __ IO [s] "t"
+    calc_step top -swap2 over              __ "t" IO [s] IO
+    [calc_loop] dip21 vifte
+
+calc: [0] calc_loop
+
+__ matches structure of calc_loop
+vifte_collatz_step:
+  [dup 3* 1+ swap odd!]
+    [dup 2/ swap even!] | $ dup 1 > !
+vifte_collatz: dup vifte_collatz_step dup [vifte_collatz] $ swap2 vifte
+
+
+__ while_collatz: [[dup 3* 1+ swap odd!] [dup 2/ swap even!] | $ dup 1> !] while
+__ compq: [.]
+
+spilling: not dup not [] pushl
+spilling2: not dup not [] pushl swap [] pushl
+spilling3: not dup not [] pushl swap not dup [] pushl swap [] pushl
+
+__ x y [f] -> fx fy, except for y = _|_, x _|_
+__ useful when x is IO
+failthru: [drop tuck swap otherwise swap] [ap22] | ap32 swap2 drop
+
+__ fake seq using otherwise
+oseq: False False! otherwise swap otherwise
+
+__[
+while_length:
+  [0 swap] pushl
+    [[[1+] [tail] para] .]
+    while tail head
+]__
+
+vifte_quote: dup [1+] [0] vifte $
+assert_otherwise_quote: [1] swap ! swap otherwise
+
+__ 1 0/ 2 f9
+f9: | 3 default
+
+hello:
+  "What's your name? " write_std
+    getline_std
+    "Hello " swap ++ "!\n" ++ write_std
+
+ext_cos: float_t "@math.h:cos" external float_t
+
+__ f10: [] [1] | ap12 swap2 drop
+
+sum3:  [] ap30 sum
+sum3r: [] ap30 0 [+] foldr __ {hide}
+sum3l: [] ap30 0 [+] foldl
+
+__ [a] [b] [f] [acc]
+
+_[
+popar: [popr] dip12 popr [swap] dip22
+zip1:
+  [dup] dip12 . swap pushr __ stuff f into both ends of acc
+    [popar] dip24 ap20 __ pull from a & b into acc
+    popr swap __ pull f back out
+
+zip: [[]] ap30 [zip1] while
+]_
+
+__ [1 [2]] ==> [[1] 2]
+f11: popr pushl
+
+either_test:
+  [] swap . . head
+
+__ doesn't work if inlined
+reverse_reverse: reverse reverse
+
+rpr: reverse pushl reverse
+
+__ quote_reverse: quote [] [swap pushr] foldr
+
+asq: dup [swap pushl] dip21 ! dup head
+
+__ drops the assert
+asq2: dup head [popr swap pushl] dip11 !
+__ asq2_loop: asq2 asq2_loop
+
+pop_min_test: [] ap20 [] [not] | . popr! head
+
+__ shouldn't chain seqs
+f12: 1 swap seq 2 3 | +
+
+dup_map: [int_t dup] map
+
+__ {hide} should this return `[]` ?
+drop_map: [drop] map
+
+map_add1: [1+] map
+
+repeat_int: int_t dup [repeat_int]$ swap pushr
+
+__ [... x] [...] [f] mov_ap -> [...] [fx' ...] [f]
+mov_ap: dup -swap2 [. movr] dip32
+old_map:
+  [[] swap] ap20
+    [[mov_ap] .]
+    [tail2 head popr valid]
+    iterate tail head
+
+add_array_at: over [[+] pushl update_array] dip31 read_array
+
+one_to_ten: dup 1 >= ! dup 10 <= !
+one_to_ten2: dup 1 >= ! dup 10 <= ! [dup 5 < !] [dup 5 >= !] | $
+two_to_twenty: 2 / one_to_ten
+
+not_one_to_ten: [dup 1 < !] [dup 10 > !] | $
+
+__ for testing analysis
+mul_lt50: 1 10 bound swap 1 10 bound * dup 50 < !
+assoc100:
+  0 100 bound swap2
+    0 100 bound swap2
+    0 100 bound swap2
+    []ap30 dup
+    [+ +] . head swap
+    [[+] dip21 +] . head ==
+    True swap!
+
+range_add10: + 1 10 bound
+disj_bound: [1 5 bound] [8 10 bound] | $
+
+sum_diff_map: [get2 dup2 - [+] dip21 []ap20] map
+
+f13: seq popr 1+
+
+zip_add: [+] zip
+
+stream_combine: popr_para default [[stream_combine] $$] dip21 pushr
+
+axi_lite_slave: stream_read_write_array __ {hide}
+
+three_reads: [[read_array swap] dip22 read_array swap] dip33 read_array swap -swap3
+
+three_writes: [[[[write_array] dip31] dip42 write_array] dip51] dip62 write_array
+
+fuse_map: [1+] map [2*] map
+fuse_map2: [1+ 2*] map
+fuse_map3: [1+] map get2
+fuse_map4: [1+] map tail
+fuse_map4b: popr drop [1+] map
+fuse_map5: 0 [+ dup] map_with tail
+fuse_map5b: popr drop 0 [+ dup] map_with
+fuse_map5c: 0 [+ dup] map_with head
+fuse_map5d: [3*] map 0 [+ dup] map_with
+fuse_map5e: popr 0 + [+ dup] map_with
+fuse_map5f: 0 [+ dup] map_with [3*] map
+fuse_map6: 0 [+ dup] map_with 1 [* dup] map_with
+fuse_map7: [dup] map tail
+fuse_map8: []ap20 [2*] map 0 [+ dup] map_with [3+] map get2
+fuse_map8b: []ap20 [2*] map 2 [swap dup [*] dip21 2* swap] map_with [3+] map get2
+fuse_map8c: []ap30 [2*] map 2 [swap dup [*] dip21 2* swap] map_with [3+] map get3
+fuse_map_zip_map: [3*] map swap [5*] map [+] zip [2/] map
+fuse_zip_zip:
+  [2*] map swap
+    [3*] map [+] zip swap
+      [5*] map [+] zip [1-] map
+
+id_map: [id] map __ eliminate this
+id_map2: popr [id_map2] dip11 pushr
+
+axil_map_w: [3+] map stream_read_write_array __ {hide}
+axil_map_w_fib: [fibl] map stream_read_write_array __ {hide}
+axil_map_r: stream_read_write_array [[3+] map] dip11 __ {hide}
+
+__ [l] [p] filter -> [..x..] such that for all x, x p == True
+old_filter:
+  [[[]] pushl] dip11
+    [[filter_step] pushl .] pushl
+    [tail head head valid]
+    iterate head
+
+__ [.. a] [b ..] [p] --> [..] [a b ..] if a p, otherwise [..] [b ..]
+filter_step: [[popr] dip12] dip23 pushif
+
+fuse_filter_map: [odd] filter 0 [+ dup] map_with
+fuse_filter_sum: [odd] filter sum
+fuse_map_filter: [1+] map [odd] filter
+fuse_map_with_filter: 0 [+ dup 11*] map_with [odd] filter
+fuse_filter_tail: [odd] filter tail __ {hide}
+fuse_filter_tail2: [odd] filter2 tail
+
+fuse_map_ho: swap [map] pushl swap [map] pushl . $
+
+help: "Type `:help` (with initial colon) for help.\n" write_std
+
+say: "\n" ++ write_std
+
+__ reduced bug from stream_compute_ff
+parallel_map_zip: [[1+] map] dip11 [3*] map [+] zip
+parallel_map_zip2: swap [1+] map swap [3*] map [+] zip
+parallel_map_zip3: [[1+] map] [[3*] map] para [+] zip
+
+f14: dup [. head swap] dip32 $ __ 1 [2] [3+] f14  ===>  5 4
+
+reader0: [] [[0 swap pushl] dip11 .] foldr
+
+__ pointless, but to check fusion
+concat_map: map concat
+
+__            _________
+__      -b ± √ b² - 4ac
+__  x = ---------------
+__           2a
+quadratic:
+  []ap30 quote __ 2@ = a, 1@ = b, 0@ = c
+    [[ 1@ -1*f, __ -b
+       1@ dup *f, __ b^2
+       0@, 2@ *f 4*f -f __ - 4ac
+       sqrt dup -1*f | +f, __ ± √
+       2@ 2*f /f ]] __ / 2a
+    scatter head
+
+__ another version of scatter, doesn't work {hide}
+scatter_map: swap [swap .] pushl map concat
+
+after_fold: concat 42 swap $ __ {hide}
+after_sum: 0 [+] foldr 42+
+suml: 0 [+] foldl __ {hide}
+
+__ {hide}
+foldl2:
+  [swap] dip22
+    [pushl] pushl map
+    [quote] dip11 pushl
+    concat head
+
+concatl: [] [.] foldl __ {hide}
+lengthl: 0 [drop 1+] foldl __ {hide}
+
+f15: [1+] swap .
+f16: [1+]
+
+return_test: [dup] pushl [[3* dup, 5+ dup]] pushl return drop get3
+
+compute_fn:
+  dup dup 0 == [1 31<<b &b 0 == not] dip11 or
+    [!] [[collatz 1 31<<b |b] dip11 not!] | $$
+
+dotswap: . swap . swap .
+
+__ 1 [2 3 4] [+] mapc $ ===> 10
+mapc: [swap . pushl] pushl [] swap foldr
+cmap: [pushl] pushl concat_map
+
+__ sc3b fails {hide}
+__ why: streams really end with a failure to the left,
+__      which makes means you can't pushl a value,
+__      even though they look like regular quotes.
+__ So, to pushl, you really need to know how large the
+__ quote will be in advance.
+__ This understandable, but unfortunate. This also implies:
+__ [1 2] [3+] map [4 5 6] [7+] map .  ===>  [11 12 13]
+sc3b: [] pushq [[+]] [.] zip [$] . $
+sc3b2: [] pushq [[+]] [.] zip head $
+
+map_iteratel: 0 [1+] iteratel swap map
+
+f17: | dup [quote] dip11 seq
+
+__ a [f]
+nd_rec: dup [$- |] dip21 nd_rec
+
+f18: [[+] pushl] map
+f19: [[+] pushl] map [1 swap $] map
+f19b: f18 [1 swap $] map
+
+__ mutual recursion
+f20a:
+  dup head 0 == swap
+    [tail f20a swap!]
+    [f20b swap not!] | $$
+f20b:
+  dup head
+    [0 == swap tail f20a swap!]
+    [1 == swap tail f20b swap!] |
+    [1 > swap head swap!] | $$
+
+__ simplified function interleaving
+f21:
+  [[[+ dup 10*] pushl] map] dip11
+    [[* dup 10*] pushl] map
+    1 interleave_with
+
+f21b:
+  [[0 swap drop] map] dip11
+    [1 swap drop] map
+    interleave
+
+f21c:
+  [[+] pushl] map
+    [0] [swap .] foldr head
+
+f22: [f22a] map
+f22a: dup [swap]. | dup [>]. head !
+f22b: [dup [swap]. | dup [>]. head !] map
+f23: [max] zip
+f24: [[max].] map
+f25: [[1+] map] map
+f25b: [[odd] filter] map
+
+fuse_map_with_sum: 0 [+ dup] map_with sum
+
+f26: [[[Left] pushl] map, [[Right] pushl] map] para interleave unzip_either
+f26b: [[[Left] pushl] map, [[Right] pushl] map] para [] zip unzip_either __ deterministic version {hide}
+
+f27: interleave [odd] filter __ {hide}
+
+left_right: Left [swap dup [[] pushl pushl_seq] dip21 Left Right other swap] map_with
+f28: left_right unzip_either __ {hide}
+
+f29l: [[Left] pushl_seq] map unzip_either
+f29r: [[Right] pushl_seq] map unzip_either
+
+f30: [dup 1 swap / 1 ==] ap10 ifdo
+f30b: [dup 1 / 1 ==] ap10 ifdo
+
+__ simplified versions of stream_read_write_1
+f31:
+  [[[+ Right tag] pushl] map,
+   [[+ Left tag] pushl] map] para
+    interleave
+    swap [$-] map_with
+
+__ x t tag -> x [x t]
+tag: quote [dup] dip12 pushl
+
+f31b:
+  [[[+ dup] pushl] map] both
+    interleave
+    swap [$-] map_with
+
+f31c:
+  [[[+ dup] pushl] map] both
+    swap2 [[$-] map_with] pushl both
+
+f32: interleave [1+] map

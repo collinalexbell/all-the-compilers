@@ -1,0 +1,110 @@
+--- This is an undocumented module
+module frege.compiler.common.Mangle where
+
+import Data.TreeMap as TM
+import Compiler.common.Binders( jtvArray )
+
+--- Generates an ident which is guaranteed not to clash with any user defined ident.
+noClashIdent :: String -> String
+noClashIdent i = "$" ++ i
+
+{--
+ * Java keywords (along with substitutions) as specified in the
+ * [Java Language Specification, Version 8.0](https://docs.oracle.com/javase/specs/jls/se8/html/jls-3.html#jls-3.9)
+ * and, in addition, "true", "false", and "null"
+ *
+ * It is, for instance, possible to name a frege item _int_, though
+ * in the generated java code, this will appear as @$int@.
+ *
+ -}
+
+!javakeywords = TM.fromList  [(kw,  noClashIdent kw) | kw <- [
+    "abstract",     "continue",     "for",          "new",          "switch",
+    "assert",       "default",      "if",           "package",      "synchronized",
+    "boolean",      "do",           "goto",         "private",      "this",
+    "break",        "double",       "implements",   "protected",    "throw",
+    "byte",         "else",         "import",       "public",       "throws",
+    "case",         "enum",         "instanceof",   "return",       "transient",
+    "catch",        "extends",      "int",          "short",        "try",
+    "char",         "final",        "interface",    "static",       "void",
+    "class",        "finally",      "long",         "strictfp",     "volatile",
+    "const",        "float",        "native",       "super",        "while",
+    -- also the literals, as variables cannot be named like so
+    "true",         "false",        "null",
+    -- likewise assert and main, in order to avoid confusion
+    "assert",       "main"
+    ]]
+
+
+
+repljavakws s = case TreeMap.lookupS javakeywords s of
+    Just k  -> k
+    Nothing -> s
+
+
+
+--- replacement for certain graphic characters ∀
+!graphReplacements = TM.fromList . map (fmap (unpacked . noClashIdent)) $ [
+    ('°', "deg"),    ('^', "caret"),    ('!', "excl"),  ('²', "two"),   ('³', "three"),
+    ('§', "par"),    ('%', "pct"),      ('&', "amp"),   ('/', "div"),   ('=', "eq"),
+    ('?', "qm"),     ('\\', "back"),    ('*', "star"),  ('+', "plus"),  ('~', "tilde"),
+    ('\'', "tick"),  ('#', "num"),      ('-', "minus"), ('.', "dot"),   (':', "colon"),   -- '#
+    (',', "c"),      (';', "semi"),     ('@', "at"),    ('|', "bar"),   ('<', "lt"),
+    ('>', "gt"),     ('•', "bullet"),   ('«', "lang"),  ('»', "rang"),  ('¦', "bar2"),
+    ('¿', "iqm"),    ('€', "euro"),     ('£', "pound"), ('¥', "yen"),   ('¢', "cent"),
+    ('¬', "not"),    ('±', "plusminus"),('¡', "iexcl"), ('¤', "money"), ('©', "copy"),
+    ('®', "trade"),  ('¹', "one"),      ('$', "dollar"),
+    ('[', "lbrack"), (']', "rbrack"),   ('(', "l"),     (')', "r")]
+
+
+
+
+--- look in 'graphReplacements' for character translation, if not there, use ordinal number
+replaceGraphic c = case graphReplacements.lookup c of
+    Just s ->  s
+    Nothing -> (unpacked . noClashIdent . show . ord) c
+
+
+{--
+    encode certain special characters so that the result is a
+    valid java identifier
+ -}
+mangled :: String -> String
+mangled s | s.startsWith "(," = "Tuple" ++ show (length s - 2 + 1)
+mangled "()" = "Unit"
+mangled "[]" = "List"
+mangled ":"  = "Cons"
+mangled "->" = "Function"
+mangled s = (repljavakws . packed . loop . unpacked) s
+    where
+        loop (a:xs)
+            | a.isLetterOrDigit
+              || a == '$' || a == '_' = a : loop xs
+            | (b:ys) <- xs,
+              Char.isSurrogatePair a b,
+              cp <- Char.toCodePoint a b,
+              Char.isLetter cp || Char.isDigit cp = a:b:loop ys
+            | otherwise = (replaceGraphic a) ++ loop xs
+        loop [] = []
+
+{--
+    Replace lower case latin single letter type variables with 
+    uppercase latins or mathematical capitals.
+    
+    Mathematical capitals will make Java type annotations look 
+    more familiar, like:
+    
+    > class Functor f where fmap :: (a -> b) -> f a -> f b
+    
+    would read in Java
+    
+    > interface Functor<𝓕 extends Kind.U<𝓕,?> {
+    >    public<𝓐, 𝓑> Kind.U<𝓕, 𝓑> fmap(Func.U<𝓐, 𝓑> f, Kind.U<𝓕, 𝓐> v)
+    > }  
+-}
+mangleJtv g name
+    | name ~ '^[a-z]$' = elemAt (jtvArray g) (ord (name.charAt 0) - ord 'a')
+    | name == "?"      = name
+    | otherwise        = mangled name   -- not single letter latin, leave as is
+
+

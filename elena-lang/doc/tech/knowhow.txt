@@ -1,0 +1,165 @@
+1) ELENA module structure
+-------------------------
+a) General file structure:
+  +--------------+
+  | module stamp |
+  +--------------+
+  | module name  |
+  +--------------+
+  |  references  |
+  +--------------+
+  |   messages   |
+  +--------------+
+  |  constants   |
+  +--------------+
+  |   sections   |
+  +--------------+
+
+b) module stamp - fixed-size module version signature (do not terminated by zero)
+
+c) module name  - zero terminated module name
+
+d) references   - reference section 
+   +--------------+
+   |    size      |  total section size
+   +--------------+ 
+   |   reference  |
+   |     memory   |
+   |  hash table  |
+
+e) messages
+   +--------------+
+   |    size      |  total section size
+   +--------------+ 
+   |   message    |
+   |   memory     |
+   |  hash table  |
+
+f) constants
+   +--------------+
+   |    size      |  total section size
+   +--------------+ 
+   |   constant   |
+   |    memory    |
+   |  hash table  |
+
+g) sections     - section list      
+
+  <total size>                 
+  {section}
+
+  where section = 
+    <section id>   
+    <section size>   
+    <section body>
+
+    <relocation table size>
+    <reference id>
+    <reference position>
+       ...
+
+2) ELENA Heap
+
+---------------------------------------------------
+   Header  |      YG       |           OG
+---------------------------------------------------
+           | Main | Shadow | PERM |       MG
+---------------------------------------------------
+
+3) VM Table
+
+NOTE: VM Table is empty for stand-alone application
+
++---------------------+
++    Instance Ptr     +    
++---------------------+
++   getClassVMTRef    +
++---------------------+
++    getSymbolRef     +
++---------------------+
++   getClassName      +
++---------------------+
++    Interprete       +
++---------------------+
++    getLastError     +
++---------------------+
+
+4) Object (GC)
++---------------------+
++      Lock field     +    ; lock field, size = 8 bits
++---------------------+
++      Flags          +    ; flags field, size = 1 bit , 1 = struct
++---------------------+
++       Length        +    ; the object length, size = 23 bits ; NOTE : Length cannot be zero, the empty length is - 800000
++---------------------+
++    VMT reference    +    
++---------------------+
+
+
+6) Method Stack
++---------------------+
++         SELF        +    
++---------------------+
++         Param       +    
++---------------------+
++      RET Address    +    
++---------------------+
+                                                   
+method should copy 0 to self if it breaks the flow, otherwise the method result should
+be copied there; 
+
+7) Linux paths:
+
+  lib    - /usr/lib/elena/lib30
+  core   - /usr/lib/elena/core/x32
+  src    - /usr/share/elena/src30
+  config - /etc/elena
+  data   - /usr/share/elena
+  
+8) Linux ELF format:
+
+-- header / text segment --
+ <header>                     
+ <program header>
+ <text>                  code section
+ <plt>                                                         
+-- rodata segment --
+ <rdata>                 rdata section
+ <dynamic>                    
+ <interpreter>
+-- data segment --
+ <got>                   import section
+ <relocation table>           
+ <symbol table>           
+ <string table>              
+ <stat>                  stat section
+ <bss>                   data section
+-- debuf segment ---
+
+10) Script engine : VMTape
+
+system'console writeLine:"Hello" <=  "Hello" system'console %"writeLine[1]"
+
+10) Script engine : Tranformer
+
+"Hello" system'console %"writeLine[1]" <= ( < " " "system'console" > " ^""" "writeLine" < " " """Hello World""" + > "[" = "]""" )
+
+There are two buffers : r - reverse buffer, s - streight buffer
+
+commands:
+(     - new scope
+)     - close scope, inserts the r + s into the previous scope r buffer if available or append to the output, appends the counter to the parent one
+<     - switch to r buffer
+>     - switch to s buffer
+quote - if r buffer selected - insert into the beginning of r, if s - to the end of s
++     - increament the scope level
+-     - decreament the scope level
+=     - insert the scope level to r or s
++=    - increament the scope counter
+-=    - decreament the scope counter
+==    - insert the scope counter to r or s
+
+
+11) 64 bit support 
+
+- all code and data addresses should be 32bit one

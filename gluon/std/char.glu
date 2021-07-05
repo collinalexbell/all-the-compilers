@@ -1,0 +1,20 @@
+//! A character type.
+
+let { Eq, Ord, Ordering, Show } = import! std.prelude
+
+let eq : Eq Char = { (==) = \l r -> l #Char== r }
+
+let ord : Ord Char = {
+    eq = eq,
+    compare = \l r -> if l #Char< r then LT else if l #Char== r then EQ else GT,
+}
+
+let show : Show Char = { show = (import! std.prim).show_char }
+
+{
+    eq,
+    ord,
+    show,
+    ..
+    import! std.char.prim
+}

@@ -1,0 +1,77 @@
+_read_line:
+	dup
+	dup
+
+	push	KBD
+	push	_read_key_next
+	int
+
+	dup
+	load
+	add
+	load
+	push	0xa
+	sub
+	push	_read_key_ret
+	jz
+
+	push	_read_line
+	jmp
+
+_read_key_next:
+	; echo char
+	dup
+	out
+
+	; increment pointer
+	swap
+	dup
+	dup
+	load
+	push	0x1
+	add
+	store
+
+	; store char
+	dup
+	load
+	add
+	swap
+	store
+	ret
+
+_read_key_ret:
+	; decrement pointer
+	dup
+	load
+	push	0x1
+	sub
+	store
+	ret
+
+_print_num:
+	dup
+	; divide num by 10
+	push	0xa
+	div
+
+	; push remainder
+	push	0x30
+	add
+
+	swap
+
+	; loop until quo == 0
+	dup
+	push	_print_num_ret
+	jz
+
+	push	_print_num
+	call
+
+_print_num_ret:
+	pop
+	out
+	pop
+	ret
+

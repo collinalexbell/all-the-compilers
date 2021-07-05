@@ -1,0 +1,66 @@
+
+{-- 
+    'Identity', along with instances for 'Functor',
+    'Applicative', 'Bind', 'Apply', 'Monad', 
+    'Semigroup', 'Monoid' and 'ListSource'
+    -}
+
+package frege.data.wrapper.Identity
+        inline (Identity.run, Identity.Identity.pure, 
+                Identity.Identity.>>, Identity.Identity.>>=,
+                Identity.Identity.fmap) 
+    where
+
+import Data.Monoid
+
+{--
+  
+    The identity functor and monad.
+
+    This trivial type constructor serves two purposes:
+
+    - It can be used with functions parameterized by a 
+      'Functor' or 'Monad'.
+
+    - It can be used as a base monad to which a series of monad
+      transformers may be applied to construct a composite monad.
+      Most monad transformer modules include the special case of
+      applying the transformer to 'Identity'.  For example, @State s@
+      is an abbreviation for @StateT s 'Identity'@. 
+-}
+
+
+--- Identity functor and monad.
+data Identity a = Identity { run :: a }
+
+derive Eq (Identity a)
+derive Ord (Identity a)
+instance (Enum a) => Enum (Identity a) where
+    succ = fmap succ
+    from = Identity . from
+    ord  = ord . Identity.run
+    pred = fmap pred
+    enumFromThenTo (Identity a) (Identity b) (Identity c) = map Identity $ enumFromThenTo a b c
+    enumFromThen   (Identity a) (Identity b) = map Identity $ enumFromThen a b
+instance (Show a) => Show (Identity a) where
+    display     = display   . Identity.run
+    showChars   = showChars . Identity.run
+    show        = show      . Identity.run
+
+instance Monad Identity where
+    (Identity m) >>= k  = k m
+    (Identity m) >>  (Identity n) = Identity n 
+    pure = Identity
+    Identity f <*> Identity x = Identity (f x)
+    fmap f (Identity m) = Identity (f m)
+
+
+instance Semigroup a => Semigroup (Identity a) where
+   Identity x `mappend` Identity y = Identity (x `mappend` y)
+
+instance Monoid a => Monoid (Identity a) where
+   mempty = Identity mempty 
+   
+instance ListSource Identity where
+   toList (Identity x) = [x]   
+   

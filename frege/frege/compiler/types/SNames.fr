@@ -1,0 +1,75 @@
+--- Unresolved names in source code form.
+module frege.compiler.types.SNames where 
+
+
+import  frege.compiler.types.Tokens
+import  frege.compiler.enums.TokenID(CONID,VARID,LOP1,NOP16)
+
+--- an unresolved, maybe qualified identifier
+data SName = ! Simple { id :: Token } {--
+                            Construct a simple name.
+                            syntactically forced to be 'VARID', 'CONID' or 'LOP1'..'NOP16' 
+                        -}
+           | ! With1  { ty :: Token, id :: Token } {--
+                            Construct a qualified name.
+                        -}
+           | ! With2  { ns, ty :: Token, id :: Token } {--
+                            Construct a fully qualified name.
+                        -}
+
+
+instance Show SName where
+    show (Simple t)           = t.value
+    show (With1 {ty, id})     = ty.value ++ "." ++ id.value
+    show (With2 {ns, ty, id}) = ns.value ++ "." ++ ty.value ++ "." ++ id.value
+
+--- > "foo" `qBy` Conid 
+--- supplements a partial name with a "member"
+qBy :: Token -> SName -> SName
+qBy t (Simple con) {- con.tokid == CONID -} = With1 con t
+qBy t (With1 ty id){- id.tokid  == CONID -} = With2 ty id t
+qBy t  name = error ("Can't qualify " ++ t.value ++ " by " ++ show name)
+
+--- > withNS "PreludeBase" (Simple "foo") 
+--- qualifies a given name with the given name space 
+withNS :: String -> SName -> SName
+withNS s (Simple t) = With1 t.{tokid=CONID, value=s} t
+withNS s (With1 c t) = With2 c.{tokid=CONID, value=s} c t
+withNS s name = error ("Can't set namespace " ++ s ++ " for " ++ show name)
+
+
+
+
+listSourceToList = With2 listToken listToken.{value="ListSource"} listToken.{tokid=VARID, value="toList"}
+
+
+protoSimple = Simple underlineToken
+
+--- produce PreludeBase.name for some token
+wellKnown :: Token -> String -> SName
+wellKnown t s = With1 (baseTokenAt t) t.{tokid=VARID, value=s}
+
+--- make token appear as if it was qualified by "PreludeBase"
+fromBase t = With1 (baseTokenAt t) t
+
+baseFlip t = wellKnown t "flip"
+
+
+--- simple name that must be known in this context
+contextName :: Token -> String -> SName
+contextName t s = Simple t.{tokid=VARID, value=s}
+
+
+
+
+derive Eq SName
+
+
+instance Ord SName where
+    Simple t1    <=> Simple t2    = t1.value. <=> t2.value
+    (s1@With1{}) <=> (s2@With1{}) = (s1.ty.value, s1.id.value). <=> (s2.ty.value, s2.id.value)
+    (s1@With2{}) <=> (s2@With2{}) = (s1.ns.value, s1.ty.value, s1.id.value). <=>
+                                        (s2.ns.value, s2.ty.value, s2.id.value)
+    s1 <=> s2 = (constructor s1). <=> (constructor s2)
+
+

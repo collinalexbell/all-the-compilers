@@ -1,0 +1,216 @@
+{--
+     Modifiers for test data.
+    
+     These types do things such as restricting the kind of test data that can be generated.
+     They can be pattern-matched on in properties as a stylistic
+     alternative to using explicit quantification.
+    
+     Examples:
+    
+     > -- Functions cannot be shown (but see "Test.QuickCheck.Function")
+     > prop_TakeDropWhile (Blind p) (xs :: [A]) =
+     >  takeWhile p xs ++ dropWhile p xs == xs
+     
+     > prop_TakeDrop ('NonNegative' n) (xs :: ['A']) =
+     >  take n xs ++ drop n xs == xs
+     
+    
+     > -- cycle does not work for empty lists
+     > prop_Cycle ('NonNegative' n) ('NonEmpty' (xs :: ['A'])) =
+     >  take n (cycle xs) == take n (xs ++ cycle xs)
+     
+    
+     > -- Instead of 'forAll' 'orderedList'
+     > prop_Sort ('Ordered' (xs :: ['OrdA'])) =
+     >   sort xs == xs
+
+-}
+module Test.QuickCheckModifiers
+  -- (
+  -- -- ** Type-level modifiers for changing generator behavior
+  --   Blind(..)
+  -- , Fixed(..)
+  -- , OrderedList(..)
+  -- , NonEmptyList(..)
+  -- , Positive(..)
+  -- , NonZero(..)
+  -- , NonNegative(..)
+  -- , Smart(..)
+  -- , Shrink2(..)
+  -- , Shrinking(..)
+  -- , ShrinkState(..)
+  -- )
+ where
+
+-- ------------------------------------------------------------------------
+-- imports
+
+import Test.QuickCheckGen
+import Test.QuickCheckArbitrary
+
+import Data.List
+  ( sort
+  )
+
+-- ------------------------------------------------------------------------
+--- @Blind x@: as x, but x does not have to be in the 'Show' class.
+newtype Blind a = Blind a
+derive Eq   (Blind a)
+derive Ord  (Blind a)
+
+-- #ifndef NO_NEWTYPE_DERIVING
+--           , Num, Integral, Real, Enum
+-- #endif
+
+
+instance Show (Blind a) where
+  show _ = "(*)"
+
+instance Arbitrary a => Arbitrary (Blind a) where
+  arbitrary = Blind `fmap` arbitrary
+
+  shrink (Blind x) = [ Blind x' | x' <- shrink x ]
+
+-- ------------------------------------------------------------------------
+--- @Fixed x@: as x, but will not be shrunk.
+newtype Fixed a = Fixed a
+derive Eq   (Fixed a)
+derive Ord  (Fixed a)
+derive Show (Fixed a)
+
+instance Arbitrary a => Arbitrary (Fixed a) where
+  arbitrary = Fixed `fmap` arbitrary
+
+  -- no shrink function
+
+
+--- @Ordered xs@: guarantees that xs is ordered.
+newtype OrderedList a = Ordered {getOrdered :: [a]}
+derive Eq   (OrderedList a)
+derive Ord  (OrderedList a)
+derive Show (OrderedList a)
+
+instance (Ord a, Arbitrary a) =>  Arbitrary (OrderedList a) where
+  arbitrary = Ordered `fmap` orderedList
+
+  shrink (Ordered xs) =
+    [ Ordered xs'
+    | xs' <- shrink xs
+    , sort xs' == xs'
+    ]
+
+-- ------------------------------------------------------------------------
+---  @NonEmpty xs@: guarantees that xs is non-empty.
+newtype NonEmptyList a = NonEmpty {getNonEmpty :: [a]}
+derive Eq   (NonEmptyList a)
+derive Ord  (NonEmptyList a)
+derive Show (NonEmptyList a)
+
+instance Arbitrary a => Arbitrary (NonEmptyList a) where
+  arbitrary = NonEmpty `fmap` (arbitrary `suchThat` (not . null))
+
+  shrink (NonEmpty xs) =
+    [ NonEmpty xs'
+    | xs' <- shrink xs
+    , not (null xs')
+    ]
+
+-- ------------------------------------------------------------------------
+--- @Positive x@: guarantees that @x > 0@.
+newtype Positive a = Positive {getPositive :: a}
+derive  Eq   (Positive a)
+derive  Ord  (Positive a)
+derive  Show (Positive a)
+          
+instance (Num a, Ord a, Arbitrary a) => Arbitrary (Positive a) where
+  arbitrary =
+    ((Positive . abs) `fmap` (arbitrary `suchThat` (!= 0))) `suchThat` gt0
+    where gt0 (Positive x) = x > fromInt 0
+
+  shrink (Positive x) =
+    [ Positive x'
+    | x' <- shrink x
+    , x' > fromInt 0
+    ]
+
+
+--- @NonZero x@: guarantees that @x != 0@.
+newtype NonZero a = NonZero {getNonZero :: a}
+
+derive  Eq      (NonZero a)
+derive  Ord     (NonZero a)
+derive  Show    (NonZero a)
+
+instance (Num a, Ord a, Arbitrary a) => Arbitrary (NonZero a) where
+  arbitrary = fmap NonZero $ arbitrary `suchThat` (!= 0)
+
+  shrink (NonZero x) = [ NonZero x' | x' <- shrink x, x' != fromInt 0 ]
+
+
+--- @NonNegative x@: guarantees that @x >= 0@.
+newtype NonNegative a = NonNegative {getNonNegative :: a}
+
+derive Eq       (NonNegative a)
+derive Ord      (NonNegative a)
+derive Show     (NonNegative a)
+
+instance (Num a, Ord a, Arbitrary a) => Arbitrary (NonNegative a) where
+  arbitrary =
+    (frequency
+       -- why is this distribution like this?
+       [ (5, (NonNegative . abs) `fmap` arbitrary)
+       , (1, return (NonNegative (fromInt 0)))
+       ]
+    ) `suchThat` ge0
+    where ge0 (NonNegative x) = x >= fromInt 0
+
+  shrink (NonNegative x) =
+    [ NonNegative x'
+    | x' <- shrink x
+    , x' >= fromInt 0
+    ]
+
+
+--- @Shrink2 x@: allows 2 shrinking steps at the same time when shrinking x
+newtype Shrink2 a = Shrink2 a
+derive Eq   (Shrink2 a)
+derive Ord  (Shrink2 a)
+derive Show (Shrink2 a)
+
+instance Arbitrary a => Arbitrary (Shrink2 a) where
+  arbitrary =
+    Shrink2 `fmap` arbitrary
+
+  shrink (Shrink2 x) =
+    [ Shrink2 y | y <- shrink_x ] ++
+    [ Shrink2 z
+    | y <- shrink_x
+    , z <- shrink y
+    ]
+   where
+    shrink_x = shrink x
+
+
+---  @Smart _ x@: tries a different order when shrinking.
+data Smart a =
+  Smart Int a
+
+instance Show a => Show (Smart a) where
+  showsPrec n (Smart _ x) = showsPrec n x
+  show (Smart _ x) = show x
+
+instance Arbitrary a => Arbitrary (Smart a) where
+  arbitrary =
+    do x <- arbitrary
+       return (Smart 0 x)
+
+  shrink (Smart i x) = take i' ys `ilv` drop i' ys
+   where
+    ys = [ Smart j y | (j,y) <- [0..] `zip` shrink x ]
+    i' = 0 `max` (i-2)
+
+    []     `ilv` bs     = bs
+    (a:as) `ilv` (b:bs) = a : b : (as `ilv` bs)
+    as     `ilv` _      = as
+
+

@@ -1,0 +1,47 @@
+let { run, Test, assert_eq, test, group, ? }  = import! std.test
+let { (<|) } = import! std.function
+let prelude  = import! std.prelude
+let { Applicative, (*>), ? } = import! std.applicative
+let int = import! std.int
+let float = import! std.float
+let byte @ { ? } = import! std.byte
+let { empty } = import! std.monoid
+
+let { ? } = import! std.effect
+
+let byte_tests =
+    group "byte" [
+        test "arithmetic" <| \_ ->
+            assert_eq 2b 2b
+                *> assert_eq 12b (10b + 2b)
+                *> assert_eq 123b (50b * 2b + 9b * 3b - 4b),
+        test "from_int" <| \_ -> assert_eq (byte.from_int 2) 2b,
+        test "from_int_truncate" <| \_ -> assert_eq (byte.from_int 2000) 208b,
+    ]
+
+let int_tests =
+    group "int" [
+        test "arithmetic" <| \_ ->
+            assert_eq 2 2
+                *> assert_eq 12 (10 + 2)
+                *> assert_eq 123 (50 * 2 + 9 * 3 - 4),
+        test "from_float" <| \_ -> assert_eq (int.from_float 2.0) 2,
+        test "from_float_truncate" <| \_ -> assert_eq (int.from_float 2.7) 2,
+        test "from_byte" <| \_ -> assert_eq (int.from_byte 2b) 2,
+        group "monoid" [
+            test "additive" <| \_ ->
+                let { ? } = int.additive
+                assert_eq 0 empty,
+            test "multiplicative" <| \_ ->
+                let { ? } = int.multiplicative
+                assert_eq 1 empty,
+        ]
+    ]
+
+let float_tests =
+    group "float" [
+        test "float" <| \_ -> assert_eq 91.0 (50.0 * 2.0 - 3.0 * 3.0),
+        test "from_int" <| \_ -> assert_eq (float.from_int 2) 2.0,
+    ]
+
+group "arithmetic" [byte_tests, int_tests, float_tests]

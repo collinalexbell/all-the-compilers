@@ -1,0 +1,132 @@
+<!DOCTYPE html>
+<link rel="import" href="../../../../packages/polymer/polymer.html">
+<link rel="import" href="../../../../packages/paper_elements/paper_toast.html">
+<link rel="import" href="../../../../packages/paper_elements/paper_progress.html">
+<link rel="import" href="../modes/v8/ui/dependent-code-deopt-reasons.html">
+<link rel="import" href="../modes/v8/ui/descriptions.html">
+<link rel="import" href="compilation-timeline.html">
+<link rel="import" href="dropdown-element.html">
+<link rel="import" href="deopt-links.html">
+<link rel="import" href="../../../../packages/ui_components/components/graph-pane.html">
+<link rel="import" href="ir-pane.html">
+<link rel="import" href="method-list.html">
+<link rel="import" href="open-file-button.html">
+<link rel="import" href="source-pane.html">
+<link rel="import" href="source-path.html">
+<link rel="import" href="spinner-element.html">
+<link rel="import" href="util/switching-scope.html">
+
+<polymer-element name="hydra-app">
+  <template>
+    <link rel="stylesheet" type="text/css" href="hydra.css">
+
+    <paper-toast text="WARNING: file contains CRLF line endings! Some features might not work."
+                 duration="3600000"
+                 opened="{{crlfDetected}}">
+    </paper-toast>
+
+    <paper-toast text="ERROR: Source does not match IR. See console for more details."
+                 duration="3600000"
+                 opened="{{sourceAnnotatorFailed}}">
+    </paper-toast>
+
+    <paper-toast text="ERROR: You are using a version of V8 that is incompatible with IRHydra.
+                       See console for more details."
+                 duration="3600000"
+                 opened="{{newPositionsWithoutStartPos}}">
+    </paper-toast>
+
+
+    <paper-toast text="WARNING: code.asm contains TurboFan generated code.
+                      IR view is not supported for TurboFan.
+                      See console for details."
+                 duration="3600000"
+                 opened="{{hasTurboFanCode}}">
+    </paper-toast>
+
+    <paper-toast text="{{progressAction}} {{progressUrl}}" duration="3600000" id="progress-toast">
+      <template if="{{progressValue != null}}">
+        <paper-progress value="{{progressValue}}"></paper-progress>
+      </template>
+    </paper-toast>
+
+    <div class="header">
+      <open-file-button on-opened="{{openCompilation}}" data-title="Load Compilation Artifacts"><i class="fa fa-folder-open"></i></open-file-button>
+      <template if="{{files != null}}">
+        <button href="#" on-click="{{reloadCurrentFiles}}" title="Reload Current Files"><i class="fa fa-repeat"></i></button>
+      </template>
+      <open-file-button on-opened="{{loadProfile}}" data-title="Load perf annotate output"><i class="fa fa-clock-o"></i></open-file-button>
+      <template if="{{methods != null && !methods.isEmpty}}">
+        <button on-click="{{toggleNameDemangling}}" title="Demangle method names" class="{{ {'unchecked': !demangleNames} }}"><i class="fa fa-dollar"></i></button>
+      </template>
+      <spinner-element id="spinner"></spinner-element>
+      <template if="{{ir != null}}">
+        <switching-scope active="{{activeTab}}" class="pane-controls">
+          <template if="{{ir.blocks.isNotEmpty}}">
+            <div when-ir class="tab-header"><a href="#ir">IR</a></div>
+            <div when-graph class="tab-header"><a href="#graph">GRAPH</a></div>
+          </template>
+          <template if="{{!sourcePath.isEmpty}}">
+            <div when-source class="tab-header"><a href="#source">SOURCE</a></div>
+          </template>
+          <div when-graph>
+            <button on-click="{{showLegend}}" title="Show Legend"><i class="fa fa-question-circle"></i></button>
+          </div>
+          <div when-ir>
+            <button on-click="{{toggleInterestingMode}}" title="Splice source into IR" class="{{ {'unchecked': !showSource} }}"><i class="fa fa-eye"></i></button>
+            <template if="{{ir.code != null}}">
+              <dropdown-element selected="{{codeMode}}">
+                <a data-value="split">Split Disassembly</a>
+                <a data-value="inline">Inline Disassembly</a>
+                <a data-value="none">Hide Disassembly</a>
+              </dropdown-element>
+            </template>
+          </div>
+          <div when-ir when-source>
+            <deopt-links deopts="{{phase.method.deopts}}" on-deopt-click="{{navigateToDeoptAction}}" on-deopt-enter="{{enterDeoptAction}}" on-deopt-leave="{{leaveDeoptAction}}">
+            </deopt-links>
+          </div>
+          <div when-source>
+            <source-path path="{{sourcePath}}">
+            </source-path>
+          </div>
+        </switching-scope>
+      </template>
+    </div>
+
+    <div class="pane">
+      <template if="{{methods != null && !methods.isEmpty}}">
+        <div class="sidebar">
+          <method-list methods="{{methods}}" selected="{{phase}}" demangleNames="{{demangleNames}}" sortBy="{{sortMethodsBy}}"></method-list>
+        </div>
+        <template if="{{ir == null}}">
+          <div class="ir-placeholder">
+            <div>select method</div>
+            <template if="{{timeline != null}}">
+              <compilation-timeline events="{{timeline}}">
+              </compilation-timeline>
+            </template>
+            <template if="{{timeline == null}}">
+            </template>
+          </div>
+        </template>
+        <template if="{{ir != null}}">
+          <switching-scope active="{{activeTab}}" class="panes">
+            <div when-ir>
+              <ir-pane id="ir-pane" ir="{{ir}}" codeMode="{{codeMode}}" showSource="{{showSource}}"></ir-pane>
+            </div>
+            <div when-graph>
+              <graph-pane ir="{{ir}}" on-block-mouse-over="{{showBlockAction}}" on-block-mouse-out="{{hideBlockAction}}">
+              </graph-pane>
+            </div>
+            <div when-source>
+              <source-pane id="source-pane" path="{{sourcePath}}" on-deopt-enter="{{enterDeoptAction}}" on-deopt-leave="{{leaveDeoptAction}}">
+              </source-pane>
+            </div>
+          </switching-scope>
+        </template>
+      </template>
+    </div>
+  </template>
+  <script type="application/dart" src="hydra.dart"></script>
+</polymer-element>

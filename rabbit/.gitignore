@@ -1,0 +1,12 @@
+*.bc
+*.ll
+\#*
+*.tex
+*.out
+*~
+rabbit
+rabbit-asm
+rabbit-dis
+*.rbto
+*.dSYM
+*.o

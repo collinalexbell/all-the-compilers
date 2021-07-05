@@ -1,0 +1,12 @@
+let prelude = import! std.prelude
+let { (<|) } = import! std.function
+let result @ { Result, ? } = import! std.result
+let { Test, run, assert_eq, test, group } = import! std.test
+let { ? } = import! std.char
+let { Parser, applicative, functor, alternative, monad, any, parse } = import! std.parser
+let { Applicative, (*>), ? } = import! std.applicative
+let { (<|>) } = import! std.alternative
+
+group "parser" [
+    test "any" <| \_ -> (assert_eq (parse any "abc") (Ok 'a'))
+]

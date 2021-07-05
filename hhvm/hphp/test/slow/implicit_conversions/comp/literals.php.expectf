@@ -1,0 +1,419 @@
+<
+
+null < false
+
+Notice: Comparing bool and null using a relational operator in %s/literals.php on line 83
+true < 0
+
+Notice: Comparing bool and int using a relational operator in %s/literals.php on line 85
+99 < 99.0
+empty string < NAN
+
+Notice: Comparing float and string using a relational operator in %s/literals.php on line 89
+'0' < 'baz'
+'0' < 42
+
+Notice: Comparing int and string using a relational operator in %s/literals.php on line 93
+'0bcd' < 1.234
+
+Notice: Comparing float and string using a relational operator in %s/literals.php on line 95
+'0bcd' < 'baz'
+'0bcd' < 42
+
+Notice: Comparing int and string using a relational operator in %s/literals.php on line 99
+'0bcd' < 1.234
+
+Notice: Comparing float and string using a relational operator in %s/literals.php on line 101
+new A() < 42
+Threw: Object of class A could not be converted to int
+new A() < new A(new A())
+
+Notice: Comparing A and string using a relational operator in %s/literals.php on line 106
+new B() < new C()
+
+Notice: Comparing object of class B and object of class C using a relational operator in %s/literals.php on line 108
+DateTime1(1000) < new DateTime2()
+DateTime1(1000) < 42
+Threw: Object of class DateTime1 could not be converted to int
+xml < 42
+
+Notice: Comparing SimpleXMLElement and int using a relational operator in %s/literals.php on line 116
+Vector < Vector
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a collection with an integer, double, string, array, or object
+Vector < 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a collection with an integer, double, string, array, or object
+Pair<string, string> < pair<string, int>
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a collection with an integer, double, string, array, or object
+Pair < 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a collection with an integer, double, string, array, or object
+closure < 42
+Threw: Object of class Closure$less#10;%s could not be converted to int
+fun < 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare funcs
+fun < 'baz'
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare funcs
+rfun < 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) with reified functions
+class_meth < 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a clsmeth
+class_meth < vec['foo', 'bar']
+class_meth < vec['Bar', 42]
+
+Notice: Comparing int and string using a relational operator in %s/literals.php on line 147
+rclass_meth < 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a reified class meth
+vec[99] < vec['foo']
+
+Notice: Comparing int and string using a relational operator in %s/literals.php on line 152
+vec[vec[99]] < vec[vec['foo']]
+
+Notice: Comparing int and string using a relational operator in %s/literals.php on line 154
+vec[42] < dict[0 => 42]
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a vec with a non-vec
+vec[42] < dict[0 => '42']
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a vec with a non-vec
+vec[42] < 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a vec with a non-vec
+dict[0 => 42] < 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare dicts
+keyset[42] < 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare keysets
+imagecreate(10, 10) < 42
+
+Notice: Comparing gd and int using a relational operator in %s/literals.php on line 168
+
+<=
+
+null <= false
+
+Notice: Comparing bool and null using a relational operator in %s/literals.php on line 174
+true <= 0
+
+Notice: Comparing bool and int using a relational operator in %s/literals.php on line 176
+99 <= 99.0
+empty string <= NAN
+
+Notice: Comparing float and string using a relational operator in %s/literals.php on line 180
+'0' <= 'baz'
+'0' <= 42
+
+Notice: Comparing int and string using a relational operator in %s/literals.php on line 184
+'0bcd' <= 1.234
+
+Notice: Comparing float and string using a relational operator in %s/literals.php on line 186
+'0bcd' <= 'baz'
+'0bcd' <= 42
+
+Notice: Comparing int and string using a relational operator in %s/literals.php on line 190
+'0bcd' <= 1.234
+
+Notice: Comparing float and string using a relational operator in %s/literals.php on line 192
+new A() <= 42
+Threw: Object of class A could not be converted to int
+new A() <= new A(new A())
+
+Notice: Comparing A and string using a relational operator in %s/literals.php on line 197
+new B() <= new C()
+
+Notice: Comparing object of class B and object of class C using a relational operator in %s/literals.php on line 199
+DateTime1(1000) <= new DateTime2()
+DateTime1(1000) <= 42
+Threw: Object of class DateTime1 could not be converted to int
+xml <= 42
+
+Notice: Comparing SimpleXMLElement and int using a relational operator in %s/literals.php on line 207
+Vector <= Vector
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a collection with an integer, double, string, array, or object
+Vector <= 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a collection with an integer, double, string, array, or object
+Pair<string, string> <= pair<string, int>
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a collection with an integer, double, string, array, or object
+Pair <= 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a collection with an integer, double, string, array, or object
+closure <= 42
+Threw: Object of class Closure$lesseq#10;%s could not be converted to int
+fun <= 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare funcs
+fun <= 'baz'
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare funcs
+rfun <= 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) with reified functions
+class_meth <= 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a clsmeth
+class_meth <= vec['foo', 'bar']
+class_meth <= vec['Bar', 42]
+
+Notice: Comparing int and string using a relational operator in %s/literals.php on line 238
+rclass_meth <= 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a reified class meth
+vec[99] <= vec['foo']
+
+Notice: Comparing int and string using a relational operator in %s/literals.php on line 243
+vec[vec[99]] <= vec[vec['foo']]
+
+Notice: Comparing int and string using a relational operator in %s/literals.php on line 245
+vec[42] <= dict[0 => 42]
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a vec with a non-vec
+vec[42] <= dict[0 => '42']
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a vec with a non-vec
+vec[42] <= 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a vec with a non-vec
+dict[0 => 42] <= 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare dicts
+keyset[42] <= 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare keysets
+imagecreate(10, 10) <= 42
+
+Notice: Comparing gd and int using a relational operator in %s/literals.php on line 259
+
+>
+
+null > false
+
+Notice: Comparing bool and null using a relational operator in %s/literals.php on line 265
+true > 0
+
+Notice: Comparing bool and int using a relational operator in %s/literals.php on line 267
+99 > 99.0
+empty string > NAN
+
+Notice: Comparing float and string using a relational operator in %s/literals.php on line 271
+'0' > 'baz'
+'0' > 42
+
+Notice: Comparing int and string using a relational operator in %s/literals.php on line 275
+'0bcd' > 1.234
+
+Notice: Comparing float and string using a relational operator in %s/literals.php on line 277
+'0bcd' > 'baz'
+'0bcd' > 42
+
+Notice: Comparing int and string using a relational operator in %s/literals.php on line 281
+'0bcd' > 1.234
+
+Notice: Comparing float and string using a relational operator in %s/literals.php on line 283
+new A() > 42
+Threw: Object of class A could not be converted to int
+new A() > new A(new A())
+
+Notice: Comparing A and string using a relational operator in %s/literals.php on line 288
+new B() > new C()
+
+Notice: Comparing object of class B and object of class C using a relational operator in %s/literals.php on line 290
+DateTime1(1000) > new DateTime2()
+DateTime1(1000) > 42
+Threw: Object of class DateTime1 could not be converted to int
+xml > 42
+
+Notice: Comparing SimpleXMLElement and int using a relational operator in %s/literals.php on line 298
+Vector > Vector
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a collection with an integer, double, string, array, or object
+Vector > 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a collection with an integer, double, string, array, or object
+Pair<string, string> > pair<string, int>
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a collection with an integer, double, string, array, or object
+Pair > 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a collection with an integer, double, string, array, or object
+closure > 42
+Threw: Object of class Closure$gt#10;%s could not be converted to int
+fun > 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare funcs
+fun > 'baz'
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare funcs
+rfun > 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) with reified functions
+class_meth > 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a clsmeth
+class_meth > vec['foo', 'bar']
+class_meth > vec['Bar', 42]
+
+Notice: Comparing int and string using a relational operator in %s/literals.php on line 329
+rclass_meth > 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a reified class meth
+vec[99] > vec['foo']
+
+Notice: Comparing int and string using a relational operator in %s/literals.php on line 334
+vec[vec[99]] > vec[vec['foo']]
+
+Notice: Comparing int and string using a relational operator in %s/literals.php on line 336
+vec[42] > dict[0 => 42]
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a vec with a non-vec
+vec[42] > dict[0 => '42']
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a vec with a non-vec
+vec[42] > 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a vec with a non-vec
+dict[0 => 42] > 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare dicts
+keyset[42] > 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare keysets
+imagecreate(10, 10) > 42
+
+Notice: Comparing gd and int using a relational operator in %s/literals.php on line 350
+
+>=
+
+null >= false
+
+Notice: Comparing bool and null using a relational operator in %s/literals.php on line 356
+true >= 0
+
+Notice: Comparing bool and int using a relational operator in %s/literals.php on line 358
+99 >= 99.0
+empty string >= NAN
+
+Notice: Comparing float and string using a relational operator in %s/literals.php on line 362
+'0' >= 'baz'
+'0' >= 42
+
+Notice: Comparing int and string using a relational operator in %s/literals.php on line 366
+'0bcd' >= 1.234
+
+Notice: Comparing float and string using a relational operator in %s/literals.php on line 368
+'0bcd' >= 'baz'
+'0bcd' >= 42
+
+Notice: Comparing int and string using a relational operator in %s/literals.php on line 372
+'0bcd' >= 1.234
+
+Notice: Comparing float and string using a relational operator in %s/literals.php on line 374
+new A() >= 42
+Threw: Object of class A could not be converted to int
+new A() >= new A(new A())
+
+Notice: Comparing A and string using a relational operator in %s/literals.php on line 379
+new B() >= new C()
+
+Notice: Comparing object of class B and object of class C using a relational operator in %s/literals.php on line 381
+DateTime1(1000) >= new DateTime2()
+DateTime1(1000) >= 42
+Threw: Object of class DateTime1 could not be converted to int
+xml >= 42
+
+Notice: Comparing SimpleXMLElement and int using a relational operator in %s/literals.php on line 389
+Vector >= Vector
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a collection with an integer, double, string, array, or object
+Vector >= 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a collection with an integer, double, string, array, or object
+Pair<string, string> >= pair<string, int>
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a collection with an integer, double, string, array, or object
+Pair >= 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a collection with an integer, double, string, array, or object
+closure >= 42
+Threw: Object of class Closure$gte#10;%s could not be converted to int
+fun >= 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare funcs
+fun >= 'baz'
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare funcs
+rfun >= 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) with reified functions
+class_meth >= 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a clsmeth
+class_meth >= vec['foo', 'bar']
+class_meth >= vec['Bar', 42]
+
+Notice: Comparing int and string using a relational operator in %s/literals.php on line 420
+rclass_meth >= 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a reified class meth
+vec[99] >= vec['foo']
+
+Notice: Comparing int and string using a relational operator in %s/literals.php on line 425
+vec[vec[99]] >= vec[vec['foo']]
+
+Notice: Comparing int and string using a relational operator in %s/literals.php on line 427
+vec[42] >= dict[0 => 42]
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a vec with a non-vec
+vec[42] >= dict[0 => '42']
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a vec with a non-vec
+vec[42] >= 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a vec with a non-vec
+dict[0 => 42] >= 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare dicts
+keyset[42] >= 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare keysets
+imagecreate(10, 10) >= 42
+
+Notice: Comparing gd and int using a relational operator in %s/literals.php on line 441
+
+<=>
+
+null <=> false
+
+Notice: Comparing bool and null using a relational operator in %s/literals.php on line 448
+true <=> 0
+
+Notice: Comparing bool and int using a relational operator in %s/literals.php on line 450
+99 <=> 99.0
+empty string <=> NAN
+
+Notice: Comparing float and string using a relational operator in %s/literals.php on line 454
+'0' <=> 'baz'
+'0' <=> 42
+
+Notice: Comparing int and string using a relational operator in %s/literals.php on line 458
+'0bcd' <=> 1.234
+
+Notice: Comparing float and string using a relational operator in %s/literals.php on line 460
+'0bcd' <=> 'baz'
+'0bcd' <=> 42
+
+Notice: Comparing int and string using a relational operator in %s/literals.php on line 464
+'0bcd' <=> 1.234
+
+Notice: Comparing float and string using a relational operator in %s/literals.php on line 466
+new A() <=> 42
+Threw: Object of class A could not be converted to int
+new A() <=> new A(new A())
+
+Notice: Comparing A and string using a relational operator in %s/literals.php on line 471
+new B() <=> new C()
+
+Notice: Comparing object of class B and object of class C using a relational operator in %s/literals.php on line 473
+DateTime1(1000) <=> new DateTime2()
+DateTime1(1000) <=> 42
+Threw: Object of class DateTime1 could not be converted to int
+xml <=> 42
+
+Notice: Comparing SimpleXMLElement and int using a relational operator in %s/literals.php on line 481
+Vector <=> Vector
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a collection with an integer, double, string, array, or object
+Vector <=> 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a collection with an integer, double, string, array, or object
+Pair<string, string> <=> pair<string, int>
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a collection with an integer, double, string, array, or object
+Pair <=> 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a collection with an integer, double, string, array, or object
+closure <=> 42
+Threw: Object of class Closure$cmp#10;%s could not be converted to int
+fun <=> 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare funcs
+fun <=> 'baz'
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare funcs
+rfun <=> 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) with reified functions
+class_meth <=> 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a clsmeth
+class_meth <=> vec['foo', 'bar']
+class_meth <=> vec['Bar', 42]
+
+Notice: Comparing int and string using a relational operator in %s/literals.php on line 512
+rclass_meth <=> 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a reified class meth
+vec[99] <=> vec['foo']
+
+Notice: Comparing int and string using a relational operator in %s/literals.php on line 517
+vec[vec[99]] <=> vec[vec['foo']]
+
+Notice: Comparing int and string using a relational operator in %s/literals.php on line 519
+vec[42] <=> dict[0 => 42]
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a vec with a non-vec
+vec[42] <=> dict[0 => '42']
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a vec with a non-vec
+vec[42] <=> 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare a vec with a non-vec
+dict[0 => 42] <=> 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare dicts
+keyset[42] <=> 42
+Threw: Cannot use relational comparison operators (<, <=, >, >=, <=>) to compare keysets
+imagecreate(10, 10) <=> 42
+
+Notice: Comparing gd and int using a relational operator in %s/literals.php on line 533

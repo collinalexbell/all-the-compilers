@@ -1,0 +1,77 @@
+
+import java.util.Enumeration;
+
+import java.net.InetAddress;
+import java.net.NetworkInterface;
+
+public class NetworkInterfaceTest
+{
+    private static boolean verbose = false;
+    
+    public static void main(String args[])
+    {
+	if( args.length > 0 )
+	{
+	    verbose = true;
+	}
+	try
+	{
+	    Enumeration enumeration;
+	    int lpc;
+	    
+	    enumeration = NetworkInterface.getNetworkInterfaces();
+	    for( lpc = 0; enumeration.hasMoreElements(); lpc++ )
+	    {
+		NetworkInterface ni, ni2;
+		Enumeration ips;
+		
+		ni = (NetworkInterface)enumeration.nextElement();
+		if( verbose )
+		{
+		    System.out.println("Detected interface #" + lpc);
+		    System.out.println("  Name: " + ni.getName());
+		    System.out.println("  Display Name: "
+				       + ni.getDisplayName());
+		}
+		ni2 = NetworkInterface.getByName(ni.getName());
+		if( !ni.equals(ni2) )
+		{
+		    System.out.println("getByName failed: "
+				       + ni
+				       + " != "
+				       + ni2);
+		}
+
+		ips = ni.getInetAddresses();
+		while( ips.hasMoreElements() )
+		{
+		    InetAddress ia;
+
+		    ia = (InetAddress)ips.nextElement();
+		    if( verbose )
+		    {
+			System.out.println("  Address: " + ia);
+		    }
+		    ni2 = NetworkInterface.getByInetAddress(ia);
+		    if( !ni.equals(ni2) )
+		    {
+			System.out.println("getByInetAddress failed: "
+					   + ni
+					   + " != "
+					   + ni2);
+		    }
+		}
+	    }
+	    System.out.println("Done");
+	}
+	catch(Exception e)
+	{
+	    e.printStackTrace();
+	    System.exit(77);
+	}
+    }
+}
+
+/* Expected Output:
+Done
+*/

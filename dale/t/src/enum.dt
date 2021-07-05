@@ -1,0 +1,20 @@
+(import cstdio)
+(import enum)
+
+(def-enum thing extern int (a b c (d 1) e (f 0) (g -1) h i j k))
+
+(def main
+  (fn extern-c int (void)
+    (printf "%d %d %d %d %d %d %d %d %d %d %d\n"
+        (value a)
+        (value b)
+        (value c)
+        (value d)
+        (value e)
+        (value f)
+        (value g)
+        (value h)
+        (value i)
+        (value j)
+        (value k))
+    0))

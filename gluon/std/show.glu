@@ -1,0 +1,24 @@
+//@NO-IMPLICIT-PRELUDE
+//! Value to string conversion.
+
+/// `Show a` represents a conversion function from `a` to a readable string.
+#[implicit]
+type Show a = { show : a -> String }
+
+/// Converts a value into a string.
+/// ```
+/// let { ? } = import! std.effect
+/// let { assert_eq, ? } = import! std.test
+/// let list @ { ? } = import! std.list
+///
+/// seq assert_eq (show 123) "123"
+/// seq assert_eq (show 3.14) "3.14"
+/// seq assert_eq (show "abc") "\"abc\""
+/// assert_eq (show (list.of [1, 2, 3])) "[1, 2, 3]"
+/// ```
+let show ?s : [Show a] -> a -> String = s.show
+
+{
+    Show,
+    show,
+}

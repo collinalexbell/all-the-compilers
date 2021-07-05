@@ -1,0 +1,47 @@
+#!/usr/bin/env bash
+
+# prevent inheriting flags when called from make
+MAKEFLAGS=
+
+if [[ ! -f eval ]]; then
+    printf "\x1b[92mBuilding eval...\x1b[0m\n"
+    make -s eval BUILD=release-with-asserts
+    printf "\x1b[92mReady!\x1b[0m\n\n"
+fi
+
+LIBS="*.ppr"
+LOAD=""
+
+CFLAGS="-g -O0 -Wall -Wno-unused-variable -Wno-unused-label"
+if [[ "$1" == "-O" ]]; then
+    CFLAGS="-g -DNDEBUG -O2"
+    shift
+fi
+
+DIR=poprc_out
+
+BUILDDIR="build/clang/release-with-asserts"
+RT="${BUILDDIR}/cgen/primitives.o ${BUILDDIR}/io.o ${BUILDDIR}/startle/support.o ${BUILDDIR}/startle/error.o ${BUILDDIR}/startle/static_alloc.o ${BUILDDIR}/startle/log.o"
+
+make -s .gen/cgen/primitives.h
+make -s ${RT} CC=clang BUILD=release-with-asserts
+
+if [ -z "$1" ]
+then
+    echo "no function specified"
+    exit 0
+fi
+
+OUT=`./eval -ident $1`
+mkdir -p $DIR
+
+# generate the C source
+printf "#include \"cgen/main.h\"\n\n" > ${DIR}/${OUT}.c
+./eval -rc poprc_rc -lo ${LIBS} -cc $1 >> ${DIR}/${OUT}.c
+printf "\nMAIN(${OUT})\n" >> ${DIR}/${OUT}.c
+
+clang -S -emit-llvm ${CFLAGS} -DNOLOG -I. -I.gen -o ${DIR}/${OUT}.ll ${DIR}/${OUT}.c 2>/dev/null
+clang ${CFLAGS} -DNOLOG -I. -I.gen -o ${DIR}/${OUT} ${DIR}/${OUT}.c ${RT} || exit -1
+
+# run the executable
+./poprc_out/${OUT}

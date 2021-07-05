@@ -1,0 +1,2 @@
+(import enum)
+(def-enum thing extern int (a b c (d 1) e (f 0) (g -1) h i j k))

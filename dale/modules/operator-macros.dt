@@ -1,0 +1,139 @@
+#|
+@module operator-macros
+
+Provides utilities to generate operators that accept an arbitrary
+number of arguments.  Such operators are already defined for the
+following operators:
+
+ - arithmetic operators: `+ - * / +' -' *' /'`
+ - bitwise and logical or: `& | and or`
+ - arithmetic relations: `< <= = => > <' <=' =' =>' >'
+|#
+(module operator-macros (attr cto))
+
+(import macros)
+(import stdlib)
+
+(namespace std (namespace macros
+   
+#|
+@macro std.macros.def-identity-macro
+
+Defines a macro that takes a single argument and returns it.
+
+@param name Name of the macro.
+@param linkage Linkage.
+|#
+(def def-identity-macro (macro extern (name linkage)
+  (qq def (uq name) (macro (uq linkage) (value) value))))
+
+#|
+@macro std.macros.def-right-associative-macro
+
+Defines a macro:
+`(name a b rest) will be expanded to `(opname a (name b rest))`
+
+@param name Name of the macro.
+@param linkage Linkage.
+@param opname Optional, defaults to `name`
+|#
+(def def-right-associative-macro (macro extern (name linkage opname)
+  (qq do
+    (def (uq name) (macro (uq linkage) (a b c rest)
+      (using-namespace std.macros
+        (let ((varargs-list \ (get-varargs-list (- (arg-count mc) 3))))
+          (if (is-empty-node varargs-list)
+              (qq (uq opname) (uq (uq a))
+                              ((uq opname) (uq (uq b))
+                                           (uq (uq c))))
+              (qq (uq opname) (uq (uq a))
+                              ((uq name) (uq (uq b))
+                                         (uq (uql varargs-list))))))))))))
+
+(def def-right-associative-macro (macro extern (name linkage)
+  (qq std.macros.def-right-associative-macro (uq name) (uq linkage) (uq name))))
+
+#|
+@macro std.macros.def-left-associative-macro
+
+Defines a macro:
+`(name a b rest)` will be expanded to `(name (opname a b) rest)`
+
+@param name Name of the macro.
+@param linkage Linkage.
+@param opname Optional, defaults to `name`
+|#
+(def def-left-associative-macro (macro extern (name linkage opname)
+  (qq do
+    (def (uq name) (macro (uq linkage) (a b c rest)
+      (using-namespace std.macros
+        (let ((varargs-list \ (get-varargs-list (- (arg-count mc) 3))))
+          (if (is-empty-node varargs-list)
+              (qq (uq opname) ((uq opname) (uq (uq a)) (uq (uq b)))
+                              (uq (uq c)))
+              (qq (uq name)   ((uq opname) (uq (uq a)) (uq (uq b)))
+                              (uq (uq c))
+                              (uq (uql varargs-list)))))))))))
+
+(def def-left-associative-macro (macro extern (name linkage)
+  (qq std.macros.def-left-associative-macro (uq name) (uq linkage) (uq name))))))
+
+(mfor op (and or)
+  (std.macros.def-right-associative-macro op extern))
+
+(mfor op (+  -  *  /
+          +' -' *' /'
+          &  |)
+  (std.macros.def-left-associative-macro op extern))
+
+(namespace std (namespace macros
+
+#|
+@macro def-transitive-macro
+
+Defines a macro for transitive binary functions (that normally should
+return bool and transitive), so that you don't have to use variables
+twice when you want to test some function.
+
+For example:
+
+        (def-transitive-macro < intern)
+        (< 0.0 x 1.0)
+
+expands to:
+
+        (and (< 0.0 x) (< x 1.0))
+
+
+@param name     The macro name.
+@param linkage  Linkage.
+@param fn       The name of the binary function. Defaults to name.
+|#
+(def def-transitive-macro (macro extern (name linkage fn)
+  (qq using-namespace std.macros
+    (def (uq name) (macro (uq linkage) (a b c rest)
+      (let ((list \ (get-varargs-list mc (- (arg-count mc) 3) rest)))
+        (if (is-lvalue mc b)
+          (if (is-empty-node list)
+              (qq and ((uq fn) (uq (uq a)) (uq (uq b)))
+                      ((uq name) (uq (uq b)) (uq (uq c))))
+              (qq and ((uq fn) (uq (uq a)) (uq (uq b)))
+                      ((uq name) (uq (uq b)) (uq (uq c)) (uq (uql list)))))
+          (let ((var \ (make-gensym-var-node mc)))
+            (if (is-empty-node list)
+                (qq let (((uq (uq var)) \ (uq (uq b))))
+                  ((uq name) (uq (uq a))
+                             (uq (uq var))
+                             (uq (uq c))))
+                (qq let (((uq (uq var)) \ (uq (uq b))))
+                  ((uq name) (uq (uq a))
+                             (uq (uq var))
+                             (uq (uq c))
+                             (uq (uql list)))))))))))))
+
+(def def-transitive-macro (macro extern (name linkage)
+  (qq std.macros.def-transitive-macro (uq name) (uq linkage) (uq name))))))
+
+(mfor op (< <= = => > !=
+          <' <=' =' =>' >' !=')
+  (std.macros.def-transitive-macro op extern))

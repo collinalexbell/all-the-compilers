@@ -1,0 +1,67 @@
+//@NO-IMPLICIT-PRELUDE
+//! The 64-bit floating point type.
+
+let { Semigroup, Monoid, Group, Eq, Ord, Ordering, Num, Show } = import! std.prelude
+
+let additive =
+    let semigroup : Semigroup Float = { append = \x y -> x #Float+ y }
+
+    let monoid : Monoid Float = {
+        semigroup = semigroup,
+        empty = 0.0,
+    }
+
+    let group : Group Float = {
+        monoid = monoid,
+        inverse = \x -> 0.0 #Float- x,
+    }
+
+    { semigroup, monoid, group }
+
+let multiplicative =
+    let semigroup : Semigroup Float = { append = \x y -> x #Float* y }
+
+    let monoid : Monoid Float = {
+        semigroup = semigroup,
+        empty = 1.0,
+    }
+
+    let group : Group Float = {
+        monoid = monoid,
+        inverse = \x -> 1.0 #Float/ x,
+    }
+
+    { semigroup, monoid, group }
+
+let eq : Eq Float = {
+    (==) = \l r -> l #Float== r,
+}
+
+let ord : Ord Float = {
+    eq = eq,
+    compare = \l r -> if l #Float< r then LT else if l #Float== r then EQ else GT,
+}
+
+let num : Num Float = {
+    ord = ord,
+    (+) = additive.semigroup.append,
+    (-) = \l r -> l #Float- r,
+    (*) = multiplicative.semigroup.append,
+    (/) = \l r -> l #Float/ r,
+    negate = additive.group.inverse,
+}
+
+let show : Show Float = {
+    show = (import! std.prim).show_float,
+}
+
+{
+    additive,
+    multiplicative,
+    eq,
+    ord,
+    num,
+    show,
+    ..
+    import! std.float.prim
+}

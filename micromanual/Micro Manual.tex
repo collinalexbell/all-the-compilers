@@ -1,0 +1,199 @@
+\documentclass[8pt,letter,twocolumn]{article}
+\usepackage[margin=0.6in]{geometry}
+\usepackage[utf8]{inputenc}
+\usepackage{fancyvrb}
+\usepackage{changes} % For \textsubscript
+
+\usepackage[protrusion=true,expansion=true,activate={true,nocompatibility},final,factor=1200,stretch=35,shrink=35]{microtype}
+\doublehyphendemerits=10000
+
+\title{\small \textbf{\textsc{{A Micro-Manual for LISP - Not the whole truth}}}}
+
+\author{\footnotesize \bfseries John McCarthy\\
+            \footnotesize \bfseries Artificial Intelligence Laboratory\\
+            \footnotesize \bfseries Stanford University}
+
+\date{}
+
+\newcommand{\args}[1] {#1\textsubscript{i} \dots \ #1\textsubscript{n}}
+\newcommand{\ei}[0] {e\textsubscript{i}}
+\newcommand{\en}[0] {e\textsubscript{n}}
+
+\begin{document}
+\setcounter{page}{215}
+\maketitle
+
+% \section{Introduction}
+
+LISP data are symbolic expressions that can be either \textit{atoms} or
+\textit{lists}. \textit{Atoms} are strings of letters and digits and other
+characters not otherwise used in LISP. A list consists of a left parenthesis
+followed by zero or more atoms or lists separated by spaces and ending with a
+right parenthesis. Examples: \texttt{a}, \texttt{onion}, \texttt{()},
+\texttt{(a)}, \texttt{(a onion a)}, \texttt{(plus 3 (times x pi) 1)},
+\texttt{(car (quote (a b)))}.
+
+The LISP programming language is defined by rules whereby certain LISP
+expressions have other LISP expressions as \textit{values}. The function called
+\textit{value} that we will use in giving these rules is not part of the LISP
+language but rather part of the informal mathematical language used to define
+LISP. Likewise, the italic letters \textit{e} and \textit{a} (sometimes with
+subscripts) denote LISP expressions, the letter \textit{v} (usually subscripted)
+denotes an atom serving as a variable, and the letter \textit{f} stands for a
+LISP expression serving as a function name.
+
+\begin{enumerate}
+\setlength\itemsep{0em}
+\item \textit{value} \texttt{(quote \textit{e})} = \textit{e}. Thus the value of
+  \texttt{(quote a)} is \texttt{a}.
+
+\item \textit{value} \texttt{(car \textit{e})}, where \textit{value e} is a
+  non-empty list, is the first element of \textit{value e}. Thus \textit{value}
+  \texttt{(car (quote (a b c)))} = \texttt{a}.
+
+\item \textit{value} \texttt{(cdr e)}, where \textit{value} \textit{e} is a
+  non-empty list, is the the list that remains when the first element of
+  \textit{value} \textit{e} is deleted. Thus \textit{value} \texttt{(cdr (quote
+    (a b c)))} = \texttt{(b c)}.
+
+\item \textit{value} \texttt{(cons el e2)}, is the list that results from
+  prefixing \textit{value e1} onto the list \textit{value e2}. Thus
+  \textit{value} \texttt{(cons (quote a) (quote (b c)))} = \texttt{(a b c)}.
+
+\item \textit{value} \texttt{(equal el e2)} is T if \textit{value e1} =
+  \textit{value e2}. Otherwise, its \textit{value} is \texttt{NIL}. Thus
+  \textit{value} \texttt{(equal (car (quote (a b))) (quote a))} = \texttt{T}.
+
+\item \textit{value} \texttt{(atom e)} = \texttt{T} if \textit{value e} is an
+  atom; otherwise its \textit{value} is \texttt{NIL}.
+
+\item \textit{value} \texttt{(COND(p\textsubscript{i} \ei) \dots
+    (p\textsubscript{n} \en))} = \textit{value} \texttt{\ei}, where
+  \texttt{p\textsubscript{i}} is the the first of the \textit{p}\rq s whose
+  \textit{value} is not \texttt{NIL}. Thus \textit{value} \texttt{(cond ((atom
+    (quote a)) (quote b)) ((quote t) (quote c)))} = \texttt{b}.
+
+\item An atom \textit{v}, regarded as a variable, may have a value.
+
+\item \textit{value} \texttt{((lambda (\args{v}) e) \args{e})} is the same as
+  \textit{value e} but in an environment in which the variables \args{v} take
+  the values of the expressions \args{e} in the original environment. Thus
+  \textit{value} \texttt{((lambda (x y) (cons (car x) y)) (quote (a b)) (cdr
+    (quote (c d))))} = \texttt{(a d)}.
+
+\item Here\rq s the hard one. \textit{value} \texttt{((label \textit{f} (lambda
+    (\args{v}) e)) \args{e})} is the same as \textit{value} \texttt{((lambda
+    (\args{v}) e) \args{e})} with the additional rule that whenever
+  \texttt{(\textit{f} \args{a})} must be evaluated, \textit{f} is replaced by
+  \texttt{(LABEL \textit{f} (lambda (\args{v}) e))}. Lists beginning with
+  \texttt{label} define functions recursively.
+
+\end{enumerate}
+
+This is the core of LISP, and here are more examples:  \\
+
+\textit{value} \texttt{(car x)} = \texttt{(a b)} if \textit{value} \texttt{x} =
+\texttt{((a b) c)}, and \textit{value} \texttt{((label ff (lambda (x) (cond
+  ((atom x) x) ((quote t) (ff (car x)))))) (quote ((a b) c)))}= \texttt{a}
+
+Thus \texttt{((label ff (lambda (x) (cond ((atom x) x) ((quote t) (ff (car
+  x))))))}, is the LISP name of a function \textit{ff} such that \textit{ff e}
+is the first atom in the written form of \textit{e}. Note that the list
+\textit{ff} is substituted for the atom \texttt{ff} twice.
+
+Difficult mathematical type exercise: Find a list \textit{e} such that
+\textit{value} \textit{e} = \textit{e}.
+
+\vspace*{1\baselineskip}
+\textbf{Abbreviations}
+\vspace*{1\baselineskip}
+
+The above LISP needs some abbreviations for practical use.
+
+\begin{enumerate}
+\setlength\itemsep{0em}
+
+\item The variables \texttt{T} and \texttt{NIL} are permanently assigned the
+  values \texttt{T} and \texttt{NIL}, and \texttt{NIL} is the name of the null
+  list \texttt{()}.
+
+\item So as not to describe a LISP function each time it is used, we define it
+  permanently by typing \texttt{(defun f (\args{v}))) e)} . Thereafter
+  \texttt{(f \args{e})} is evaluated by evaluating \textit{e} with the variables
+  \args{v} taking the values value \textit{value} \ei, \dots, \textit{value} \en
+  respectively. Thus, after we define \texttt{(defun ff (x) (cond ((atom x) x)
+    (t (ff (car x)))))}, typing \texttt{(ff (quote (ca b) c)))}, gets \texttt{a}
+  from LISP.
+
+\item We have the permanent function definitions.
+
+  \texttt{(defun null (x) (equal x nil))} and \texttt{(defun cadr (x) (car (cdr
+    x)))}.
+
+  and similarly for arbitrary combinations of A and D.
+
+\item \texttt{(list \args{e})} is defined for each n to be \texttt{(cons \ei
+    (cons \dots \ (cons \en nil)))} .
+
+\item \texttt{(and p q)} abbreviates \texttt{(cond (p q) (t nil))}.
+  \textit{AND}s with more terms are defined similarly, and the propositional
+  connectives \texttt{or} and \texttt{not} are used in abbreviating
+  corresponding conditional expressions.
+
+\end{enumerate}
+
+Here are more examples of LISP function definitions:
+
+\texttt{(defun alt (x) (cond ((or (null x) (null (cdr x))) x) (t (cons (car x)
+  (alt (cddr x))))))}
+
+defines a function that gives alternate elements of a list starting with the
+first element. Thus \texttt{(alt (quote (a b c d e)))} = \texttt{(a c e)}
+
+\texttt{(defun subst (x y z) (cond ((atom z) (cond ((equal z y) x) (t z))) (t
+  (cons (subst x y (car z))(subst x y ( c d r z))))))},
+
+where Y is an atom, gives the result of substituting X for Y in Z. Thus
+\texttt{(subst (quote (plus x y)) (quote v) (quote (times x v)))} =
+\texttt{(times x (plus x y))}.
+
+You may now program in LISP. Call LISP on a time-sharing computer, define some
+functions, type in a LISP expression, and LISP will output its value on your
+terminal.
+
+\vspace*{1\baselineskip}
+\textbf{The LISP interpreter written in LISP}
+\vspace*{1\baselineskip}
+
+The rules we have given for evaluating LISP expressions can themselves be
+expressed as a LISP function \texttt{(eval e a)}, where \textit{e} is an
+expression to be evaluated, and \textit{a} is a list of variable-value pairs,
+\textit{a} is used in the recursion and is often initially \texttt{NIL}. The
+long LISP expression that follows is just such an evaluator. It is presented as
+a single LABEL expressions with all auxiliary functions also defined by LABEL
+expressions internally, so that it references only the basic function of LISP
+and some of abbreviations like CADR and friends. It knows about all the
+functions that are used in its own definition so that it can evaluate itself
+evaluating some other expression. It does not know about DEFUNs or any features
+of LISP not explained in this micro-manual such as functional arguments,
+property list functions, input-output, or sequential programs.
+
+The function \texttt{eval} can serve as an interpreter for LISP, and LISP
+interpreters are actually made by hand-compiling EVAL into machine language or
+by cross-compiling it on a machine for which a LISP system already exists.
+
+The definition would have been easier to follow had we defined auxiliary
+functions separately rather than include them using LABEL. However, we would
+then have needed property list functions in order to make the \texttt{eval}
+self-applicable. These auxiliary functions are \texttt{evlis} which evaluates
+lists of expressions, \texttt{evcond} which evaluates conditional expressions,
+\texttt{assoc} which finds the value associated with a variable in the
+environment, and \texttt{pairup} which pairs up the corresponding elements of
+two lists.
+
+\newpage
+Here is \texttt{eval}.
+
+\VerbatimInput[fontfamily=tt, fontsize=\scriptsize, samepage=true]{eval.lisp}
+
+\end{document}

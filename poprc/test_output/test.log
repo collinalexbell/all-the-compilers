@@ -1,0 +1,419 @@
+@ align_offset
+align_offset => 0
+@ alloc
+alloc => 0
+@ alt_sets
+alt_sets => 0
+@ append_data_to
+append_data_to => 0
+@ arr_shift
+[]
+[2, 1, 0]
+[2, 1]
+[3, 2, 1]
+arr_shift => 0
+@ comments
+[1] One def
+[2] T_w_o def
+{ ################################
+  [one t_w_o +] :three def
+  three *
+} M def #################
+##############
+M:three
+################
+comments => 0
+@ compose_size
+compose_size => 0
+@ count_char
+count_char => 0
+@ div_min_max
+div_min(5, 3) = 1, expected 1: PASS
+div_min(-5, 3) = -2, expected -2: PASS
+div_min(5, -3) = -2, expected -2: PASS
+div_min(-5, -3) = 1, expected 1: PASS
+div_max(5, 3) = 2, expected 2: PASS
+div_max(-5, 3) = -1, expected -1: PASS
+div_max(5, -3) = -1, expected -1: PASS
+div_max(-5, -3) = 2, expected 2: PASS
+div_min(2, 2) = 1, expected 1: PASS
+div_min(2, -2) = -1, expected -1: PASS
+div_min(-2, 2) = -1, expected -1: PASS
+div_min(-2, -2) = 1, expected 1: PASS
+div_max(2, 2) = 1, expected 1: PASS
+div_max(2, -2) = -1, expected -1: PASS
+div_max(-2, 2) = -1, expected -1: PASS
+div_max(-2, -2) = 1, expected 1: PASS
+div_min_max => 0
+@ error
+i = 0
+i = 1
+i = 2
+[37;44mBREAKPOINT[0m [37;41m!!![0m startle/error.c:233: test_error: Assertion `i < 3' failed: Don't worry, it's okay. [38;5;8ma72vd[0m
+[37;44mTEST[0m [37;41m!!![0m startle/error.c:233: test_error: Assertion `i < 3' failed: Don't worry, it's okay. [38;5;8ma72vd[0m
+error => 0
+@ escape_string
+test\n\\string\bG\0stuff\x1b&amp;t
+escape_string => 0
+@ expand_map
+map[10] = {{eight, 7}, {five, 4}, {four, 3}, {one, 0}, {seven, 6}, {six, 5}, {three, 2}, {two, 1}, {nine, 8}, {ten, 9}}
+expand_map => 0
+@ expand_sym
+abc^def -> abc_caret_def
+expand_sym => 0
+@ find_path
+path: 3 + * 
+find_path => 0
+@ flat_copy_list
+_check_flat_copy: 2 + 2 = 4
+_check_flat_copy: 0 + 1 = 1
+_check_flat_copy: 1 + 0 = 1
+flat_copy_list => 0
+@ flatten_ranges
+[0, 7]
+[8, 12]
+[13, 14]
+[15, 18]
+flatten_ranges => 0
+@ flattened_list_copy
+flattened_list_copy => 0
+@ for_mask
+for_mask => 0
+@ formask
+0, 1
+1, 2
+2, 3
+3, 5
+4, 7
+5, 8
+6, 12
+formask => 0
+@ function_in
+function_in => 0
+@ inrange
+inrange => 0
+@ lex
+testing 
+[ 1 2 + 3 ] 
+4 
+Done 
+lex => 0
+@ list_next
+_check_list_next: 2 + 2 = 4
+_check_list_next: 0 + 1 = 1
+_check_list_next: 1 + 0 = 1
+list_next => 0
+@ list_remaining_size
+_check_list_remaining_size: 2 + 2 = 4
+_check_list_remaining_size: 0 + 1 = 1
+_check_list_remaining_size: 1 + 0 = 1
+list_remaining_size => 0
+@ log
+startle/log.c:480: test 1 + 2 = 3 [38;5;8mnlhfd[0m
+startle/log.c:481: WAZZUP d00d [38;5;8mc2d3p[0m
+startle/log.c:482: [123] [38;5;8mnosdv[0m
+log => 0
+@ log_context
+__ print_context() __
+startle/log.c:588: A 1
+  startle/log.c:576: B 0
+__ end print_context() __
+__ print_context() __
+startle/log.c:604: D 42
+  startle/log.c:595: E 42
+__ end print_context() __
+startle/log.c:588: A 2
+  startle/log.c:590: (a) nonzero x [38;5;8mibvpj[0m
+startle/log.c:588: A 1
+  startle/log.c:576: B 0
+    startle/log.c:577: (b) zero x [38;5;8mifan5[0m
+    startle/log.c:579: printing context [38;5;8mfqhs8[0m
+  startle/log.c:590: (a) nonzero x [38;5;8magv7e[0m
+startle/log.c:571: C 3 [38;5;8mk7ehk[0m
+startle/log.c:604: D 42 [38;5;8mc83wt[0m
+  startle/log.c:595: E 42 [38;5;8mnvia3[0m
+    startle/log.c:596: printing context [38;5;8milwk9[0m
+  startle/log.c:606: exiting d [38;5;8mdcevf[0m
+log_context => 0
+@ lookup
+The total for 5 grapes at $0.50 each is $2.50.
+lookup => 0
+@ loops
+up: 0
+up: 1
+up: 2
+down: 2
+down: 1
+down: 0
+arr[0] = 1
+arr[1] = 4
+arr[2] = 9
+xxx
+xxx
+xxx
+range up: i = 3, REVI(i) = 6
+range up: i = 4, REVI(i) = 5
+range up: i = 5, REVI(i) = 4
+range up: i = 6, REVI(i) = 3
+range down: i = 6, REVI(i) = 3
+range down: i = 5, REVI(i) = 4
+range down: i = 4, REVI(i) = 5
+range down: i = 3, REVI(i) = 6
+loops => 0
+@ macro_dispatch
+TEST_0()
+TEST_1(1)
+TEST_2(1, 2)
+macro_dispatch => 0
+@ macro_math
+macro_math => 0
+@ map
+map[15] = {{0, 5}, {1, 4}, {2, 0}, {3, 3}, {4, 6}, {5, 1}, {7, 7}, {8, 2}, {6, 8}, {9, 9}, {10, 10}, {15, 11}, {11, 13}, {13, 12}, {12, 14}}
+map_find(map, 2) = {2, 0}
+map_find(map, 5) = {5, 1}
+map_find(map, 8) = {8, 2}
+map_find(map, 3) = {3, 3}
+map_find(map, 1) = {1, 4}
+map_find(map, 0) = {0, 5}
+map_find(map, 4) = {4, 6}
+map_find(map, 7) = {7, 7}
+map_find(map, 6) = {6, 8}
+map_find(map, 9) = {9, 9}
+map_find(map, 10) = {10, 10}
+map_find(map, 15) = {15, 11}
+map_find(map, 13) = {13, 12}
+map_find(map, 11) = {11, 13}
+map_find(map, 12) = {12, 14}
+map => 0
+@ map_iterate
+map[7] = {{1, 0}, {1, 2}, {2, 1}, {2, 3}, {3, 4}, {3, 5}, {1, 6}}
+matches for key = 0:
+matches for key = 1: 2 0 6
+matches for key = 2: 3 1
+matches for key = 3: 5 4
+map_iterate => 0
+@ map_merge
+map[16] = {{0, 0}, {1, 10}, {3, 20}, {4, 0}, {5, 30}, {7, 40}, {8, 1}, {9, 50}, {11, 60}, {12, 0}, {13, 70}, {15, 80}, {16, 0}, {17, 90}, {19, 100}, {21, 110}}
+r = {16, 0}
+map_merge => 0
+@ map_sort_full
+a[21] = {{0, 0}, {0, 1}, {0, 2}, {1, 0}, {2, 0}, {2, 1}, {3, 0}, {4, 0}, {4, 1}, {5, 0}, {6, 0}, {6, 1}, {7, 0}, {8, 0}, {9, 0}, {10, 0}, {11, 0}, {12, 0}, {13, 0}, {14, 0}, {15, 0}}
+map_sort_full => 0
+@ map_stack_behavior
+map_stack_behavior => 0
+@ map_union
+a[16] = {{0, 0}, {2, 0}, {4, 0}, {6, 0}, {8, 0}, {10, 0}, {12, 0}, {14, 0}, {16, 0}, {18, 0}, {20, 0}, {22, 0}, {24, 0}, {26, 0}, {28, 0}, {30, 0}}
+a[16] = {{0, 0}, {1, 1}, {2, 0}, {4, 0}, {6, 0}, {8, 0}, {10, 0}, {12, 0}, {14, 0}, {16, 0}, {18, 0}, {20, 0}, {22, 0}, {24, 0}, {26, 0}, {28, 0}}
+a[16] = {{0, 0}, {1, 1}, {2, 0}, {3, 1}, {4, 0}, {6, 0}, {8, 0}, {10, 0}, {12, 0}, {14, 0}, {16, 0}, {18, 0}, {20, 0}, {22, 0}, {24, 0}, {26, 0}}
+a[16] = {{0, 0}, {1, 1}, {2, 0}, {3, 1}, {4, 0}, {5, 1}, {6, 0}, {8, 0}, {10, 0}, {12, 0}, {14, 0}, {16, 0}, {18, 0}, {20, 0}, {22, 0}, {24, 0}}
+a[16] = {{0, 0}, {1, 1}, {2, 0}, {3, 1}, {4, 0}, {5, 1}, {6, 0}, {7, 1}, {8, 0}, {10, 0}, {12, 0}, {14, 0}, {16, 0}, {18, 0}, {20, 0}, {22, 0}}
+a[16] = {{0, 0}, {1, 1}, {2, 0}, {3, 1}, {4, 0}, {5, 1}, {6, 0}, {7, 1}, {8, 0}, {9, 1}, {10, 0}, {12, 0}, {14, 0}, {16, 0}, {18, 0}, {20, 0}}
+a[16] = {{0, 0}, {1, 1}, {2, 0}, {3, 1}, {4, 0}, {5, 1}, {6, 0}, {7, 1}, {8, 0}, {9, 1}, {10, 0}, {11, 1}, {12, 0}, {14, 0}, {16, 0}, {18, 0}}
+a[16] = {{0, 0}, {1, 1}, {2, 0}, {3, 1}, {4, 0}, {5, 1}, {6, 0}, {7, 1}, {8, 0}, {9, 1}, {10, 0}, {11, 1}, {12, 0}, {13, 1}, {14, 0}, {16, 0}}
+a[16] = {{0, 0}, {1, 1}, {2, 0}, {3, 1}, {4, 0}, {5, 1}, {6, 0}, {7, 1}, {8, 0}, {9, 1}, {10, 0}, {11, 1}, {12, 0}, {13, 1}, {14, 0}, {15, 1}}
+map_union => 0
+@ merge
+arr1: {{0, 0}, {1, 4}, {2, 1}, {3, 5}, {4, 2}, {5, 6}, {6, 3}, {7, 7}}
+arr2: {{0, 0}, {1, 1}, {2, 4}, {3, 5}, {4, 6}, {5, 7}, {6, 2}, {7, 3}}
+arr3: {{0, 4}, {1, 5}, {2, 6}, {3, 7}, {4, 0}, {5, 1}, {6, 2}, {7, 3}}
+arr4: {{0, 4}, {1, 0}, {2, 1}, {3, 5}, {4, 2}, {5, 3}, {6, 6}, {7, 7}}
+arr5: {{0, 4}, {1, 5}, {2, 0}, {3, 1}, {4, 6}, {5, 2}, {7, 7}, {8, 3}}
+arr6: {{0, 0}, {0, 1}, {1, 0}, {1, 1}, {2, 0}, {2, 1}, {3, 0}, {3, 1}, {4, 0}, {4, 1}, {5, 0}, {5, 1}, {6, 0}, {6, 1}, {7, 0}, {7, 1}}
+arr7: {{0, 0}, {1, 0}, {2, 0}, {3, 0}, {4, 0}, {5, 0}, {6, 0}, {7, 0}, {8, 0}, {9, 0}, {10, 0}, {11, 0}, {12, 0}, {13, 0}, {14, 0}, {15, 0}}
+arr8: {{0, 0}, {1, 0}, {2, 0}, {3, 0}, {4, 0}, {5, 1}, {6, 0}, {7, 1}, {8, 1}, {9, 0}, {10, 1}, {11, 1}, {12, 0}, {13, 1}, {14, 1}, {15, 1}}
+merge => 0
+@ merge_huang88
+merge_huang88 => 0
+@ merge_huang88b
+merge_huang88b => 0
+@ merge_into_buffer
+merge_into_buffer => 0
+@ merge_left_short
+merge_left_short => 0
+@ merge_right_short
+merge_right_short => 0
+@ merge_with_buffer
+merge_with_buffer => 0
+@ merge_with_buffer2
+merge_with_buffer2 => 0
+@ merge_with_buffer_fast
+merge_with_buffer_fast => 0
+@ mmap_file
+Copyright 2012-2020 Dustin DeWeese
+mmap_file => 0
+@ module_lookup
+Loaded modules (a, b, c, d, e)
+a.b.a.f3:
+  number three
+a.cd.f5:
+  1 2 +
+a.cd.f6:
+  3 4 *
+f7:
+  6 5 -
+module_lookup => 0
+@ next_bit
+bit = 0
+bit = 1
+bit = 2
+bit = 3
+bit = 5
+bit = 7
+bit = 8
+bit = 12
+next_bit => 0
+@ oneof
+oneof => 0
+@ parse_def
+another:
+  oh heres another
+  again
+word:
+  hi there this is the first definition
+  and this is the second
+  oh hey heres the third one
+some.modules:
+  module one
+  module two
+  module three
+parse_def => 0
+@ parse_file_prefix
+parse_file_prefix => 0
+@ parse_module
+Loaded modules (a, b)
+module a:
+f1:
+  the first word
+f2:
+  the second one
+f3:
+  number three
+
+module b:
+f4:
+  heres another
+
+parse_module => 0
+@ prim_to_string
+prim_to_string => 0
+@ print_escaped_string
+test\n\\string\bG\0stuff&amp;
+print_escaped_string => 0
+@ replace_char
+aPples and bananas
+oPples ond bononos
+replace_char => 0
+@ ring_buffer
+he
+ll
+o world
+ring_buffer => 0
+@ rotate
+{{0, 0}, {1, 1}, {2, 2}, {3, 3}, {4, 4}, {5, 5}, {6, 6}}
+{{1, 1}, {2, 2}, {3, 3}, {4, 4}, {5, 5}, {6, 6}, {0, 0}}
+{{2, 2}, {3, 3}, {4, 4}, {5, 5}, {6, 6}, {0, 0}, {1, 1}}
+{{3, 3}, {4, 4}, {5, 5}, {6, 6}, {0, 0}, {1, 1}, {2, 2}}
+{{4, 4}, {5, 5}, {6, 6}, {0, 0}, {1, 1}, {2, 2}, {3, 3}}
+{{5, 5}, {6, 6}, {0, 0}, {1, 1}, {2, 2}, {3, 3}, {4, 4}}
+{{6, 6}, {0, 0}, {1, 1}, {2, 2}, {3, 3}, {4, 4}, {5, 5}}
+rotate => 0
+@ sat_arith
+sat_add(INTPTR_MIN, INTPTR_MIN) = -9223372036854775808, expected -9223372036854775808: PASS
+sat_add(INTPTR_MAX, INTPTR_MIN) = -1, expected -1: PASS
+sat_add(INTPTR_MIN, INTPTR_MAX) = -1, expected -1: PASS
+sat_add(INTPTR_MAX, INTPTR_MAX) = 9223372036854775807, expected 9223372036854775807: PASS
+sat_sub(INTPTR_MIN, INTPTR_MIN) = 0, expected 0: PASS
+sat_sub(INTPTR_MAX, INTPTR_MIN) = 9223372036854775807, expected 9223372036854775807: PASS
+sat_sub(INTPTR_MIN, INTPTR_MAX) = -9223372036854775808, expected -9223372036854775808: PASS
+sat_sub(INTPTR_MAX, INTPTR_MAX) = 0, expected 0: PASS
+sat_mul(INTPTR_MIN, 2) = -9223372036854775808, expected -9223372036854775808: PASS
+sat_mul(INTPTR_MAX, 2) = 9223372036854775807, expected 9223372036854775807: PASS
+sat_mul(2, INTPTR_MIN) = -9223372036854775808, expected -9223372036854775808: PASS
+sat_mul(2, INTPTR_MAX) = 9223372036854775807, expected 9223372036854775807: PASS
+sat_mul(INTPTR_MIN, -2) = 9223372036854775807, expected 9223372036854775807: PASS
+sat_mul(INTPTR_MAX, -2) = -9223372036854775808, expected -9223372036854775808: PASS
+sat_mul(-2, INTPTR_MIN) = 9223372036854775807, expected 9223372036854775807: PASS
+sat_mul(-2, INTPTR_MAX) = -9223372036854775808, expected -9223372036854775808: PASS
+sat_arith => 0
+@ seg_find
+seg_find => 0
+@ seg_find_char
+seg_find_char => 0
+@ seg_range
+"random" + "just" = "just some random"
+"some" + "words" = "some random words"
+"just some random" + "some random words" = "just some random words"
+"" + "just some random words" = "just some random words"
+seg_range => 0
+@ seg_trim
+trimmed: "hi"
+seg_trim => 0
+@ set
+set[0] = 7
+set[1] = 14
+set[2] = 21
+set[3] = 28
+set[4] = 8
+set[5] = 9
+set => 0
+@ shadow
+shadow => 0
+@ sort
+{{0, 5}, {2, 2}, {3, 0}, {4, 7}, {4, 3}, {7, 1}, {8, 6}, {500, 4}}
+index find existing: PASS
+index find missing: PASS
+sort => 0
+@ spread_gather_bits
+spread_gather_bits => 0
+@ string_literal
+end = "end"
+string_literal => 0
+@ string_map
+map[8] = {{abc, 3}, {bat, 5}, {cheese, 6}, {cow, 4}, {one, 0}, {quilt, 7}, {three, 2}, {two, 1}}
+cow => 4
+string_map => 0
+@ strings
+strings => 0
+@ strnum
+strnum => 0
+@ suffix
+end
+suffix => 0
+@ tag
+tag: 99792 = great
+tag => 0
+@ trace_encode
+trace_encode => 0
+@ traverse_args
+in = 1, out = 1
+alt,ptrs,args 1
+in = 1, out = 2
+alt,ptrs,args 1
+alt,ptrs,args 20
+args, ptrs 20
+args 20
+const args 20
+in = 2, out = 1
+alt,ptrs,args 1
+alt,ptrs,args 10
+args, ptrs 10
+args 10
+const args 10
+in = 2, out = 2
+alt,ptrs,args 1
+alt,ptrs,args 10
+alt,ptrs,args 30
+args, ptrs 10
+args, ptrs 30
+args 10
+args 30
+const args 10
+const args 30
+traverse_args => 0
+@ unescape_string
+test
+\stringG!
+unescape_string => 0
+@ var_count
+length(vl) = 5
+var_count => 0

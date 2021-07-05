@@ -1,0 +1,17 @@
+//! A type representing a JSON value.
+//!
+//! _This module is only available if gluon is compiled with the `serialization` feature._
+
+let { Map, ? } = import! std.map
+let { ? } = import! std.array
+
+type Value =
+    | Null
+    | Bool Bool
+    | Int Int
+    | Float Float
+    | String String
+    | Array (Array Value)
+    | Object (Map String Value)
+
+{ Value }

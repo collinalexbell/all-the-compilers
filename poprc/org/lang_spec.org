@@ -1,0 +1,88 @@
+#+TITLE: POPR Language Specification
+
+* Description
+** Popr is a lazy, strictly concatenative and functional language generalized to first-class partial and multivalued functions. It also supports quoting and partial application, and has a module system. Popr is designed to allow the user to create higher level language features such as types, pattern matching, or even entirely new languages as efficiently as possible through partial evaluation.
+* Syntax
+** Grammar
+#+BEGIN_EXAMPLE
+__ lexing
+____ character classes
+cc_numeric ::= "0" ... "9"
+cc_alpha ::= "a" ... "z" | "A" ... "Z"
+cc_operator ::= "!" | "#" | "$" | "%" | "&" | "*" | "+" | "," | "-" | "." | "/" | "|" | "~" | "?"
+cc_space ::= " " | "\t" | "\n"
+
+____ special characters
+c_left_bracket ::= "["
+c_right_bracket ::= "]"
+c_comment ::= "_"
+c_symbol ::= ":"
+c_newline ::= "\n"
+
+____ tokens
+integer ::= {"-"}?  {cc_numeric}+
+word ::= cc_alpha {cc_alpha | cc_numeric | c_symbol} | {cc_operator}+
+symbol ::= c_symbol word
+
+____ comments
+start_comment ::= c_comment (not c_comment | cc_space)
+end_comment ::= (not c_comment | cc_space) "_"
+inline_comment ::= start_comment {(not end_comment) | comment} end_comment
+line_comment ::= c_comment c_comment {(not c_newline)} c_newline
+
+__ parsing
+____ terms
+quote ::= c_left_bracket program c_right_bracket
+literal ::= integer | symbol | quote
+term ::= word | literal
+
+__ program
+program ::= {cc_space} {term {cc_space}}
+#+END_EXAMPLE
+** Sample Program
+#+BEGIN_EXAMPLE
+[1] :one def
+[2] :two def
+{ _an inline _nested_ comment_
+  [one two +] :three def
+  three *
+} :m def __ a line comment
+__ stack is: 6
+m:three
+__ stack is: 6 3
+#+END_EXAMPLE
+* Semantics
+** Alternatives and Assertions
+#+BEGIN_EXAMPLE
+1 2 | 3 +         __  [ { 4 | 5 } ]
+2 5 | dup 2 - !   __  [ 5 ]
+#+END_EXAMPLE
+An expression can be asserted true by using an assertion. If it does not, it will fail.
+Alternatives can be given in an expression, such that the result is all the alternatives that succeed (do not fail.)
+Alternatives and Assertions form both POPR's branching facility (at runtime) and it's type system (at compile time.)
+- ~a | b~ is two alternatives ~a~ and ~b~
+- ~a b !~ will be ~a~ if ~b~ is non-zero, and fail otherwise.
+** Quotes
+#+BEGIN_EXAMPLE
+[ 1 2 + 3 4 + ] popr   __   [ [ 1 2 + ] 7 ]
+1 [ 2 + ] pushl        __   [ [ 1 2 + ] ]
+1 [ 2 + ] pushl popr   __   [ [] 3 ]
+#+END_EXAMPLE
+* Ideals
+** Two languages
+*** Names
+**** Static
+**** Modules
+**** Operations
+***** Name (alias)
+***** Unify (merge)
+*** Computation
+**** Concatenative
+**** Functional
+**** Lazy
+**** Operations
+***** Compose
+***** Branch (alt)
+**** Asserts as types (refinement types)
+** Partial evaluation
+*** Same language for static (type inference) and dynamic code

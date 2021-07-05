@@ -1,0 +1,68 @@
+name:             hython
+version:          1.0
+build-type:       Simple
+cabal-version:    >= 1.6
+category:         Interpreter
+synopsis:         A toy Python 3 interpreter
+description:
+    This project is mainly educational and aims to be simple.
+    The implementation is naive, does not contain a real standard library
+    and is not optimized for performance.
+license:          GPL-3
+license-file:     LICENSE.md
+maintainer:       matt_p_green@hotmail.com
+
+source-repository head
+  type:           git
+  location:       https://github.com/mattgreen/hython.git
+
+executable        hython
+  build-depends:  base < 5.0,
+                  containers,
+                  mtl,
+                  array,
+                  utf8-string,
+                  regex-base,
+                  regex-compat,
+                  transformers,
+                  unordered-containers,
+                  filepath,
+                  safe,
+                  directory,
+                  monad-loops,
+                  executable-path,
+                  hashable,
+                  parsec,
+                  hlint,
+                  text,
+                  bytestring,
+                  haskeline,
+                  semigroups,
+                  uuid
+  build-tools:    happy
+  other-modules:  Language.Python.Lexer,
+                  Language.Python.Parser,
+                  Language.Python,
+                  REPL,
+                  Hython.Interpreter,
+                  Hython.Statement,
+                  Hython.Environment,
+                  Hython.Types,
+                  Hython.Expression,
+                  Hython.Builtins,
+                  Hython.Name,
+                  Hython.ExceptionHandling
+                  Hython.ControlFlow,
+                  Hython.Call,
+                  Hython.Ref,
+                  Hython.AttributeDict,
+                  Hython.Class,
+                  Hython.Object,
+                  Hython.Primitive,
+                  Hython.BuiltinTypes.Dict,
+                  Hython.BuiltinTypes.List,
+                  Hython.Module
+  hs-source-dirs: src
+  main-is:        Main.hs
+  ghc-options:    -Wall
+  extensions:     FlexibleContexts

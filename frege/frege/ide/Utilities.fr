@@ -1,0 +1,930 @@
+{--
+    Provide functions for use in the fregIDE
+-}
+
+
+module frege.ide.Utilities where
+
+import frege.compiler.Utilities as U()
+import frege.compiler.passes.Imp as I(getFP)
+import frege.compiler.tc.Util as TC
+import frege.compiler.Typecheck as TY hiding(pass, post)
+
+import Compiler.enums.TokenID(TokenID, defaultInfix)
+import Compiler.enums.Visibility(Private, Public)
+import Compiler.enums.Flags
+
+import  Compiler.types.Positions
+import  Compiler.types.Tokens
+import  Compiler.types.NSNames
+import  Compiler.types.Packs
+import  Compiler.types.QNames
+import  Compiler.types.Types
+import  Compiler.types.Expression
+import  Compiler.types.ConstructorField
+import  Compiler.types.Symbols
+import  Compiler.types.Global as G
+
+import  Compiler.classes.Nice
+import  Compiler.instances.Nicer (nicerctx)
+
+import  Compiler.common.CompilerOptions(theClassLoader, initialGen)
+import  Compiler.common.Types as TH(instanceHead)
+import  Compiler.grammar.Lexer as Lex()
+import  Compiler.Main as M()
+
+
+import Data.TreeMap as TM(TreeMap, each, values, delete)
+import Data.List as DL(sortBy, maximumBy, groupBy)
+import frege.tools.doc.Utilities as DU(docit, docSym, DL, Doc, emitHtml)
+
+import frege.lib.Modules
+import Java.Net(URLClassLoader)
+
+
+--- initialize the root of the package tree
+initRoot path = do
+    all <- walkPath path
+    let !t = fold pack noPacks (magicPNs (map sp all))
+        sp (a,b) = (Regex.splitted ´\.´ a, b)
+    -- stderr.println ("initRoot: " ++ (show . map fst . flat $ t))
+    return t
+
+--- add a new module
+justCompiled :: String -> MutableIO URLClassLoader → Y RTree -> IO (Y RTree)
+justCompiled !newmod !loader t = do
+        res <- getX loader newmod
+        case res of
+            Nothing -> do
+                stderr.println ("not found: " ++ newmod)
+                return t
+            Just (p, fp) ->  do
+                let !result = fold pack t (magicPNs [(´\.´.splitted p, fp.doc)]) 
+                return result 
+
+
+--- Remove this package from the package cache
+-- removeCache :: Global -> IO ()
+updateCache g fp = return ()
+
+
+--- Force the import to re-create packages next time
+refreshPackages = do
+    newLoader
+    changeSTT Global.{locals = TreeMap.empty, packages = TreeMap.empty, namespaces = TreeMap.empty}
+
+{--
+    Make a new loader for operation in the IDE.
+    The rationale is that _not_ making a new loader for every character typed
+    will save time and space.
+
+    The IDE code must decide when to make a new loader. For instance, this could be
+    appropriate when the editor is re-activated, because in the meantime other modules
+    could have been rebuild.
+-}
+newLoader = do
+    -- changeST Global.{options <- Options.{flags=ideOptions.flags}}
+    g <- getSTT
+    loader <- liftIO $ theClassLoader g.options
+    changeSTT Global.{sub <- SubSt.{loader}}
+
+--- add magic package names
+magicPNs [] = []
+magicPNs (x:xs)
+    | ("frege":y:ys, fp) <- x,
+        length y > 0,
+        not (head y).isUpperCase
+    = (ctos (Char.toUpperCase (head y)) ++ tail y !: ys, fp) !: x !: magicPNs xs
+    | otherwise = x !: magicPNs xs
+
+--- create a 'Token' list from an 'JArray' backwards
+backwards :: JArray Token  -> Int -> [Token]
+backwards array index
+    | index > 0 = trans (elemAt array index) : backwards array (pred index)
+    | otherwise = []
+    where 
+        trans ∷ Token → Token
+        trans tok = case tok of
+            Token{tokid=CHAR, value="_"} = tok.{tokid=VARID, value="it"}
+            other = other
+
+{--
+    This resembles the SourceProposal class.
+    The additional information must be lazy!
+-}
+data Proposal = Proposal {
+        proposal :: String      --- The text shown to the user in the popup view
+        newText    :: String    --- The new text being added/substituted if the user accepts this proposal
+        prefix     :: String    --- The prefix being completed.
+        off, len   :: Int       --- The range of text being replaced.
+        cursor     :: Int       {-- The offset at which the insertion point should be 
+                                    placed after completing using this proposal,
+                                    relative to the end of the inserted text. -}
+        additional:: IO String    {-- Additional information displayed in the pop-up view 
+                                    to the right of the main proposal list view when 
+                                    this proposal is selected. -}
+    }
+
+instance Show Proposal where
+    show p = "Proposal{proposal="   ++ show p.proposal
+                ++ ", newText="     ++ show p.newText
+                ++ ", prefix="      ++ show p.prefix
+                ++ ", offset="      ++ show p.off
+                ++ ", length="      ++ show p.len
+                ++ ", cursor="      ++ show p.cursor ++ "}"
+{-- 
+    Called by Eclipse Content Proposer to make proposals.
+    
+    Usage: @proposeContent global offset tokens index@
+    
+    [global] a symbol table, preferably with type information
+    [offset] position of the caret
+    [tokens] array of tokens
+    [index]  index into the array, points to the token that starts before  the caret
+    -}
+proposeContent :: Global -> Y RTree -> Int -> JArray Token -> Int -> [Proposal]
+proposeContent !global root !offset !tokens !index = propose 
+    where
+        snekot = backwards tokens index     -- reverse order, last token before cursor on top
+        thisline = takeWhile onThisLine snekot
+        onThisLine tok = Token.line tok == token.line && tok.col > 0
+        token  = if null snekot 
+                    then Token{tokid=LEXERROR, value="", line=1, col=0, offset, qual=[]}
+                    else elemAt tokens index
+        inside = token.offset + token.length > offset
+        direct = token.offset + token.length == offset                    
+        -- pref = if inside then token.value.substring 0 (token.offset-offset) else ""
+        insideProposal = Proposal {proposal = "", newText = "", 
+            prefix = if inside then substr token.value 0 (offset-token.offset) else "", 
+            off    = if inside then token.offset else offset, 
+            len    = if inside then offset-token.offset else 0, 
+            cursor = 0, additional=return ""}
+        directProposal = Proposal {proposal = "", newText = "", 
+            prefix = if direct then token.value else "", 
+            off    = if direct then token.offset else offset, 
+            len    = if direct then token.length else 0, 
+            cursor = 0, additional=return ""}
+        theProposal = if direct then directProposal else insideProposal
+        modname :: Global -> String
+        modname g = case filter (g.options.source.startsWith) g.options.sourcePath of
+                        [] ->  rep g.options.source
+                        xs | y <- maximumBy (comparing String.length) xs
+                           = rep (strtail g.options.source (length y)) 
+                    where
+                        rep s =    dots.replaceAll ´^\W+´   "" where
+                            dots = base.replaceAll ´\W´     "."
+                            base = s   .replaceAll ´\.\w+$´ ""
+        collectpack [t] | t.tokid != QUALIFIER = []
+        collectpack []  = []
+        collectpack (Token{tokid,value} : xs) = case tokid of
+            VARID -> value : collectpack xs
+            CONID -> value : collectpack xs
+            QUALIFIER -> value : collectpack xs
+            _ | tokid > TokenID.CHAR && tokid < TokenID.LOP0    -- keyword
+                    -> value : collectpack xs
+            _ -> collectpack xs
+            
+        propose
+            | null snekot = [theProposal.{
+                proposal = "module template",
+                newText  = "--- This is an undocumented module\nmodule "
+                            ++ modname global ++ " where\n\nimport Data.List\n",
+                cursor   = 0}]
+            | (Token{tokid=IMPORT} : xs) <- reverse thisline,
+              traceLn("rule: IMPORT " ++ show xs) || true,
+              key <- collectpack xs,
+              traceLn("looking for " ++ show key ++ " in " ++ joined "," (map fst (flat root))) || true,
+              mbres <- pfind key root
+                    = let pref = if theProposal.prefix == "." then "" 
+                                    else theProposal.prefix
+                          theP = if direct && theProposal.prefix == "."
+                                then insideProposal -- keep the "." 
+                                else theProposal   
+                        in case mbres of
+                        Just res -> case unR res of
+                            Just doc = [theP.{
+                                        proposal = last key,
+                                        newText = last key,
+                                        additional = return doc}]
+                            Nothing = importProposal  where
+                                importProposal = [theP.{
+                                                proposal = kx,
+                                                newText = kx,
+                                                additional = add
+                                            } |
+                                    (k, mb) <- flat res,
+                                    k.startsWith pref,
+                                    let kx = maybe (k++".") (const k) (unR mb)
+                                        add = maybe 
+                                            (return ("Subpackages:<br><br>" 
+                                                ++ joined ", " (map fst (flat mb)))) 
+                                            (htmlify global) 
+                                            (unR mb)
+                                  ]
+                        Nothing -> []
+
+            | !inside, !direct, index+1 < tokens.length,
+              after ← elemAt tokens (index+1),
+              after.offset == offset,
+              after.line > token.line,
+              traceLn("before ¦" ++ show after) || true, 
+              Token{tokid=VARID, value} ← after,
+              (sym:_) ← [ s | 
+                s@SymV{expr=Just _} ← U.allourvars global ++ values global.locals,
+                s.name.base == value, -- not s.anno,
+                s.pos.first.offset == offset],
+              traceLn("rule anno ¦" ++ value) || true 
+                = [theProposal.{
+                        proposal = "annotate " ++ value,
+                        additional = return (label global sym),
+                        newText = label global sym ++ "\n"
+                                    ++ packed (
+                                        replicate (
+                                            max 0 (after.col-1))
+                                             ' ') 
+                    }] 
+
+            | (Token{tokid=VARID} :Token{tokid=CHAR, value="."}      : (qual@Token{tokid=VARID})   :_) <- snekot,
+              traceLn ("rule: " ++ qual.value ++ "." ++ theProposal.prefix) || true,
+              Just (Right qname) <- Global.resolved global qual,
+              traceLn ("resolved " ++ qual.value) || true,
+              Just sym <- global.findit qname, 
+              traceLn ("found " ++ sym.nice global) || true,
+                            = memProposal sym theProposal
+            | (Token{tokid=CHAR, value="."}      : (qual@Token{tokid=VARID})   :_) <- snekot,
+              traceLn ("rule: " ++ qual.value ++ "." ++ insideProposal.prefix) || true,
+              Just (Right qname) <- Global.resolved global qual,
+              traceLn ("resolved " ++ qual.value) || true,
+              Just sym <- global.findit qname, 
+              traceLn ("found " ++ sym.nice global) || true,
+                            = memProposal sym insideProposal
+            | (Token{tokid=VARID}:Token{tokid=CHAR, value="."}:(qual@Token{tokid=STRCONST}):_) <- snekot,
+              (true, proposals) <- tauProposal TY.tauString theProposal 
+                            = proposals
+            | (Token{tokid=CHAR, value="."}      : (qual@Token{tokid=STRCONST})   :_) <- snekot,
+              (true, proposals) <- tauProposal TY.tauString insideProposal 
+                            = proposals
+            | (Token{tokid=VARID}:Token{tokid=CHAR, value="."}:(qual@Token{tokid=INTCONST}):_) <- snekot,
+              (true, proposals) <- tauProposal (TY.tc "Int") theProposal 
+                            = proposals
+            | (Token{tokid=CHAR, value="."}      : (qual@Token{tokid=INTCONST})   :_) <- snekot,
+              (true, proposals) <- tauProposal (TY.tc "Int") insideProposal 
+                            = proposals
+            | (Token{tokid=VARID}:Token{tokid=CHAR, value="."}  : (qual@Token{tokid=LONGCONST}) :_) <- snekot,
+              (true, proposals) <- tauProposal (TY.tc "Long") theProposal 
+                            = proposals
+            | (Token{tokid=CHAR, value="."}      : (qual@Token{tokid=LONGCONST})   :_) <- snekot,
+              (true, proposals) <- tauProposal (TY.tc "Long") insideProposal 
+                            = proposals
+            | (Token{tokid=VARID}:Token{tokid=CHAR, value="."}  : (qual@Token{tokid=BIGCONST}) :_) <- snekot,
+              (true, proposals) <- tauProposal (TY.tc "Integer") theProposal 
+                            = proposals
+            | (Token{tokid=CHAR, value="."}      : (qual@Token{tokid=BIGCONST})   :_) <- snekot,
+              (true, proposals) <- tauProposal (TY.tc "Integer") insideProposal 
+                            = proposals
+            | (Token{tokid=VARID}:Token{tokid=CHAR, value="."}  : (qual@Token{tokid=DBLCONST}) :_) <- snekot,
+              (true, proposals) <- tauProposal (TY.tc "Double") theProposal 
+                            = proposals
+            | (Token{tokid=CHAR, value="."}      : (qual@Token{tokid=DBLCONST})   :_) <- snekot,
+              (true, proposals) <- tauProposal (TY.tc "Double") insideProposal 
+                            = proposals
+            | (Token{tokid=VARID}:Token{tokid=CHAR, value="."}  : (qual@Token{tokid=FLTCONST}) :_) <- snekot,
+              (true, proposals) <- tauProposal (TY.tc "Float") theProposal 
+                            = proposals
+            | (Token{tokid=CHAR, value="."}      : (qual@Token{tokid=FLTCONST})   :_) <- snekot,
+              (true, proposals) <- tauProposal (TY.tc "Float") insideProposal 
+                            = proposals
+            | (Token{tokid=VARID}:Token{tokid=CHAR, value="."}  : (qual@Token{tokid=CHRCONST}) :_) <- snekot,
+              (true, proposals) <- tauProposal (TY.tc "Char") theProposal 
+                            = proposals
+            | (Token{tokid=CHAR, value="."}      : (qual@Token{tokid=CHRCONST})   :_) <- snekot,
+              (true, proposals) <- tauProposal (TY.tc "Char") insideProposal 
+                            = proposals
+            | (Token{tokid=VARID}:Token{tokid=CHAR, value="."}  : (qual@Token{tokid=REGEXP}) :_) <- snekot,
+              (true, proposals) <- tauProposal (TY.tc "Regex") theProposal 
+                            = proposals
+            | (Token{tokid=CHAR, value="."}      : (qual@Token{tokid=REGEXP})   :_) <- snekot,
+              (true, proposals) <- tauProposal (TY.tc "Regex") insideProposal 
+                            = proposals                            
+            | (Token{tokid=someid}:Token{tokid=QUALIFIER, value=base}:Token{tokid=QUALIFIER, value}:_) <- snekot,
+              someid == VARID || someid == CONID
+                            = fromMaybe [] do
+                                pack <- global.namespaces.lookup (NSX value)
+                                env  <- getEnv (global.findit TName{pack, base})
+                                return (envProposal env theProposal)
+            | !inside, (Token{tokid=QUALIFIER, value=base}:Token{tokid=QUALIFIER, value}:_) <- snekot
+                            = fromMaybe [] do
+                                pack <- global.namespaces.lookup (NSX value)
+                                env  <- getEnv (global.findit TName{pack, base})
+                                return (envProposal env theProposal)
+            | (Token{tokid=someid}:Token{tokid=QUALIFIER, value}:_) <- snekot,
+              someid == VARID || someid == CONID 
+                            = fromMaybe [] (nsEnvProposal value theProposal)
+                                ++ fromMaybe [] (tyEnvProposal value theProposal)        
+            | !inside, Token{tokid=QUALIFIER, value} <- token
+                            = fromMaybe [] (nsEnvProposal value theProposal)
+                                ++ fromMaybe [] (tyEnvProposal value theProposal)
+            | !inside,
+              ((varid@Token{tokid=VARID, value}):Token{tokid=DCOLON}:_)  <- reverse thisline,
+              traceLn ("rule fundef " ++ value ++ "¦") || true,
+              Just (Right qname) <- Global.resolved global varid,
+              traceLn ("resolved " ++ nicer qname global) || true,
+              Just sym <- global.findit qname, 
+              traceLn ("found " ++ sym.nice global) || true,
+              sym.anno, traceLn (sym.nice global ++ " is annotated") || true,
+              isNothing sym.nativ, traceLn (sym.nice global ++ " is not nativ") || true,
+              isNothing sym.expr, traceLn (sym.nice global ++ " has no expression") || true,
+              (_, sigmas) <- U.returnType sym.typ.rho,
+                            = let
+                                conidProposals
+                                    | direct, token.tokid == CONID =
+                                        nsProposal directProposal
+                                            ++ envProposal (thisTab global) directProposal
+                                    | otherwise = []
+                            in fundefProposal varid sigmas ++ conidProposals
+            | !inside, 
+              Token{tokid=CONID, value}  <- token,
+              traceLn ("rule case " ++ value ++ "¦") || true,
+              Just (symbol@SymT{}) <- global.findit TName{pack=global.thisPack, base=value},
+              traceLn (value ++ " is a type") || true
+              -- cons <- [ con | con@SymD{} <- values symtab ], 
+              -- traceLn (value ++ " has " ++ show (length cons) ++ " constructors.") || true 
+                            = caseProposal true (Just symbol)
+            | !inside, 
+              Token{tokid=VARID, value}  <- token,
+              traceLn ("rule case " ++ value ++ "¦") || true,
+              Just (Right qname) <- Global.resolved global token,
+              traceLn ("resolved " ++ value) || true,
+              Just sym <- global.findit qname, 
+              traceLn ("found " ++ sym.nice global) || true,
+              RhoTau{tau} <- sym.typ.rho, 
+              tau <- TC.reduced tau global,
+              traceLn ("type is " ++ nicer tau global) || true,
+              Just (symbol@SymT{}) <- instTauSym tau global 
+                            = caseProposal false (Just symbol)
+            | !inside, 
+              Token{tokid=VARID, value}  <- token,
+              traceLn ("rule case " ++ value ++ "¦") || true,
+              Just (Right qname) <- Global.resolved global token,
+              traceLn ("resolved " ++ value) || true,
+              Just sym <- global.findit qname, 
+              traceLn ("found " ++ sym.nice global) || true,
+              (tau,_) <- U.returnType sym.typ.rho, 
+              tau <- TC.reduced tau global,
+              traceLn ("return type is " ++ nicer tau global) || true,
+              Just (symbol@SymT{}) <- instTauSym tau global 
+                            = caseProposal false (Just symbol)
+            | direct, token.tokid == VARID
+                            = localProposal directProposal
+                                ++ envProposal (thisTab global) directProposal
+            | direct, token.tokid == CONID
+                            = nsProposal directProposal
+                                ++ envProposal (thisTab global) directProposal
+             
+            | otherwise     = nsProposal insideProposal
+                                ++ localProposal insideProposal 
+                                ++ envProposal (thisTab global) insideProposal
+        
+        --
+        -- given a list of constructors, make function definitions, e.g. given
+        --      foo :: Just a -> Either b c -> r
+        -- generate
+        --      foo Nothing (Left _) = ...
+        --      foo Nothing (Right _) = ...
+        --      foo (Just _) (Left _) = ...
+        --      foo (Just _) (Right _) = ...
+        -- assumes
+        --      the name of the function is in token
+        
+        fundefProposal :: Token -> [Sigma] -> [Proposal]
+        fundefProposal token args = [proposal]
+            where 
+                tsyms = map instSigmaSym args
+                instSigmaSym ForAll{rho = RhoFun{}} = Nothing
+                instSigmaSym ForAll{rho = RhoTau{tau}} = instTauSym tau global
+                conss [] = [""]
+                conss (tsym:tsyms) = [ cons ++ " " ++ line
+                                         | cons <- (conts true tsym),
+                                           line <- conss tsyms ]
+                proposal = Proposal{
+                            proposal = "equations for  " ++ token.value, 
+                            newText  = stmt, 
+                            prefix   = "", 
+                            off      = offset, 
+                            len      = 0, 
+                            cursor   = (token.length-stmt.length), 
+                            additional = return html  
+                        }
+                stmt    = joined "" bodies
+                bodies  = map (funhead ++) 
+                            (map (++ " = undefined    -- TODO: complete code\n") 
+                                (conss tsyms))
+                funhead = (packed . replicate (max 0 (token.col-1))) ' ' ++ token.value ++ " "
+                html    = blanks.replaceFirst ´\n´ "\n<pre>\n" ++ "</pre>"
+                blanks  = stmt.replaceAll  ´  +´  " "
+        
+        --
+        -- make a case statement
+        -- given the symbol for a type, produce a proposal
+        --
+        caseProposal :: Bool -> Maybe Symbol -> [Proposal]
+        caseProposal conid tsym  = 
+                if !direct 
+                then [proposal]     -- sym ¦
+                else if conid
+                    then proposal : nsProposal directProposal
+                                ++ envProposal (thisTab global) directProposal
+                    else proposal : localProposal directProposal
+                                ++ envProposal (thisTab global) directProposal
+            where
+                first    = last thisline    -- since it goes backwards
+                spaces   = (packed . replicate (max 0 (first.col+3))) $ ' '
+                forWhat  = case tsym of
+                    Nothing -> "for some type"
+                    Just t ->  if conid 
+                                    then "for type "  ++ t.name.base 
+                                    else "for value of type " ++ t.name.base
+                disp     = 5 + (if conid then 0 else token.length + 1)
+                proposal = Proposal{
+                            proposal = "case " ++ forWhat, 
+                            newText  = stmt, 
+                            prefix   = token.value, 
+                            off      = token.offset, 
+                            len      = token.length, 
+                            cursor   = (disp-stmt.length), -- case ¦  or case name ¦
+                            additional = return html  
+                                         
+                        }
+                html = bold.replaceFirst ´\n´ "\n<pre>\n" ++ "</pre>"
+                bold = arrows  .replaceAll ´\b(case|of)\b´  "<b>$1</b>"
+                arrows = blanks.replaceAll ´->´             "→"
+                blanks = stmt  .replaceAll  ´  +´           " "
+                stmt = "case " ++ (if conid then "" else token.value ++ " ") ++ " of\n" 
+                               ++ joined "" texts
+                texts = map (spaces ++) 
+                            (map (++ " →  undefined    -- TODO: complete code\n") 
+                                (conts false tsym)) 
+        conts ∷ Bool → Maybe Symbol → [String]
+        conts parens tsym = case tsym of
+            Just sym -> case cons  of
+                    (_:_)  -> (map (conText parens) . sortBy (comparing Symbol.cid)) cons
+                    [] -- traceLn(show (Symbol.name sym) ++ " vs. " ++ show (TName pPreludeBase "Bool")) || true
+                       =  if Symbol.name sym == TName pPreludeBase "Bool"
+                            then ["true", "false"]
+                            else ["_"]
+                where cons = [ con | con@SymD{} <- values (Symbol.env sym)]
+            Nothing -> ["_"]
+
+            -- null cons = ["_"]
+            -- otherwise = map conText cons
+        conText parens sym = enclosed (snd (symProp (base sym) sym))
+            where 
+                base sym
+                    | sym.vis != Public,
+                      MName{tynm, base} <- sym.name = tynm.base ++ "." ++ base
+                    | otherwise = sym.name.base
+                -- put complicated constructor in (), if required
+                enclosed it 
+                  | parens,
+                    (Symbol.name sym).base  != ":",        -- not list cons
+                    (Symbol.name sym).base  !~ ´^\(´,      -- not tuple 
+                    any (isNothing . ConField.name) (Symbol.flds sym) = "(" ++ it ++ ")"
+                  | otherwise = it
+                                             
+        -- Find a proposal for id.member
+        --
+        memProposal :: Symbol -> Proposal -> [Proposal]
+        memProposal sym prop
+            | RhoTau _ tau   <- sym.typ.rho,                  -- look in env of type tau
+              (true, result) <- tauProposal tau prop = result
+            | RhoFun{rho}    <- sym.typ.rho,                  -- look in return type of fn
+              RhoTau _ tau   <- rho,
+              (true, result) <- tauProposal tau prop = result                                      
+            | otherwise = filteredEnvProposal prop (classMember:standardFilter) (thisTab global)
+            
+        -- Find a proposal for a type 
+        tauProposal ∷ Tau → Proposal → (Bool,[Proposal])
+        tauProposal tau prop
+            | traceLn ("tauProposal: " ++ nicer tau global) = undefined
+            | tau <- TC.reduced tau global,
+                Just SymT{env, nativ=mbs} <- instTauSym tau global
+                    = case mbs of
+                        Just s  
+                          | ss <- s:U.supersOfNativ s global,     -- the supertypes of s (including s)
+                            -- traceLn("supertypes are " ++ show ss) || true,
+                            envs <- [ Symbol.env sym | s <- ss, 
+                                        q <- U.typesOfNativ s global, 
+                                        sym <- global.findit q ]
+                              = (true, concatMap (flip envProposal prop) envs)
+                        other
+                            | [TCon{name}, _, tau2] <- tau.flat,
+                              name == TName{pack=pPreludeIO, base="Mutable"}
+                              = (true, snd (tauProposal tau2 prop) ++ envProposal env prop)
+                            | otherwise = (true, envProposal env prop)
+            | otherwise       = (false, [])
+        
+        -- Find the top level definitions that surround our offset
+        -- For example, this comment is between 'proposeContent' and 'imports'
+        -- Then, find the local symbols that are between them and make proposals for them
+        localProposal :: Proposal -> [Proposal]
+        localProposal model 
+                = [ model.{proposal = label global sym,
+                               newText  = sym.name.base} |
+                        sym <- DL.uniqueBy (using (QName.base . Symbol.name)) [ sym |
+                          sym <-  values global.locals,
+                          offBefore = maybe         0 symoffset before,
+                          offAfter  = maybe 999999999 symoffset after,
+                          symoffset sym > offBefore, 
+                          symoffset sym < offAfter,
+                          sym.name.base != "_",
+                          sym.name.base.startsWith model.prefix ]
+                      ]
+            where
+                before  = if null befores
+                        then Nothing
+                        else Just (DL.maximumBy (comparing symoffset) befores)
+                after  = if null afters
+                        then Nothing
+                        else Just (DL.minimumBy (comparing symoffset) afters)  
+                symoffset = Token.offset . Position.first . Symbol.pos
+                (befores, afters) = DL.partitioned 
+                                 ((<token.offset) . symoffset)
+                                 (U.allourvars global)
+                 
+        -- get the environment for a namespace
+        nsEnv n = do
+            pack <- global.namespaces.lookup (NSX n)
+            global.packages.lookup pack
+        
+        -- get the environment of a type
+        tyEnv n = getEnv (global.findit TName{pack=global.thisPack, base=n})
+        
+        -- get the environment of a symbol, follow type aliases
+        getEnv (Just sym) 
+            | Symbol.{env?} sym                 = Just sym.env
+            | SymA{typ}  <- sym, 
+              ForAll bs (RhoTau _ tau)  <- typ,
+              TCon{name}:ts  <- tau.flat        
+            = if name == TName{pack=pPreludeIO, base="Mutable"} then 
+                case ts  of
+                    [_, tau] -> getEnv (instTauSym tau global)
+                    _ -> getEnv (global.findit name)
+              else getEnv (global.findit name)
+        getEnv other                            = Nothing
+        
+        -- make proposals for symbols of type n, considering prefix if any
+        tyEnvProposal n model = do
+            env <- tyEnv n
+            return  (envProposal env model)
+        
+        -- make proposals for symbols in namespace n, considering prefix if any                                    
+        nsEnvProposal n model = do
+            env  <- nsEnv n
+            return (envProposal env model)
+        
+        -- propose namespaces, considering prefix if any
+        nsProposal  :: Proposal -> [Proposal]
+        nsProposal  model = sortBy (comparing Proposal.newText) [
+                model.{
+                    proposal = ns ++ "   (module " ++ global.unpack pack ++ ")", 
+                    newText = ns } |
+                (NSX ns, pack) <- each global.namespaces,
+                ns.startsWith model.prefix 
+            ]
+        
+        -- make proposal for filtered symbols in a given symtab, considering prefix
+        filteredEnvProposal :: Proposal -> [(Symbol -> Bool)] -> Symtab -> [Proposal]
+        filteredEnvProposal model filters symtab 
+            = sortBy (comparing Proposal.proposal) [ model.{
+                            proposal,
+                            newText,
+                            additional = fmap fst  ((symbolDocumentation sym).run  global)} 
+                    | sym::Symbol <- values symtab,
+                      all ($sym) filters,
+                      if length model.prefix > 0 
+                            then sym.name.base.startsWith model.prefix
+                            else true,
+                      let (proposal, newText) = symProp sym.name.base sym  
+                ]
+        -- standardFilter
+        standardFilter = [notPrivate, notTuple, notInstance, notOverloaded]
+        notPrivate sym = Symbol.vis sym != Private 
+                            || global.our sym.name 
+                            || Symbol.{alias?} sym
+        notTuple = not . (flip String.startsWith "(") . QName.base . Symbol.name
+        notInstance = (Just "instance" !=) . fmap (flip Nice.category global) 
+                                           . global.follow
+        notOverloaded sym
+            | SymV{over} <- sym = null over
+            | otherwise = true
+            
+        classMember sym
+            | Just member <-  global.follow sym,
+              MName{tynm, base} <- Symbol.name member,
+              Just SymC{} <- global.findit tynm = true
+            | otherwise                         = false
+        -- make proposals for symbols in given symtab, considering prefix if any 
+        envProposal :: Symtab -> Proposal -> [Proposal]
+        envProposal symtab model = filteredEnvProposal model standardFilter symtab
+            
+        -- nice up a symbol
+        symProp base (sym@SymL{}) = case global.follow sym of
+            Just target -> symProp base target
+            Nothing     -> (base, base)
+        symProp base (sym@SymD{name,flds})
+            | null flds = (verbose, base)
+            | base == ":" = (verbose, "(_:_)")
+            | m~´^\(,+\)$´ <- base, Just commata <- m.group 0 = (verbose, tuple commata) 
+            | any (isNothing . ConField.name) flds = (verbose, constr)
+            | otherwise = (verbose, fields)
+            where
+                tuple commata = commata.replaceAll ´,|\)´ "_$0" 
+                verbose = base ++ "   (" ++ nicer sym.name.tynm global ++ "." ++ base ++ ")"
+                constr = base ++ joined "" (map (const " _") flds)
+                fields = base ++ "{" ++ joined ", " (mapMaybe ConField.name flds) ++ "}" 
+        symProp base SymV{name=MName{base = it@m~´^(...)\$(.+)$´}}  
+            | Just field <- m.group 2 = case m.group 1 of
+                Just "chg" -> (field ++ "   (change/modify field)", "{" ++ field ++ "<-}")
+                Just "upd" -> (field ++ "   (update field)", "{" ++ field ++ "=}")
+                Just "has" -> (field ++ "   (check if field exists)", "{" ++ field ++ "?}")
+                other      -> (it, it)
+        symProp base sym
+            | SymV{nativ = Just _} <- sym,
+              m~´^(.+)[αβγδεζηθιßκλμνξοπρςστυφχψω]+$´ <- base,  -- overloaded??
+              Just stem <- m.group 1,
+              Just overld <- global.findit sym.name.{base=stem},
+              sym.name `elem` overld.over = symProp stem overld
+            | otherwise = (imported, base)
+            where
+                imported | global.our sym.name  = base
+                         | otherwise            = base ++ "   (" ++ nice sym.name global ++ ")"
+        
+{--
+    Create a list of triples with  position, namespace and package
+    for every import except the automatic ones.
+    -}
+imports :: Global -> [(Position, String, String)]
+imports g = [ (pos, NSName.unNS ns, Pack.raw pack) | 
+                (ns, pos) <- (sortBy (comparing snd) • each) g.sub.nsPos,
+                pos != Position.null,
+                pack <- (g.namespaces.lookup ns) ]
+
+{--
+    Create the list of symbols ordered by position
+    -}
+symbols :: Symtab -> [Symbol]
+symbols tab = (sortBy positionAndName • filter wanted • values) tab
+    where
+        positionAndName a b = case Symbol.pos a <=> Symbol.pos b of
+                                    Eq -> comparing (QName.base • Symbol.name) a b
+                                    ne -> ne 
+        wanted :: Symbol -> Bool 
+        wanted sym 
+            | sym.{alias?}                       = false
+            | Local{} <- sym.name                = true
+            -- sym.vis == Private                 = false
+            | sym.name.base ~ ´^(chg|upd|has|let|anon|lc)\$´ = false
+            | otherwise                          = true
+
+exprSymbols = U.foldEx false collectsyms []
+    where
+        collectsyms acc Let{env} = do
+            syms <- mapSt U.findV env
+            stio (Left (acc ++ syms))
+        collectsyms acc _        = stio (Left acc)
+
+
+verbose g t
+    | isPSigma t = "?"
+    | otherwise    = t.rho.nicer g
+
+dcolon = DU.symDcolon
+{--
+    Make a label for a symbol
+    -}
+label ∷ Global → SymbolT a → String
+label g SymI{clas,typ} = nicer (instanceHead clas typ.rho) g
+                            -- ++ " " ++ clas.nicer g ++ "  "   ++ verbose g typ
+label g SymV{name,typ} = name.base    ++ dcolon g ++ verbose g typ 
+label g SymD{name,typ} = name.base    ++ dcolon g ++ verbose g typ
+label g SymC{name,tau} = name.base    ++ dcolon g ++ show tau.kind
+label g SymT{name, nativ = Just n, pur}
+    | pur       = name.base ++ dcolon g ++ "immutable native " ++ n
+    | otherwise = name.base ++ dcolon g ++ "mutable native " ++ n            
+label g SymA{name,typ} = name.base    ++ " = " ++ typ.rho.nicer gspecial
+    where 
+        gspecial = g.{options <- _.{flags <- Flags.flagSet SPECIAL}}   
+label g sym
+    | sym.{kind?}      = sym.name.base ++ dcolon g ++ show sym.kind
+    | otherwise        = sym.name.base 
+                    
+{--
+    Increment the pass number in the state
+    -}
+passDone ∷ StG ()
+passDone = changeST Global.{sub <- SubSt.{nextPass <- (1+)}}    
+
+{--
+    Failure tolerant version of 'Global.thisTab' for use in TreeModelBuilder.
+    In case of syntax errors, there is no symtab yet, hence Global.thisTab
+    is undefined. This, in turn, causes an exception in Eclipse. We can avoid
+    this by just pretending the symbol table was empty.
+    -}
+thisTab :: Global -> Symtab
+thisTab g = case g.packages.lookup g.thisPack of
+        Just st -> st
+        Nothing -> Symtab.empty
+
+-- a java string writer
+-- data StringWriter s = native java.io.StringWriter where
+--     native new :: () -> ST s (StringWriter s)
+--     native printer new :: StringWriter RealWorld -> IO PrintWriter
+--     native flush :: StringWriter RealWorld -> IO ()
+--     native toString :: StringWriter RealWorld -> IO String
+
+htmlDocumentation :: String -> StIO String
+htmlDocumentation doc = case doc of
+            ""   -> return ("Undocumented module")
+            text -> do
+                g <- getSTT 
+                let doc = Doc $ docit g (Just text)
+                sw <-  liftIO $  StringWriter.new ()
+                p  <-  liftIO $  StringWriter.printer sw
+                changeSTT Global.{gen <- GenSt.{printer=p}}
+                emitHtml false doc      -- html without CSS, eclipse does not understand    
+                liftIO do
+                    p.close
+                    sw.toString
+
+htmlify ∷ Global → String → IO String
+htmlify g s = fmap fst $ StIO.run (htmlDocumentation s) g
+
+packDocumentation :: String -> StIO String
+packDocumentation pack = do
+    g <- getSTT
+    r <- I.getFP pack
+    case r of
+        Right (Just fp) -> case "module " ++ pack ++ "\n\n" ++ fp.doc of
+            ""   -> return ("Undocumented module " ++ pack)
+            text -> do 
+                let doc = Doc $ docit g (Just text)
+                (sw, p) <-  liftIO do
+                    sw <- StringWriter.new ()
+                    p  <- StringWriter.printer sw
+                    return (sw,p)
+                changeSTT Global.{gen <- GenSt.{printer=p}}
+                emitHtml false doc      -- html without CSS, eclipse does not understand    
+                liftIO do
+                    p.close
+                    sw.toString
+                
+        Left ex -> return (ex.getMessage)            
+        sonst   -> return ("(java class?) " ++ pack)
+     
+symbolDocumentation :: Symbol -> StIO String
+symbolDocumentation sym = do
+    (sw, p) <-  liftIO do
+        sw <- StringWriter.new ()
+        p  <- StringWriter.printer sw
+        return (sw, p)
+    changeSTT Global.{gen <- GenSt.{printer=p}}
+    g <- getSTT
+    let syms = case sym of
+            SymL{alias} | Just target <- g.findit alias = 
+                if sym.name.base == target.name.base 
+                    then [target]
+                    else [sym, target]
+            other = [sym]
+        ds = map (docSym g) syms
+        dl = DL (Just "func") ds
+        doc = Doc [dl]
+    emitHtml false doc      -- html without CSS, eclipse does not understand
+    g <- getSTT    
+    liftIO do
+         g.printer.close
+         sw.toString
+
+documentationDocumentation s = do
+    (sw, p) ←  liftIO do
+            sw ← StringWriter.new ()
+            p  ← StringWriter.printer sw
+            return (sw, p)
+    changeSTT Global.{gen <- GenSt.{printer=p}}
+    g   ← getSTT
+    let pars = docit g (Just s)
+    emitHtml false (Doc pars)
+    g   ← getSTT
+    liftIO do
+        g.printer.close
+        sw.toString
+        
+{-- 
+    This is called from the fregIDE documentation provider
+    when the reference resolver didn't find anything.
+    
+    This indicates the mouse was not hovering over some identifier.
+-}
+tokenDocumentation ∷ Token → StIO String
+tokenDocumentation t = do
+    g <- getSTT
+    case t.tokid of
+        DOCUMENTATION                     = documentationDocumentation t.value
+        tid | tid  `elem` infixDocTrigger = return (infixDoc g) 
+        _                                 = return (show t)
+
+--- the following tokens trigger a listing of operator fixities
+private !infixDocTrigger = [
+        IMPORT, INFIX, INFIXL, INFIXR, PACKAGE, 
+        EARROW, ARROW, GETS, DCOLON, DOTDOT, 
+        COMMENT,
+    ]
+
+--- find all operators in the current symbol table and tabulate their fixities
+infixDoc g = joined " <br>\n" (map htmlsafe lines)
+    where
+        tab = thisTab g
+        
+        syms =  [ (desc sym.op, sym0.name.base) | 
+                        sym0 ← values tab,
+                        sym  ← g.follow sym0,   -- resolve symlinks
+                        sym.{op?}, sym.op != defaultInfix ]
+        
+        groups = map toTuple • groupBy (using fst) • sortBy (descending fst) $ syms
+            where
+                toTuple xs = (fst (head xs), map snd xs)
+        
+        lines = map toLine groups
+            where
+                toLine ((prec, assoc), names) = "%-8s %2d  %s".format assoc prec 
+                                                                (joined "  " names)
+ 
+        htmlsafe ∷ String → String
+        htmlsafe string = nogts
+            where
+                nogts  = nolts .replaceAll ´>´ "&gt;"
+                nolts  = noamps.replaceAll ´<´ "&lt;"
+                noamps = string.replaceAll ´&´ "&amp;"
+ 
+        desc xop
+            | xop >= LOP1, xop <= LOP16 = (ord xop - ord LOP0, "infixl")
+            | xop >= ROP1, xop <= ROP16 = (ord xop - ord ROP0, "infixr")
+            | xop >= NOP1, xop <= NOP16 = (ord xop - ord NOP0, "infix")
+            | otherwise = (0, "nonsense")
+
+
+{--
+    Correct the result of 'frege.compiler.Scanner.dependencies',
+    which returns a singleton list with one element @"frege.prelude.PreludeBase"@
+    for source files that don't have any import clauses. Yet, unless this is a
+    prelude package itself, @"frege.Prelude"@ will be imported.
+    
+    This discrepancy leads to files not compiling in the FregIDE builder 
+    because they are queued before @"frege/Prelude.fr"@
+-}    
+correctDependenciesFor ["frege.prelude.PreludeBase"] !source
+    | source !~ ´/frege/prelude/\w+\.fr$´,
+      source !~ ´/frege/Prelude.fr$´      = ["frege.Prelude"]    -- most likely not itself a prelude package
+correctDependenciesFor other source       = other
+
+--- Get all the dependencies from a source text
+--- This will be done on a fresh 'Global'
+getDependencies :: CharSequence -> StG [String]
+getDependencies content = do
+    Lex.passCS content
+    M.parsePass
+    g <- getST
+    return (map Pack.raw  (I.dependsOn g))
+
+--- lexical analysis from the IDE does not read files, but takes the content directly
+lexPassIDE ∷ CharSequence → StG (String,Int)
+lexPassIDE !content = do
+    -- changeST Global.{options <- Options.{flags=ideOptions.flags}}
+    g <- getST
+    let !thisP = g.thisPack
+    -- exld <- doio $ U.theClassLoader g.options
+    changeST Global.{sub <- SubSt.{toks = arrayFromList [], 
+                                    code = CharSequence.fromString "", idKind = TreeMap.empty}
+                          • SubSt.{sourcedefs  = []}
+                          • SubSt.{packageDoc  = Nothing}
+                          • SubSt.{thisPack    = Pack.new ""}
+                          • SubSt.{nsPos       = TreeMap.empty}
+                          • SubSt.{nextPass    = 1}
+                          • SubSt.{numErrors   = 0}
+                          • SubSt.{resErrors   = 0}
+                          • SubSt.{messages    = []}
+                          • SubSt.{toExport    = []}
+                        }
+    -- so <- liftIO standardOptions
+    changeST Global.{gen = initialGen}                          
+    changeST Global.{locals = empty, typEnv = [], genEnv = [],
+                    tySubst = TreeMap.empty, 
+                    javaEnv <- fmap (removeour thisP), 
+                    packages <- delete thisP, 
+                    namespaces = TreeMap.empty}
+    tokens <- Lex.passCS content 
+    return ("tokens", length tokens)
+  where
+    removeour !pack (cs,ls) = case filter (not . (pack==) . _.getpack) ls of
+        !ls' -> case length ls' of
+            n | n >= 0 = (cs, ls')
+              | otherwise = (cs, ls')

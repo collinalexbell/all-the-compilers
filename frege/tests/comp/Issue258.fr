@@ -1,0 +1,21 @@
+--- Compiler should fail on type Stream, since (Cons a (Cons a)) is a kind error
+--- Compiler complains only when 'infinite' is uncommented.
+--- (Should this be in nocomp?)
+
+module tests.comp.Issue258 where
+
+
+type Omega s = s s
+
+data Cons a b = Cons a b
+
+type Stream a = Omega (Cons a)
+
+
+--infinite :: a -> Stream a
+--infinite x = undefined
+
+data Const a b = Const { getConst :: a }
+
+main :: IO Bool
+main = println "This should not compile." >> pure true

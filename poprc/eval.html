@@ -1,0 +1,65 @@
+<head>
+  <title>popr</title>
+  <script src="node_modules/jquery/dist/jquery.min.js"></script>
+  <script src="node_modules/keyboardevent-key-polyfill/index.js"></script>
+  <script>keyboardeventKeyPolyfill.polyfill();</script>
+  <script src="node_modules/jquery.terminal/js/jquery.terminal.min.js"></script>
+  <link href="node_modules/jquery.terminal/css/jquery.terminal.min.css" rel="stylesheet"/>
+  <link href="css/style.css" rel="stylesheet"/>
+</head>
+<body>
+  <div id="term"></div>
+</body>
+<script>
+  var term;
+  function term_echo(str) {
+    if(!str) {
+      str = ' ';
+    }
+    term.echo(str);
+  }
+  var Module = {
+    'print' : term_echo,
+    'printErr' : term_echo,
+  };
+
+  Module.locateFile = function(url) { return 'js/' + url; };
+
+  var is_ready = false;
+
+  function eval_popr(str) {
+    return Module.ccall('emscripten_eval', 'number', ['string', 'number'], [str, str.length]);
+  }
+
+  Module['onRuntimeInitialized'] = function() {
+    is_ready = true;
+  }
+
+  function interpret(command, term) {
+    if(!is_ready) {
+      term.echo("not ready");
+    } else {
+      if(command != '') {
+        eval_popr(command)
+      }
+    }
+  }
+
+  var termOptions = {
+    prompt: ': ',
+    greetings: "          ,------------------,\n" +
+               " ,--------' Popr Interpreter '--------,\n" +
+               " | [[;#f00;;]Copyright 2012-2020 Dustin DeWeese] |\n" +
+               " '------------------------------------'\n" +
+               " type :help for help - https://popr.dev\n \n",
+    onClear: function(term) {
+      term.echo(this.greetings);
+    }
+  }
+
+  jQuery(document).ready(function($) {
+    term = $('#term').terminal(interpret, termOptions);
+    $.getScript( "js/eval.js");
+  });
+
+</script>

@@ -1,0 +1,171 @@
+{- «•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»
+
+    Copyright © 2011 - 2021, Ingo Wechsung
+    All rights reserved.
+
+    Redistribution and use in source and binary forms, with or
+    without modification, are permitted provided that the following
+    conditions are met:
+
+        Redistributions of source code must retain the above copyright
+        notice, this list of conditions and the following disclaimer.
+
+        Redistributions in binary form must reproduce the above
+        copyright notice, this list of conditions and the following
+        disclaimer in the documentation and/or other materials provided
+        with the distribution. Neither the name of the copyright holder
+        nor the names of its contributors may be used to endorse or
+        promote products derived from this software without specific
+        prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE
+    COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR
+    IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+    WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+    PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER
+    OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+    SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+    LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+    USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
+    AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+    LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+    IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+    THE POSSIBILITY OF SUCH DAMAGE.
+
+    «•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•» -}
+
+{--
+ * Definitions for native components below javax.swing
+ -}
+
+
+package frege.java.Swing where
+
+import Java.Awt(Container, Component, ActionListener)
+import Java.swing.GroupLayout
+import Java.lang.Reflect
+
+-- ------------------ SwingConstants ------------------------
+{-- this is defined as an abstract type so as to enable
+ * the access to the constants in the usual way.
+ *
+ * Note that the constants are in lowercase, in contrast to Java.
+ -}
+data SwingConstants = pure native javax.swing.SwingConstants where
+    pure native bottom      javax.swing.SwingConstants.BOTTOM   :: Int
+    pure native center      javax.swing.SwingConstants.CENTER   :: Int
+    pure native east        javax.swing.SwingConstants.EAST     :: Int
+    pure native horizontal  javax.swing.SwingConstants.HORIZONTAL :: Int
+    pure native leading     javax.swing.SwingConstants.LEADING  :: Int
+    pure native left        javax.swing.SwingConstants.LEFT     :: Int
+    pure native next        javax.swing.SwingConstants.NEXT     :: Int
+    pure native north       javax.swing.SwingConstants.NORTH    :: Int
+    pure native north_east  javax.swing.SwingConstants.NORTH_EAST :: Int
+    pure native north_west  javax.swing.SwingConstants.NORTH_WEST :: Int
+    pure native previous    javax.swing.SwingConstants.PREVIOUS :: Int
+    pure native right       javax.swing.SwingConstants.RIGHT    :: Int
+    pure native south       javax.swing.SwingConstants.SOUTH    :: Int
+    pure native south_east  javax.swing.SwingConstants.SOUTH_EAST :: Int
+    pure native south_west  javax.swing.SwingConstants.SOUTH_WEST :: Int
+    pure native top         javax.swing.SwingConstants.TOP      :: Int
+    pure native trailing    javax.swing.SwingConstants.TRAILING :: Int
+    pure native vertical    javax.swing.SwingConstants.VERTICAL :: Int
+    pure native west        javax.swing.SwingConstants.WEST     :: Int
+
+
+
+--- A @javax.swing.JFrame@
+data JFrame = native javax.swing.JFrame where
+    --- The first form creates a new invisible frame with the specified title
+    --- The second form creates a new invisible frame
+    native new :: String -> IOMutable JFrame
+                | ()     -> IOMutable JFrame
+    --- Sets the operation that will happen by default when the user initiates a "close" on this frame.
+    native setDefaultCloseOperation :: MutableIO JFrame -> Int -> IO ()
+    --- constant to dispose of the window when closed
+    pure native dispose_on_close javax.swing.JFrame.DISPOSE_ON_CLOSE :: Int
+    --- constant to do nothing when closed
+    pure native do_nothing_on_close javax.swing.JFrame.DO_NOTHING_ON_CLOSE :: Int
+    --- constant to exit the application when closed
+    pure native exit_on_close javax.swing.JFrame.EXIT_ON_CLOSE :: Int
+    --- constant to hide the window when closed
+    pure native hide_on_close javax.swing.JFrame.HIDE_ON_CLOSE :: Int
+
+    native getContentPane :: MutableIO JFrame -> IOMutable Container
+    --- this really belongs to interface RootPaneContainer
+    native setContentPane :: MutableIO JFrame -> MutableIO Container -> IO ()
+    
+
+--- a swing label
+data JLabel = native javax.swing.JLabel where
+    --- create a label or a blank label
+    native new :: String -> IOMutable JLabel
+                | ()     -> IOMutable JLabel
+    --- Defines the single line of text this component will display. 
+    native setText :: MutableIO JLabel -> String -> IO ()
+
+
+
+--- wrapper for @javax.swing.SwingUtilities.invokeLater@
+native invokeLater javax.swing.SwingUtilities.invokeLater :: MutableIO Runnable -> IO ()
+--- wrapper for @javax.swing.SwingUtilities.invokeAndWait@
+native invokeAndWait javax.swing.SwingUtilities.invokeAndWait :: MutableIO Runnable -> IO ()
+                            throws InvocationTargetException, InterruptedException
+
+-- ------------------- JComponent ----------------------------------
+
+
+--- an object with compiler time type @javax.swing.JComponent@
+data JComponent = native javax.swing.JComponent where
+    native setOpaque :: MutableIO JComponent -> Bool -> IO ()
+
+
+-- ---------------------------- JPanel ---------------------------------
+
+--- an object with compiler time type @javax.swing.JPanel@
+data JPanel = native javax.swing.JPanel where
+    native new :: () -> IOMutable JPanel
+
+
+-- ---------------------------- AbstractButton ---------------------------------
+
+
+
+--- an object with compiler time type @javax.swing.AbstractButton@
+data AbstractButton = native javax.swing.AbstractButton where
+    --- Sets the vertical position of the text relative to the icon.
+    native setVerticalTextPosition :: MutableIO AbstractButton -> Int -> IO ()
+    --- Sets the horizontal position of the text relative to the icon.
+    native setHorizontalTextPosition :: MutableIO AbstractButton -> Int -> IO ()
+    --- Adds an ActionListener to the button.
+    native addActionListener :: MutableIO AbstractButton -> MutableIO ActionListener -> IO ()
+    --- set a text
+    native setText :: MutableIO AbstractButton -> String -> IO () 
+    
+    
+-- ---------------------------- JButton ---------------------------------
+
+
+
+--- an object with compiler time type @javax.swing.JButton@
+data JButton = native javax.swing.JButton where
+    --- create a button with label or a blank one
+    native new :: String -> IOMutable JButton
+                | ()     -> IOMutable JButton
+                
+-- ----------------------------- JTextField and JTextComponent -------------------------------
+
+data JTextComponent = native javax.swing.text.JTextComponent where
+    native getText :: MutableIO JTextComponent -> IO String
+    native setText :: MutableIO JTextComponent -> String -> IO ()
+    
+
+--- an object with compile time type @javax.swing.JTextField@
+data JTextField = native javax.swing.JTextField where
+    native new :: () -> IOMutable JTextField
+
+-- ----------------------------- GroupLayout ---------------------------------------
+
+data GroupLayout = native javax.swing.GroupLayout where
+    native new :: MutableIO Container -> IOMutable GroupLayout
+    native setHorizontalGroup :: MutableIO GroupLayout -> MutableIO Group -> IO ()

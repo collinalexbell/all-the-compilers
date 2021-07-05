@@ -1,0 +1,783 @@
+{- 
+
+    Copyright © 2011 - 2021, Ingo Wechsung
+    All rights reserved.
+
+    Redistribution and use in source and binary forms, with or
+    without modification, are permitted provided that the following
+    conditions are met:
+
+        Redistributions of source code must retain the above copyright
+        notice, this list of conditions and the following disclaimer.
+
+        Redistributions in binary form must reproduce the above
+        copyright notice, this list of conditions and the following
+        disclaimer in the documentation and/or other materials provided
+        with the distribution. Neither the name of the copyright holder
+        nor the names of its contributors may be used to endorse or
+        promote products derived from this software without specific
+        prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE
+    COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR
+    IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+    WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+    PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER
+    OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+    SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+    LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+    USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
+    AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+    LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+    IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+    THE POSSIBILITY OF SUCH DAMAGE.
+
+    «•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•» -}
+
+{--
+ * The 6th pass deals with classes and instances
+ -}
+
+
+package frege.compiler.Classes where
+
+import Data.TreeMap as TM(keys, values, TreeMap, insert, delete, lookup)
+import Data.List as DL(uniq, sort, sortBy, maximumBy)
+import Data.Graph (stronglyConnectedComponents tsort)
+
+import Compiler.enums.Flags as Compilerflags(TRACE6)
+import Compiler.enums.Visibility
+import Compiler.enums.SymState
+
+import  Compiler.types.Positions(Position)
+import  Compiler.types.QNames
+import  Compiler.types.Types
+-- import  Compiler.common.Types as TH(tauRho)
+import  Compiler.types.Expression
+import  Compiler.types.Symbols
+import  Compiler.types.Global as G
+
+import  Compiler.common.Errors as E()
+import  Compiler.common.SymbolTable
+import  Compiler.common.Mangle (noClashIdent)
+import  Compiler.common.Types as CT
+
+import  Compiler.classes.Nice
+
+import  Compiler.instances.Nicer (nicerctx)
+
+import Lib.PP (msgdoc, text, <+>, </>, <+/>, <>, nest)
+import frege.compiler.Utilities     as U()
+import frege.compiler.tc.Util       as T()
+import frege.compiler.Kinds         as K()
+
+import frege.Prelude hiding (<+>)
+
+--- post condition is true
+post = stio true
+
+
+{--
+ * look through list of 'Symbol's and note name and direct superclasses for each class
+ -}
+classDeps syms g = [ (c.name, c.supers) | c@SymC {pos} <- syms ]
+
+--- will loop on mutually recursive classes
+superclasses (c@SymC {supers}) g = (uniq • sort) (supers ++
+    [ supsup  | sup <- supers, csym <- (Global.findit g sup).toList,
+                -- Symbol.name csym `notElem` supers,                               -- ???
+                supsup <- superclasses csym g ])
+superclasses _ g = []       -- error will be diagnosed later
+
+{--
+ * collect all known classes
+ -}
+allClasses = do
+        g <- getST
+        stio [ c | env <- values g.packages, c@SymC {pos} <- values env ]
+
+{--
+ * handle classes
+ * - check for mutual superclass relationships
+ * - make it so that the field supers contains classes in dependency order
+ * - foreach class, check formal requirements on methods, correct symtab aliases
+ -}
+passC = do
+        g <- getST
+        classes <- allClasses
+        let -- classes   = [ c | c@SymC {name} <- values g.thisTab, name.our g ]
+            classdeps = classDeps classes g
+            classtns  = tsort classdeps
+            mutual    = filter ((>1) • length) classtns
+            ordered   = [ c | tns <- classtns, c <- tns ]   -- all class names in dependency order
+            ours      = filter g.our ordered
+            -- bring all super classes in dependency order
+            deporder :: QName -> StG ()
+            deporder clas = do
+                symc <- U.findC clas
+                let allsups = superclasses symc g
+                    newsups = [ s | s <- ordered, s `elem` allsups ]
+                changeSym symc.{supers=newsups}
+                E.logmsg TRACE6 symc.pos (text (nice symc g ++ " superclasses "
+                    ++ show (map (flip nice g) newsups)))
+        -- foreach classdeps trace1
+        foreach mutual    err1
+        when (null mutual) do
+            foreach ours     deporder
+            foreach ours     complete
+        stio ("classes", length classes)
+    where
+        {-
+         * Make sure that all superclasses listed are indeed classes
+         * Check formal requirements of class methods
+         *  - new method must be annotated, implementation optional
+         *  - superclass method must not be annotated
+         *  - class var must occur, no other constraints on class var
+         * Check that the global link points to correct method
+         -}
+        complete qcls = do
+            g <- getST
+            case g.find qcls of
+                Just (symc@SymC {pos}) -> do
+                        superkind <- foldM (superKind symc) symc.tau.kind [sym |
+                                qn <- symc.supers,
+                                sym <- g.findit qn
+                               ]
+                        kind <- foldM (sigmaKind symc.tau.var) superkind  [ sym |
+                                 (sym@SymV {typ,anno,nativ}) <- values symc.env,
+                                 anno || isJust nativ,
+                                 not (isPSigma typ),
+                               ]
+                        let newkind =  if kind `keq` KVar then KType else kind 
+                        symc <- U.findC symc.name                             
+                        changeSym symc.{tau <- Tau.{kind = newkind}}    -- update class var
+                        symc <- U.findC symc.name
+                        foreach symc.supers (supercheck symc)
+                        foreach (values symc.env) (methodcheck symc)
+                nothing -> E.fatal Position.null (text ("lost class " ++ QName.nice qcls g))
+        superKind symc ka (supb@SymC{}) = do
+            case K.unifyKind ka supb.tau.kind of
+                Just k -> return k
+                Nothing -> do
+                    g <- getST
+                    E.error (symc.pos.merge symc.tau.getpos) (
+                            text "kind error: it looks like" 
+                            <+> text (nicer symc g)
+                            <+> text "should have kind" 
+                            <+> text (show ka) 
+                            <+> nest 4 (
+                            text "but superclass" 
+                            <+> text (nicer supb.name g)
+                            <+> text "demands"
+                            <+> text (show supb.tau.kind)
+                        ))
+                    return ka 
+        superKind _ k _ = return k
+        sigmaKind var kind (sym@SymV {}) = do
+            (sig, _) <- K.kiSigmaC var kind sym.typ
+            changeSym sym.{typ = sig} 
+            let -- t  = TreeMap.fromList sig.bound
+                ok = _.kind <$> DL.find ((var==) . _.var) sig.bound
+            case ok of
+                Just k -> case K.unifyKind k kind of
+                    Just u -> return u
+                    Nothing -> do
+                        g <- getST
+                        E.error sym.pos (
+                            text ("kind error: kind of type variable `" ++ var
+                                ++ "` :: " ++ show k) 
+                            </> nest 4 (
+                            text ("in type signature of " ++ sym.nicer g)
+                            </> text ("does not match kind of class variable `" ++ var
+                                ++ "` :: " ++ show kind)
+                            </> text "as inferred from other class methods or superclasses."))
+                        return kind
+                Nothing -> return kind -- no class var? will be flagged later
+        sigmaKind _ _ _ = error "sigmaKind: no SymV"  
+                       
+            
+        methodcheck symc (msym@SymV {pos}) = do
+            g <- getST
+            let jprevs  = [ g.findit (MName sup msym.name.base) | sup <- Symbol.supers symc ]
+                xprevs  = [ p  | Just p <- jprevs, p.{anno?}, p.anno || isJust p.nativ]
+                prevs   = if null xprevs then [] 
+                            else [maximumBy first xprevs]
+                first SymV{name=MName c1 _} SymV{name=MName c2 _}
+                    | Just sym1 <- g.findit c1
+                    , Just sym2 <- g.findit c2 
+                    = if sym1.name `elem` sym2.supers then Lt
+                        else if sym2.name `elem` sym1.supers then Gt
+                        else Eq
+                first _ _ = undefined       -- only class members here
+                     
+            case prevs of
+                [] -> if msym.anno || isJust msym.nativ    -- new method
+                    then do
+                        checkanno symc msym
+                        checklink msym  -- global link must point to us
+                    else
+                        E.error msym.pos (msgdoc ("class member " ++ msym.name.base ++ " must be annotated"))
+                [osym] -> do
+                    when (msym.anno && isNothing msym.nativ) do
+                        E.error msym.pos (msgdoc ("class member " ++ msym.name.base ++ " must not be annotated."))
+                    when (isJust msym.nativ) do
+                        T.subsCheck msym msym.typ osym.typ
+                    case g.findit osym.name.tynm of
+                        Just (ssym@SymC {pos}) -> do
+                                mkanno symc msym osym ssym
+                                return ()
+                        nothing -> E.fatal pos (text ("methodcheck: class " ++ osym.name.tynm.nice g ++ " vanished."))
+                _ -> E.fatal pos (text (msym.name.nice g ++ " occurs in more than one super class of " ++ symc.name.nice g))
+        methodcheck symc (msym@SymL{pos}) = do
+            g <- getST
+            let jprevs = [ g.findit (MName sup msym.name.base) | sup <- Symbol.supers symc ]
+                prevs  = [ p | Just p <- jprevs, Symbol.{anno?} p, Symbol.anno p ]
+            
+            case prevs of
+                [] -> E.error pos (msgdoc ("new class operation `" ++ msym.name.base
+                        ++ "` must not be an alias.")) 
+                [osym] | Just ali <- g.findit msym.alias,
+                         SymV{anno=true} <- ali,
+                         -- symc.name == same,
+                         Just ssym <- g.findit osym.name.tynm,
+                         SymC{} <- ssym = do
+                                    sig <- mkanno symc msym osym ssym
+                                    T.subsCheck ali ali.typ sig
+                       | otherwise = E.error pos (msgdoc (nicer msym g 
+                            ++ " may only point to a value whose type is known through annotation or import."))  
+                _ -> E.fatal pos (text (msym.name.nice g ++ " occurs in more than one super class of " ++ symc.name.nice g))
+
+
+        methodcheck symc other = do
+            g <- getST
+            E.error other.pos (text (other.nice g ++ " not allowed in " ++ symc.nice g))
+        {- mkanno class method supermethod superclass
+         * replace forall c . Super c => c -> t
+         * with forall t.This t => t -> n
+         * where c is the class variable of the superclass,
+         * t is the class variable of this class and n is a new name
+         * that replaces accidental occurrences of t in the annotation of the super method
+         -}
+        mkanno :: Symbol -> Symbol -> Symbol -> Symbol -> StG Sigma
+        mkanno csym msym osym ssym = do
+            g <- getST
+            i <- uniqid
+            let newvar = TVar {pos=msym.pos, var=noClashIdent ("t" ++ show i), kind = KVar}
+                oldvar = ssym.tau.var
+                thsvar = csym.tau.var
+                tree1   = TreeMap.insert empty oldvar csym.tau
+                tree | oldvar != thsvar = tree1.insert thsvar newvar
+                     | otherwise        = tree1
+            case isPSigma osym.typ of
+                false -> do
+                    let
+                        rho1 = substRho tree osym.typ.rho
+                        rep (ctx@Ctx {cname, tau = TVar {var=x}})
+                            | cname == ssym.name, x == thsvar = ctx.{pos=msym.pos, cname=csym.name}
+                        rep ctx = ctx
+                        rho = rho1.{context <- map rep}
+                        repv tv = TM.lookupDefault tv tv.var tree
+                        memtyp = ForAll (map repv osym.typ.bound) rho
+                    when msym.{typ?} do
+                        changeSym msym.{typ = memtyp, anno=true}
+                    return memtyp
+                true -> 
+                    E.fatal osym.pos (text ("mkanno:: untyped " ++ osym.nice g))
+                    -- return U.pSigma
+
+        checklink (symm@SymV {name=MName cls base}) = do
+            g <- getST
+            let glob = VName g.thisPack base
+            case g.findit glob of
+                Just (v@(SymV {name=MName c b}))
+                    | c == cls, b == base = stio ()
+                    | b != base = E.fatal symm.pos (text ("checklink: " ++ glob.nice g
+                                                        ++ " finds " ++ v.nice g))
+                    | U.isSuper cls g c  = case g.find glob of
+                         -- this can happen if subclass is defined before the base class
+                         -- we correct it here silently
+                         Just (s@(SymL {pos})) -> changeSym s.{alias=symm.name}
+                         Just s -> E.fatal s.pos (text ("checklink: " ++ s.nice g ++ " should be a link"))
+                         Nothing -> E.fatal v.pos (text ("checklink: " ++ glob.nice g ++ "findit is "
+                                            ++ v.nice g ++ " but find is Nothing"))
+                Just v -> E.error symm.pos (msgdoc ("definition of " ++ symm.nice g
+                                        ++ " clashes with " ++ v.nice g
+                                        ++ ", please use another name"))
+                Nothing -> -- should this be possible?
+                    E.fatal symm.pos (text ("checklink: " ++ symm.nice g ++ " not yet known globally"))
+                    -- We could, of course, add it now, but this would be too defensive,
+                    -- as we should be justified in assuming that 'enter' did it's job.
+        checklink sym = do
+            g <- getST
+            E.fatal sym.pos (text ("checklink: " ++ sym.nice g))
+        checkanno (symc@SymC {tau=TVar {var}}) (msym@SymV {typ=ForAll bound rho}) = do
+            let check1 = var `elem` map _.var bound
+                check2 = var `notElem` [ var | Ctx {tau=TVar {var}} <- rho.context ]
+                thisctx = Ctx msym.pos symc.name symc.tau
+            unless (check1) do
+                E.error msym.pos (msgdoc ("class variable " ++ var
+                                    ++ " does not occur in type of class member "
+                                    ++ msym.name.base))
+            unless (check2) do
+                E.error msym.pos (msgdoc ("class variable " ++ var
+                                    ++ " must not be constrained in type of class member "
+                                    ++ msym.name.base))
+            -- construct new type for class member
+            -- == :: e -> e -> Bool   =>  forall e.Eq e => e -> e -> Bool
+            changeSym msym.{typ =ForAll bound rho.{context <- (thisctx:)}}
+        checkanno sym1 sym2 = do
+            g <- getST
+            E.fatal (Symbol.pos sym2) (text ("checkanno (" ++ sym1.nice g
+                                        ++ ")   (" ++ sym2.nice g ++ ")"))
+        supercheck :: Symbol -> QName -> StG ()
+        supercheck symc qn = do
+            g <- getST
+            case g.find qn of
+                Just (sup@SymC {pos}) -> return ()
+                _ -> E.error symc.pos (msgdoc (QName.nice qn g
+                    ++ "  cannot be a superclass of  "
+                    ++ symc.name.nice g ++ "  as it is not a class."))
+        {-
+        trace1 (qn1, qns) = do
+            g <- getST
+            E.logmsg TRACE6 (negate 1) (QName.nice qn1 g ++ " supers "
+                ++ show (map (flip QName.nice g) qns))
+        -}
+        err1 tns = do
+            g <- getST
+            case g.findit (head tns) of
+                Just (SymC {pos}) -> E.error pos (msgdoc ("cyclic superclass relation for classes "
+                        ++ joined ", " (map (flip QName.nice g) tns)))
+                nothing -> E.fatal Position.null (text ("lost class " ++ QName.nice (head tns) g))
+
+{--
+ * verify  instances
+ -}
+passI alien = do
+        g <- getST
+        css <- allClasses
+        let cts = [ c | cs <- tsort (classDeps css g), c <- cs ]
+            fun = if alien then alienInstsForClass else instsForClass
+        ns <- mapSt fun cts
+        stio ("instances", fold (+) 0 ns)
+
+--- this is called right after import through 'passI' *true* to verify alien instances
+alienInstsForClass c = do
+        g <- getST
+        csym <- U.findC c
+        E.logmsg TRACE6 csym.pos (text ("alien instances for " ++ QName.nice c g))
+        let insts = -- (map Symbol.name • sortBy (descending (Position.start • Symbol.pos)))
+                        [ ins.name | env <- values g.packages,
+                                ins@SymI {pos} <- values env,
+                                ins.clas == c || ins.clas == csym.name]
+        foreach insts (instForClass true c)
+        -- foreach insts (checkTypeAgainst true c)
+        stio (length insts)
+
+instsForClass c = do
+        g <- getST
+        csym <- U.findC c
+        E.logmsg TRACE6 csym.pos (text ("instances for " ++ QName.nice c g))
+        let insts = [ ins.name | ins@SymI {pos} <- values g.thisTab,
+                            ins.clas == c || ins.clas == csym.name]
+        foreach insts (instForClass false c)
+        -- foreach insts (checkTypeAgainst c)
+        stio (length insts)
+
+instForClass alien c iname = do
+        g <- getST
+        csym <- U.findC c
+        
+        when (not alien) do             -- check if class kind matches 
+            isym <- U.findI iname
+            (sig, ki) <- K.kiSigmaX isym.typ csym.tau.kind
+            changeSym isym.{typ=sig}
+        
+        isym <- U.findI iname    
+        case instTSym (Symbol.typ isym) g of
+            Just (tsym@SymT {pos}) -> do
+                E.logmsg TRACE6 (Symbol.pos isym) (text (isym.nice g ++ "   " ++ tsym.nice g))
+
+                when (not alien || g.our isym.name) do 
+                    foreach (reverse csym.supers) (checkSuperInstance isym.name tsym.name csym.name)
+                instForThisClass isym.name tsym.name csym.name
+                foreach (reverse csym.supers) (instForThisClass isym.name tsym.name)
+
+                csyms <- mapSt U.findC (csym.name:csym.supers)
+                isym  <- U.findI isym.name
+                when (not alien || g.our isym.name) do tcInstMethods csyms isym
+            mu -> E.fatal isym.pos (text ("instForClass: bad instance type " ++ isym.typ.nice g))
+
+{--
+    When we have
+    
+    > class Base b    where
+    > class Derived d where
+    > instance Base    ctx1 => T a
+    > instance Derived ctx2 => T a
+    
+    we call the first instance the super instance of the second and then _ctx2_ must imply _ctx1_.
+    
+    For example, suppose _ctx1_ is @Eq a@.
+    It is clear that _ctx2_ must also have at least @Eq a@ or something that implies it. 
+-}
+checkSuperInstance iname tname cname bname = do
+        g <- getST
+        isym <- U.findI iname
+        bsym <- U.findC bname
+        -- look for super instance
+        
+        case filter ((tname ==) • fst) bsym.insts of
+            (_,sinst):_  -> do   
+                ssym <- U.findI sinst                         -- this is the super instance
+                let msg = "instance " ++ cname.nicer g ++ " " ++ isym.typ.rho.nicer g ++ "  has a super instance  "
+                            ++ bname.nicer g ++ " " ++ ssym.typ.rho.nicer g 
+                E.logmsg TRACE6  (Symbol.pos isym) (text msg)
+                baserho <- T.instantiate ssym.typ
+                let msg = "base rho is " ++ baserho.nicer g
+                E.logmsg TRACE6  (Symbol.pos isym) (text msg)
+                
+                thisrho <- T.instantiate isym.typ
+                let msg = "this rho is " ++ thisrho.nicer g
+                E.logmsg TRACE6  (Symbol.pos isym) (text msg)
+                
+                T.subsCheckRR isym baserho thisrho
+                
+                let msg1 = "base rho is " ++ baserho.nicer g
+                let msg2 = "this rho is " ++ thisrho.nicer g
+                E.logmsg TRACE6  (Symbol.pos isym) (text (msg1 ++ "   " ++ msg2))
+                
+                g <- getST
+                let ctx1 = T.reducedCtxs g baserho.context
+                    ctx2 = T.reducedCtxs g thisrho.context
+                
+                
+                let implies = T.impliesG g
+                    notimplied = [ c | c <- ctx1, (not • any (`implies` c)) ctx2 ]
+                
+                case notimplied of
+                    (_:_) -> do
+                        let msg  = text "context of "
+                                    <+/> (text "instance" <+> msg2) 
+                                    <+/> text " must imply context of super " 
+                                    <+/> (text "instance" <+> msg3)
+                            msg2 = text (nicerctx isym.typ.rho.context g)
+                                        <> text (cname.nicer g)
+                                        <+> (text "(" <> text (isym.typ.rho.{context=[]}.nicer g) <> text ")")
+                            msg3 = text (nicerctx ssym.typ.rho.context g)
+                                        <> text (bname.nicer g)
+                                        <+> (text "(" <> text (ssym.typ.rho.{context=[]}.nicer g) <> text ")") 
+                        E.error isym.pos msg
+                    [] -> return ()
+            _ -> return ()
+
+--- check if type is already an instance of a class, if not, make it one
+instForThisClass :: QName -> QName -> QName -> StG ()
+instForThisClass iname tname cname = do
+        g <- getST
+        tsym <- U.findT tname
+        isym <- U.findI iname
+        csym <- U.findC cname
+        let previ = case filter ((tname ==) • fst) csym.insts of
+                ((_,inst):_) -> Just inst
+                _ ->            Nothing
+        E.logmsg TRACE6 (Symbol.pos isym) (text ("this inst: " ++ show iname ++ ", prev inst: " ++ show previ))
+        case previ of
+          Just oldinst
+            | oldinst != iname = do
+                iold <- U.findI oldinst
+                when (iold.clas == isym.clas) do
+                    U.symWarning E.warn isym (msgdoc (tsym.nice g ++ " is already an instance of "
+                        ++ csym.nice g ++ " (" ++ oldinst.nice g
+                        ++ " introduced on line " ++ show iold.pos ++ ")"))
+                stio ()
+            | otherwise = do
+                E.logmsg TRACE6 (Symbol.pos isym) (text ("refresh " ++ tname.nice g
+                                                ++ " instance of " ++ csym.nice g))
+                foreach (map Symbol.name (values (Symbol.env csym)))
+                    (funForCIT cname iname tname)
+                stio ()
+          Nothing ->  do
+            E.logmsg TRACE6 (Symbol.pos isym) (text ("make " ++ tname.nice g
+                                                ++ " an instance of " ++ csym.nice g))
+            foreach (map Symbol.name (values (Symbol.env csym))) (funForCIT cname iname tname)
+            csym <- U.findC cname
+            changeSym csym.{insts <- ((tsym.name, iname):)}
+
+--- check instance member function definition
+{--
+ * there are 4 basic cases and an error case:
+ * 1) type symbol has definition, instance symbol has definition ==> error
+ * 2) type symbol has definition, instance symbol not -> Ok
+ * 3) type symbol has no definition, instance symbol has it -> Ok
+ * 4) neither type symbol nor instance symbol are implemented, but there is a
+ *    default implementation in the class: either take over code literally or
+ *    just call the class member function.
+ * 5) definition is missing in all 3 places ==> error
+ *
+ * After processing, either there is an error
+ * or the member symbol is in the instance symbol and the type symbol
+ * contains a link to it, or (in case the type was imported) the instance contains
+ * a link to the type method. 
+ -}
+funForCIT :: QName -> QName -> QName -> QName -> StG ()
+funForCIT cname iname tname (mname@MName _ base) = do
+        g <- getST
+        tsym <- U.findT tname
+        isym <- U.findI iname
+        csym <- U.findC cname
+        msym <- U.findV mname
+        E.logmsg TRACE6 isym.pos (text ("funForCit class: " ++ nicer cname g
+                    ++ ", inst: " ++ nicer iname g
+                    ++ ", type: " ++ nicer tname g
+                    ++ ", member: " ++ nicer mname g))
+        let ivmb = isym.env.lookup mname.key
+            tvmb = tsym.env.lookup mname.key
+            -- implemented vsym = isJust (Symbol.expr vsym) || isJust (Symbol.nativ vsym)
+            inherit xname = do
+                mem <- U.findV xname
+                E.logmsg TRACE6 isym.pos (text ("inheriting " ++ mem.nice g))
+                if implemented mem
+                    then do -- use default implementation
+                        mex <- U.maybeST mem.expr id
+                        mbx <- U.maybeST mex (U.copyExpr (Just isym.pos) empty) 
+                        let imem = mem.{name=MName iname base, pos = isym.pos,
+                                        expr = fmap return mbx,
+                                        typ = pSigma, anno = false, exported = false,
+                                        state = Unchecked, sid = 0,
+                                        doc = Just ("inherited from '" ++ xname.nicer g ++ "'")}
+                        enter imem
+                        linkq (MName tname base) imem
+                    else if g.our cname || mem.vis == Abstract then
+                            E.error isym.pos (msgdoc ("implementation of `"
+                                ++ (MName tname base).nice g ++ "` must be supplied."))
+                    else do -- imported class without expr that is not abstract, ie it was implemented
+                        let imem = mem.{name=MName iname base, pos = isym.pos,
+                                        typ = pSigma, anno = false, exported = false,
+                                        state = Unchecked,
+                                        sid = 0,
+                                        doc = Just ("uses '" ++ xname.nicer g ++ "'"),
+                                        expr = Just (return (Vbl isym.pos xname Nothing))}
+                        enter imem
+                        linkq (MName tname base) imem
+        case ivmb of
+            Just (ivsym@SymV {name})
+                | implemented ivsym  || not (g.our iname) = case tvmb of
+                    Just (tvsym@SymL {alias})
+                        | alias == name = changeSym ivsym.{op=msym.op}  -- copy op
+                        | MName yname _ <- alias,
+                          Just ysym <- g.findit yname = when (g.ourSym isym) do
+                            U.symWarning E.hint ivsym (msgdoc ("There exists another implementation of `"
+                                ++ mname.base ++ "` for unrelated " ++ ysym.nicer g
+                                ++ ", this will make it impossible to access "
+                                ++ ivsym.nicer g
+                                ++ " directly."))
+                        | otherwise = E.error tvsym.pos (msgdoc (tvsym.nice g
+                                                        ++ " should be alias of " ++ ivsym.nice g))
+                    Just tvsym -> E.error tvsym.pos (msgdoc ("definition of " ++ ivsym.nice g
+                                        ++ " not allowed because " ++ tvsym.nice g
+                                        ++ " already exists."))
+                    Nothing -> do
+                        E.logmsg TRACE6 ivsym.pos (text (mname.nice g ++ " not yet implemented in " ++ tsym.nice g))
+                        linkq (MName tname base) ivsym
+                        changeSym ivsym.{op=msym.op}  -- copy op
+                | otherwise = E.error isym.pos (msgdoc ("implementation missing for " ++ ivsym.nice g))
+            Just SymL{pos=ipos, name=member, alias}    -- imported instance with links to type methods? 
+                | not (g.our iname), alias.{tynm?}, alias.tynm == tname = stio ()
+                | otherwise = case g.findit alias of
+                    Just symv | SymV{} <- symv, !symv.anno && !(maybe false (const true) symv.nativ) = do
+                        E.error ipos (msgdoc ("function `" ++ nicer alias g
+                            ++ "` given as implementation of instance member `"
+                            ++ nicer member g ++ "` must be annotated."))
+                        changeSym isym.{ env <- delete member.key }
+                    Just osym | not (g.ourSym osym) || implemented osym = case tvmb of
+                        Just (tsym @ SymL{alias=same})  
+                            | same == alias = changeSym osym.{op=msym.op}  -- copy op
+                            | same == member = do
+                                    -- this is the normal case after enter
+                                    -- remove one indirection
+                                    changeSym tsym.{alias} 
+                                    changeSym osym.{op=msym.op}
+                        Just err -> E.error ipos (msgdoc ("definition of " ++ member.nicer g
+                                        ++ " not allowed because " ++ err.nicer g
+                                        ++ " already exists."))
+                        Nothing -> do
+                            E.logmsg TRACE6 ipos (text (mname.nice g ++ " not yet implemented in " ++ tsym.nice g))
+                            linkq (MName tname base) osym
+                            changeSym osym.{op=msym.op}
+                    Just osym -> E.error ipos (text (nicer osym g ++ " is not implemented."))
+                    Nothing -> do
+                        E.fatal ipos (msgdoc (nicer member g ++ "  links to  " ++ alias.nicer g ++ ", but the latter doesn't exist."))
+            Just osym -> E.fatal isym.pos (text ("expected instance member, found " ++ osym.nice g))
+            Nothing -> case tvmb of
+                Nothing -> inherit mname
+                Just (tvsym@SymV {pos})
+                    | tvsym.name.getpack != isym.name.getpack = do
+                        -- imported type that aready has the member.
+                        -- We just link to it.
+                        E.logmsg TRACE6 isym.pos (text (mname.nice g ++ " implemented in imported type."))
+                        linkq (MName iname base) tvsym
+                        changeSym tvsym.{op=msym.op}
+                    | implemented tvsym = do
+                        E.logmsg TRACE6 tvsym.pos (text (mname.nice g ++ " not yet implemented in " ++ isym.nice g))
+                        let ivsym = tvsym.{name=MName iname base, sid = 0, op = msym.op}
+                        enter ivsym
+                        changeSym tsym.{ env <- delete mname.key }
+                        linkq (MName tname base) ivsym
+                    | otherwise = E.error tvsym.pos (msgdoc ("implementation missing for " ++ tvsym.nice g))
+                Just (ali@SymL {alias})
+                    | alias == mname || alias == MName isym.clas base = do
+                        -- link to class fun has been introduced earlier in 'enter'
+                        changeSym tsym.{ env <- delete mname.key }
+                        inherit alias
+                    | MName yname _ <- alias, -- link to member of instance for super class?
+                      Just (ysym@SymI {pos}) <- g.findit yname,
+                      ysym.clas `elem` csym.supers = stio ()
+                    -- Issue 126: can be alias to type member
+                    | MName yname other ← alias,
+                      yname == tname,
+                      Just impl <- g.follow ali = do
+                        if implemented impl 
+                        then do
+                            E.logmsg TRACE6 impl.pos (text (mname.nice g ++ " not yet implemented in " ++ isym.nice g))
+                            E.logmsg TRACE6 isym.pos (text ("copy implementation from " ++ impl.nice g))
+                            let ivsym = impl.{name=MName iname base, sid = 0, op = msym.op}
+                            enter ivsym
+                            changeSym tsym.{ env <- delete other }
+                            linkq (MName tname other) ivsym
+                        else do
+                            E.error impl.pos (msgdoc ("implementation missing for " ++ impl.nicer g))
+                    | MName yname _ <- alias,
+                      Just (ysym@SymI {pos}) <- g.findit yname,
+                      ysym.clas `notElem` csym.supers,
+                      Just (vsym@SymV {nativ = Just _}) <- g.findit alias = do
+                            -- allow recycling of native functions
+                            U.symWarning E.hint isym (msgdoc ("implementation for " ++ mname.nice g
+                                        ++ " taken from unrelated " ++ ysym.nice g))
+                            enter vsym.{name=MName isym.name base, sid = 0, op = msym.op}
+                    | MName yname _ <- alias,
+                      Just (ysym@SymI {}) <- g.findit yname,
+                      ysym.sid == isym.sid = do
+                        -- this happens in IDE, when we have an instance for an imported type
+                        -- the link still points here, but the instance data got lost
+                        -- during rebuild of symbol table
+                        changeSym tsym.{ env <- delete mname.key }
+                        inherit mname
+                    | MName yname _ <- alias,
+                      Just (ysym@SymI {pos}) <- g.findit yname,
+                      ysym.clas `notElem` csym.supers = do
+                        let ysupers = [ s | SymC{supers} <- g.findit ysym.clas, s <- supers ]
+                            sibling = cname `elem` ysupers
+                        unless sibling do
+                            E.error isym.pos (msgdoc (mname.nice g
+                                ++ " already implemented via unrelated "
+                                ++ ysym.nice g))
+                    | MName ocname _ <- alias,
+                      Just (ocsym@SymC {name}) <- g.findit ocname,
+                      name `notElem` csym.supers = do
+                        E.error isym.pos (msgdoc (mname.nice g
+                            ++ " already implemented via unrelated "
+                            ++ ocsym.nice g))
+                    | VName{} <- alias = do
+                        -- may be introduced through superinstance?
+                        case g.findit alias of
+                            Just target -> do 
+                                E.logmsg TRACE6 isym.pos (msgdoc (
+                                    "linkq " ++ nice (MName iname base) g ++ " -> " ++ nice target g))
+                                linkq (MName iname base) target
+                                funForCIT cname iname tname mname   -- try again
+                            Nothing -> E.fatal ali.pos (msgdoc ("Link to nowhere: " ++ nicer ali g))
+                Just osym -> E.fatal osym.pos (text ("funForCIT: expected type member, found " ++ osym.nice g))
+funForCIT cname iname tname mname = error "funForCIT: not a member"
+
+--- check if 'Symbol' is an implemented function
+implemented SymD{} = true 
+implemented vsym = isJust (Symbol.expr vsym) || isJust (Symbol.nativ vsym)
+
+{--
+    check for each method in an instance if the type is more specific than the class type
+    -}
+tcInstMethods :: [Symbol] -> Symbol -> StG ()
+tcInstMethods supers inst = foreach (values inst.env) (tcInstMethod supers inst)
+
+{--
+    check if the type of an instance method is more specific than the type of the class method
+    -}
+tcInstMethod :: [Symbol] -> Symbol -> Symbol -> StG ()
+tcInstMethod [] isym msym = do
+        g <- getST
+        E.error msym.pos (msgdoc (msym.nice g ++ " is not a class member function"))
+
+tcInstMethod (sc:scs) isym msym
+    -- | SymL{} <- msym = do
+    --     g <- getST
+    --     case g.follow msym of
+    --         Just realmsym -> tcInstMethod (sc:scs) isym realmsym
+    --         Nothing -> E.fatal msym.pos (text (msym.nice g) <+> text " links nowhere.")  
+    | msym.{typ?} || msym.{alias?}  = do
+        g <- getST
+        case sc.env.lookupS msym.name.key of
+            Nothing -> tcInstMethod scs isym msym
+            Just (SymV {typ=(s@ForAll sbnd srho)}) | not (isPSigma s) = do
+                g <- getST
+                let !mtnice = case isPSigma sig of true -> "None"; false -> sig.nicer g
+                    !csig   = ForAll (filter ((sc.tau.var!=) . _.var) sbnd) srho
+                    !sig    = case g.findit msym.name of
+                                Just xsym | xsym.{typ?} -> xsym.typ
+                                other    -> error ("tcInstMethod: link to nothing: " ++ nice msym g)
+                E.logmsg TRACE6 msym.pos (text (msym.nice g
+                    ++ " class: " ++ sc.nice g
+                    ++ " class method type: " ++ s.nicer g
+                    ++ " own type: " ++ mtnice))
+                -- forall i. S i => I i   ==> S 42 => I 42
+                rhotau <- T.instantiate isym.typ
+                case tauRho rhotau of
+                    RhoTau ctx tau -> do    -- must be RhoTau, see Enter
+                        -- C c => c a -> c b   ==> forall a b.C (I 42) => I 42 a -> I 42 b
+                        let sig1 = substSigma (TM.singleton sc.tau.var tau) csig
+                        -- add the context of the instantiated type to sig
+                        let !msig = case sig1 of
+                                ForAll bs (RhoFun c2 a b) = ForAll bs (RhoFun (ctx ++ adapt c2) a b)
+                                ForAll bs (RhoTau c2 a)   = ForAll bs (RhoTau (ctx ++ adapt c2) a)
+                            -- drop C (I 42) from constraints
+                            -- this is so because, for example Eq_Int.== does not need
+                            -- a proof that Int is Eq, rather it is itself the proof.
+                            -- To put it more technical, a constraint C t means
+                            -- the function must be passed a dictionary of the instance
+                            -- specific implementations of C's methods for type t.
+                            -- But Eq_Int.== is precisely the instance specific implementation
+                            -- of Eq.== for Int
+                            adapt = filter (not • T.sameCtx (Ctx Position.null sc.name tau))
+                            -- msig1 = msig
+                        E.logmsg TRACE6 msym.pos (text (msym.nice g ++ "  adapted type  " ++ msig.nicer g))
+                        msig <- T.canonicSignature msig
+                        E.logmsg TRACE6 msym.pos (text (msym.nice g ++ "  instance type  " ++ msig.nicer g))
+                        -- let inst = U.sigmaInst g csig msig
+                        -- E.logmsg TRACE6 msym.pos ("sigmaInst: " ++ show (map (flip nice g) inst))
+                        -- let mfinal = msig.{bound = [ var | TVar {var} <- inst]}
+                        -- E.logmsg TRACE6 msym.pos (msym.nice g ++ "  instance type  " ++ mfinal.nicer g)
+                        case isPSigma sig of
+                            true -> do
+                                changeSym msym.{typ = msig, anno = true}
+                            false -> do
+                                T.subsCheck msym sig msig
+                                T.checkConstraints msym sig msig
+                                T.checkConstraints msym msig sig
+                                when (msym.{expr?}) do
+                                    changeSym msym.{typ = msig, anno = true}
+                    other -> E.fatal isym.pos (msgdoc ("RhoTau expected, got " ++ rhotau.nicer g))
+            Just (symv@SymV {typ=sig}) | isPSigma sig -> do
+                    E.fatal symv.pos (text (symv.nice g ++ " of " ++ sc.nice g ++ " is not annotated"))
+            -- Some class has a default method that links somewhere else
+            -- The method was introduced in a super class
+            Just SymL{} -> tcInstMethod scs isym msym 
+            Just other -> do
+                E.fatal other.pos (text (other.nice g ++ " in " ++ sc.nice g))
+
+tcInstMethod (sc:scs) isym (msym@SymV {typ=s}) | not (isPSigma s) = do
+        g <- getST
+        E.fatal msym.pos (text ("tcInstMethod: " ++ msym.nice g ++ " annotated with " ++ s.nicer g))
+
+tcInstMethod (sc:scs) isym msym = do
+        g <- getST
+        E.fatal msym.pos (text ("tcInstMethod: strange symbol " ++ msym.nice g))

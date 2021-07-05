@@ -1,0 +1,57 @@
+--- Java classes from package @java.util.jar@
+
+module Java.util.Jar where
+
+import Java.Util(Enumeration, Set)
+import Java.util.Zip(ZipEntry, ZipFile)
+
+data JarFile = native java.util.jar.JarFile where
+    native new              ∷ File -> IOMutable JarFile 
+                                throws IOException
+    native entries          ∷ MutableIO JarFile -> IOMutable (Enumeration JarEntry)
+    --- get the 'JarEntry' for the specified name, or 'Nothing' if not found.
+    native getJarEntry      ∷ MutableIO JarFile -> String -> IO (Maybe (MutableIO JarEntry))
+    native getInputStream   ∷ MutableIO JarFile -> MutableIO ZipEntry -> IOMutable InputStream 
+                                throws IOException
+    --- retrieve the 'Manifest', if there is one
+    native getManifest      ∷ MutableIO JarFile -> IO (Maybe (MutableIO Manifest))
+                                throws IOException
+
+data JarEntry = native java.util.jar.JarEntry where
+    native new          :: MutableIO ZipEntry -> IOMutable JarEntry
+                         | String   -> IOMutable JarEntry
+    native getName      :: MutableIO JarEntry -> IO String
+    native isDirectory  :: MutableIO JarEntry -> IO Bool 
+
+--- The Manifest of a 'JarFile'
+--- see 'http://docs.oracle.com/javase/7/docs/api/java/util/jar/Manifest.html java doc'
+data Manifest = native java.util.jar.Manifest where
+    native getMainAttributes ∷ Mutable s Manifest → STMutable s Attributes
+
+instance Cloneable Manifest
+
+--- Attributes of a 'Manifest'
+--- see 'http://docs.oracle.com/javase/7/docs/api/java/util/jar/Attributes.html java doc'
+data Attributes = native java.util.jar.Attributes where
+    native keySet   ∷ Mutable s Attributes → STMutable s (Set Object)
+    native getValue ∷ Mutable s Attributes → String → ST s (Maybe String)
+                    | Mutable s Attributes → AttributesName → ST s (Maybe String)
+                    throws IllegalArgumentException
+ 
+
+--- Predefined keys for 'Attributes' maps.
+data AttributesName = pure native java.util.jar.Attributes.Name where
+
+    --- Returns the attribute name as a 'String'.
+    pure native toString    ∷ AttributesName → String
+
+    --- Name object for @Main-Class@ manifest attribute used for launching applications packaged in JAR files.
+    pure native main_class  java.util.jar.Attributes.Name.MAIN_CLASS    ∷ AttributesName
+    
+    --- Name object for @Class-Path@ manifest attribute. 
+    --- Bundled extensions can use this attribute to find other JAR files containing needed classes.
+    pure native class_path  java.util.jar.Attributes.Name.CLASS_PATH    ∷ AttributesName
+
+    -- there are many more, please add if you need them
+
+instance Show AttributesName where show = AttributesName.toString

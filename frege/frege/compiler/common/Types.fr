@@ -1,0 +1,375 @@
+--- General functions that work on types
+module frege.compiler.common.Types 
+        inline (isFun)
+    where 
+
+import  Data.TreeMap as Map(member, keys, insert, lookup, TreeSet, TreeMap)
+
+import  frege.compiler.types.Types as T
+import  Compiler.types.Global as G
+import  Compiler.types.QNames (QName)
+import  Compiler.types.Positions (Position, getpos)
+import  Compiler.common.Binders
+import  frege.compiler.classes.Nice(Nice)
+
+--- tell if the 'SigmaT' represents a function type. 
+isFun (ForAll _ rho) g = isRhoFun rho g
+
+--- tell if the 'RhoT' represents a function type.
+isRhoFun (RhoFun _ _ _) g = true
+isRhoFun (RhoTau _ tau) g = isTauFun tau g
+
+
+--- tell if the 'TauT' represents a function type.
+isTauFun fun g | [TCon {name}, _, _] <- Tau.flat fun, name.nice g ~ ´->$´ = true
+               | otherwise =  false
+
+
+--- find all unbound 'MetaTv's in a 'Sigma'
+unboundSigmaTvs g sigma = keys (unboundSigmaTvs' g sigma TreeSet.empty)
+
+--- find all unbound 'MetaTv's in a 'Rho'
+unboundRhoTvs g rho = keys (unboundRhoTvs' g rho TreeSet.empty) 
+
+--- find all unbound 'MetaTv's in a 'Tau'
+unboundTauTvs g tau = keys (unboundTauTvs' g tau TreeSet.empty) 
+
+
+--- accumulate unbound 'MetaTv's of a 'Sigma'
+unboundSigmaTvs' g (ForAll{rho}) acc = unboundRhoTvs' g rho acc
+
+--- accumulate unbound 'MetaTv's from the components of a 'Rho'
+unboundRhoTvs' g RhoFun{context, sigma, rho} acc = 
+    unboundRhoTvs' g rho (
+        unboundSigmaTvs' g sigma (
+            fold (unboundCtxTvs' g) acc context))
+unboundRhoTvs' g RhoTau{context, tau} acc = 
+    unboundTauTvs' g tau (fold (unboundCtxTvs' g) acc context)
+
+--- accumulate unbound 'MetaTv's of a 'Context'
+unboundCtxTvs' g acc Ctx{pos, cname, tau}  = unboundTauTvs' g tau acc
+
+--- accumulate unbound 'MetaTv's of a 'Tau'
+unboundTauTvs' ∷ Global → Tau → TreeSet Int → TreeSet Int
+unboundTauTvs' g (TApp a b) acc =
+    unboundTauTvs' g a (unboundTauTvs' g b acc)
+unboundTauTvs' g (TSig s) acc = unboundSigmaTvs' g s acc
+unboundTauTvs' g (Meta m) acc = case m  of
+    -- This is what we are looking for.
+    -- If the meta type variable has no entry in the type substitution map,
+    -- then it is unbound.
+    Flexi{uid} →  case g.tySubst.lookupI uid of
+        Just t  → unboundTauTvs' g t acc    -- follow substitution
+        Nothing → case (Meta m).bounds of   -- dive also into kind
+            bs     → foldr (unboundTauTvs' g) (acc.insertI uid ()) bs
+    Rigid{} →  acc
+
+unboundTauTvs' g TVar{} acc = acc
+unboundTauTvs' g TCon{} acc = acc
+
+--- substitute 'MetaTv' unique ids in a 'Sigma'
+substSigmaUID :: Global -> TreeMap Int Int → Sigma → Sigma
+substSigmaUID g m sigma = sigma.{rho ← substRhoUID g m}
+
+--- substitute 'MetaTv' unique ids in a 'Rho'
+substRhoUID :: Global -> TreeMap Int Int → Rho → Rho
+substRhoUID g m (r@RhoFun{})  = r.{context ← map (substCtxUID g m), 
+                                 sigma   ← substSigmaUID g m, 
+                                 rho     ← substRhoUID g m}
+substRhoUID g m (r@RhoTau{})  = r.{context ← map (substCtxUID g m), 
+                                 tau     ← substTauUID g m}
+
+--- substitute 'MetaTv' unique ids in a 'Context'
+substCtxUID :: Global -> TreeMap Int Int -> Context -> Context
+substCtxUID g m ctx = ctx.{tau <- substTauUID g m}
+
+--- substitute 'MetaTv' unique ids in a 'Tau'
+substTauUID :: Global -> TreeMap Int Int -> Tau -> Tau
+substTauUID g m tau = case tau  of
+    TApp a b →  TApp (substTauUID g m a) (substTauUID g m b)
+    TCon{} →  tau
+    TVar{} →  tau
+    TSig s →  TSig (substSigmaUID g m s)
+    Meta v →  case v  of
+        Flexi{uid}
+            -- if this UID is in the substitution map, we insert the fake UID 
+            | Just n <- m.lookupI uid           → case tau.bounds of
+                []     → Meta v.{uid=n}
+                bs     → Meta v.{uid=n, kind = KGen (map (substTauUID g m) bs)}
+                
+            -- if the type var was actually bound, we substitute the bound type
+            | Just t <- g.tySubst.lookupI uid   → substTauUID g m t
+            -- this should not happen, as every unbound Meta var must be in the map
+            -- anyway, we spare us detecting an impossible error, and let it fall through 
+        _  →  tau
+
+--- A list of unused MetaTv UID for substitution
+--- Experience shows that real UIDs are quite big, like 17432, so it should be [1,2,3,...]
+smallUIDs :: Global -> [Int]
+smallUIDs g = [ n | n <- [1..], not (member n g.tySubst) ] 
+
+
+class BetterReadable t where
+    {-- 
+        Make a type better readable (like in error messages)
+        by replacing the UIDs of unbound 'MetaTv's with small numbers.
+        
+        This should cause types like
+        > t12345 -> t54231 -> t54312
+        to become
+        > t1 -> t2 -> t3
+
+        Note: The result of 'betterReadable' is a fake type
+        and must not be used in actual type inference! 
+    -}
+    betterReadable :: Global -> t -> t
+
+instance BetterReadable Sigma where
+    betterReadable g s = substSigmaUID g (Map.fromList subst) s where
+        subst = zip (unboundSigmaTvs g s) (smallUIDs g)
+
+instance BetterReadable Rho where
+    betterReadable g s = substRhoUID g (Map.fromList subst) s where
+        subst = zip (unboundRhoTvs g s) (smallUIDs g)
+
+instance BetterReadable Tau where
+    betterReadable g s = substTauUID g (Map.fromList subst) s where
+        subst = zip (unboundTauTvs g s) (smallUIDs g)
+
+{--
+ * make @RhoFun a b@ to @RhoTau (TFun a b)@ 
+ -}
+tauRho (RhoFun ctxs (ForAll [] (RhoTau [] a)) rho2)
+    | RhoTau _ b <- tauRho rho2 = RhoTau ctxs (Tau.tfun a b)
+tauRho r = r
+
+
+{--
+    Takes a class name @C@ and a 'Rho' type
+    >  (A a, B b) ⇒ F a b
+    and construct a fake type that will be printed like an 
+    ordinary instance head, e.g.
+    >  (A a, B b) ⇒ C (F a b)
+-}
+instanceHead :: QName -> Rho -> Rho
+instanceHead clas rho = RhoTau{context=rho.context, tau=TApp tcon tau}
+    where
+        tau = (tauRho rho).tau
+        tcon = TCon{pos=getpos tau, name=clas}
+
+
+--- note: type must not contain bound Metas
+substSigma :: TreeMap String (TauT t) ->  SigmaT t  -> SigmaT t
+substSigma t (ForAll bndrs rho) = ForAll bndrs (substRho t' rho)
+    where t' = fold TreeMap.delete t (map Tau.var bndrs)
+
+
+substRho t (RhoFun ctx sig rho) = let
+            ctx' = map (substCtx t) ctx
+            sig' = substSigma t sig 
+            rho' = substRho t rho 
+        in (RhoFun ctx' sig' rho')
+substRho t (RhoTau ctx tau)  = RhoTau (map (substCtx t) ctx) (substTau t tau)
+
+
+
+substTau t (tau@TCon{})      = tau
+substTau t (TApp a b)        = TApp (substTau t a) (substTau t b)
+substTau t (typ@Meta _)      = typ     -- Meta must be unbound
+substTau t (typ@TVar {var})  = case TreeMap.lookupS t var of
+        Just (Meta tv)       = Meta tv.{kind ← substKind t var (Meta tv.{kind=KVar})}  
+        Just tau -> tau
+        Nothing  -> typ.{kind ← substKind t var typ.{kind=KVar}}
+substTau t (typ@TSig s) = TSig (substSigma t s)
+
+{-- 
+    Substitute the 'Tau' in a 'Kind'
+    Because this could be recursive, there is the extra elements, which must be a 
+    variable name and a type 'TVar'.
+    So when we have
+    > e ≤ Enum e
+    we can replace the @e@ inside the kind with one that has kind 'KType'
+    before applying 'substTau' to @Enum e@
+-}
+substKind t s v (KGen taus) = KGen (map (substTau t . substTau (Map.singleton s v)) taus)
+substKind _ s v k          = k
+
+substCtx :: TreeMap String (TauT a) -> ContextT a -> ContextT a
+substCtx t x  = x.{tau <- substTau t}
+
+
+
+{-- 
+    Tell the kindedness of this 'Tau'
+  
+    Returns the kind of the type variable that is applied to arguments, 
+    or just 'KType' if the 'Tau' is not an application of a type variable.
+-}
+tauKind :: Tau -> Kind
+tauKind app = case app.flat of
+    TVar{pos, kind, var}:_          →  kind
+    Meta Flexi{uid, hint, kind}:_   →  kind
+    other                           →  KType
+
+--- kindedness of a 'Sigma', based on enclosed 'Tau', see 'tauKind'
+sigmaKind (ForAll _ rho) = rhoKind rho
+
+--- kindedness of a 'Rho', based on enclosed 'Tau', see 'tauKind'
+--- A 'RhoFun' will always be 'KType', as it is equivalent to application of @(->)@
+rhoKind RhoFun{} = KType
+rhoKind RhoTau{tau} = tauKind tau
+
+{--
+    Alpha conversion of a sigma.
+    
+    We don't want inner *forall*s and sigmas for fields and let bound functions
+    have type variable names that are already used further outwards. The reason is that while
+    the Frege compiler never confuses different type variables just because they
+    have the same name, this is not so in Java code. Here, we don't have any means to
+    distinguish type variables *except* by name. And when we use that name, it will always 
+    refer to the innermost introduction of that type variable.
+    
+    See also 'https://github.com/Frege/frege/issues/270 Issue #270'
+    
+    We change variable names by trying to modify drawing a unique name from 
+    the latin letter supply and appending a number.
+    This way, no type variable name created during generalization will ever conflict
+    with a renamed one. 
+
+    This can still lead to errors when the outer function is not annotated, and the inner one
+    uses type variables from the same character set that will be used in quantification. Such
+    variables are potential duplicates and must be replaced precautionally.
+
+    Therefore, we need the following parameters:
+    
+    1) the names to avoid (from outer sigmas).
+    2) a 'Regex' that describes potential duplicates. If the outer 'Sigma' is indeed
+    annotated, this can be a 'Regex' that would never match any type variable name. Otherwise,
+    it should match every element of the supply that is currently in use.
+
+    Of course, we simply encode this with a property function that tells us whether a certain
+    variable must be avoided and needs replacement. 
+
+    Because the renamings of user supplied 'Sigma's can lead to hard to understand error
+    messages, there should be a warning when the 'Sigma' was actually alpha-converted. 
+-}
+
+avoidSigma avoid (ForAll tvs rho) = ForAll ntvs (avoidRho (\s -> avoid s ||  s `elem` new) rho')
+    where
+        old = map _.var tvs                         -- old variables
+        bads = filter avoid old                     -- the variables that need replacement
+        safe s = not (avoid s) && s `notElem` old   -- check for a safe name
+        salvage s = head
+                    . filter safe
+                    . (++) (map (s++) ["'", "1", "2", "3"]) -- prefer slight modification of original name
+                    $ [ bn | b ← Binders.allAsciiBinders,   -- or else just invent something
+                             n ← ["'", "1", "2", "3"],
+                             let {bn = s ++ b ++ n}
+                      ]
+        binders = map salvage bads              -- our new safe names
+        reps = Map.fromList (zip bads binders)  -- a substitution for variable names
+        ntvs = map (rnTVar reps) tvs            -- renamed affected type variables
+        new = map _.var ntvs                    -- the variable names of the new Sigma
+        subst = Map.fromList (zip bads [ tv | tv ← ntvs, tv.var `elem` binders ]) 
+        rho' = substRho subst rho               -- substitute the new tvars in the rest of the type
+
+avoidRho :: (String → Bool) -> Rho -> Rho
+avoidRho avoid (rhofun@RhoFun{})  = rhofun.{sigma ← avoidSigma avoid, rho ← avoidRho avoid}
+avoidRho avoid (rhotau@RhoTau{})  = rhotau
+
+rnTVar :: TreeMap String String → Tau → Tau
+rnTVar tree (TApp a b)  = TApp (rnTVar tree a) (rnTVar tree b)
+rnTVar tree (t@TCon{})  = t
+rnTVar tree (t@TVar{})  = case lookup t.var tree of
+    Just v  →   t.{kind ← rnKind tree, var=v}
+    Nothing →   t
+rnTVar tree (t@TSig _)  = t
+rnTVar tree (t@Meta _)  = t
+
+rnKind :: TreeMap String String → Kind → Kind
+rnKind tree (KGen ts)  = KGen (map (rnTVar tree) ts)
+rnKind tree (KApp k1 k2)  = KApp (rnKind tree k1) (rnKind tree k2)
+rnKind tree k  = k
+
+
+{--
+    > sigInst subst sigma
+    Return a list of 'Tau' from the substitution in the order of the bound variables of the 'Sigma'
+-}
+sigInst ∷ TreeMap String Tau → Sigma → [Tau]
+sigInst subst sigma = varInst subst sigma.vars
+
+
+{--
+    > varInst subst ["a", "b", "c"]
+    Return a list of 'Tau' from the substitution in the order of the variable names given
+-}
+varInst ∷ TreeMap String Tau → [String] → [Tau]
+varInst subst names = [ tau | nm ← names, tau ← TreeMap.lookupS subst nm ]
+
+
+{--
+    make @RhoTau (TFun a b)@ into @RhoFun (RhoTau a) (unTau (RhoTau b))@
+ -}
+unTau ∷ Rho → Rho
+unTau (RhoTau ctx fun)
+    | Just (a,b) <- fun.getFun = RhoFun ctx (ForAll [] (RhoTau [] a)) (unTau (RhoTau [] b))
+unTau (RhoFun ctx sig rho)     = RhoFun ctx sig                       (unTau rho)
+unTau rho = rho
+
+
+{--
+ * Unify 2 Sigmas
+ *
+ * The first one is a quantified type from some symbol table item.
+ * The second one is the actual type of some expression and must be an instance
+ * of the first one.
+ *
+ * > unifySigma (forall a b. Maybe a -> [b]) (Maybe Int -> [Float]) ==> [(a,Int), (b, Float)]
+ -}
+unifySigma ∷ Global → Sigma → Sigma → TreeMap String Tau
+unifySigma g (ForAll [] _) _ = empty
+unifySigma g s1 (ForAll _ rho) = unifyRho g empty s1.rho rho
+
+
+unifyRho :: Global -> TreeMap String Tau -> Rho -> Rho -> TreeMap String Tau
+unifyRho g t (rho1@RhoFun{}) rho2
+    | RhoFun{}      <- rho2       = result
+    | rfun@RhoFun{} <- unTau rho2 = unifyRho g t rho1 rfun
+    | otherwise                   = t           -- no match
+    where
+        result = unifyRho g t2 rho1.rho rho2.rho
+        t2     = unifyRho g t  rho1.sigma.rho rho2.sigma.rho
+-- rho1 must be a RhoTau as the first clause catches all cases where it is a RhoFun
+unifyRho g t rho1 rho2
+    | RhoTau{}      <- rho2        = unifyTau   t  rho1.tau   rho2.tau
+    | rtau@RhoTau{} <- tauRho rho2 = unifyRho g t  rho1       rtau
+unifyRho g t _ _ = t
+
+
+unifyTau ∷ TreeMap String Tau → Tau → Tau → TreeMap String (Tau)
+unifyTau t (TVar {var}) b = insert var b t
+unifyTau t (tau1@TApp a b) (tau2@TApp c d) = unifyApp a c
+    where
+        -- do not match unequals!
+        unifyApp TVar{} _ 
+            = unifyTau  (unifyTau  t a c) b d
+        unifyApp TCon{name=n1} TCon{name=n2}
+            | n1 == n2 = unifyTau  (unifyTau  t a c) b d
+            | otherwise = t
+        unifyApp (TApp x _) (TApp y _) = unifyApp x y
+        unifyApp _ _ = t
+unifyTau t _ _ = t
+
+
+{--
+ * [usage] @sigmaInst sigma1 sigma2@
+ * [returns] a list of 'Tau' types that are substituted for
+ * the bounded variables of @sigma1@ in @sigma2@
+ * which must be a valid substitution of the former (up to contexts).
+ -}
+sigmaInst g sigma1 sigma2 = [ s | Just s <-  map (TreeMap.lookupS tree) (Sigma.vars sigma1) ]
+    where tree =  unifySigma g sigma1 sigma2
+
+
+

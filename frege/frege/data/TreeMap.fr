@@ -1,0 +1,843 @@
+{- 
+
+    Copyright © 2011 - 2021, Ingo Wechsung
+    All rights reserved.
+
+    Redistribution and use in source and binary forms, with or
+    without modification, are permitted provided that the following
+    conditions are met:
+
+        Redistributions of source code must retain the above copyright
+        notice, this list of conditions and the following disclaimer.
+
+        Redistributions in binary form must reproduce the above
+        copyright notice, this list of conditions and the following
+        disclaimer in the documentation and/or other materials provided
+        with the distribution. Neither the name of the copyright holder
+        nor the names of its contributors may be used to endorse or
+        promote products derived from this software without specific
+        prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE
+    COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR
+    IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+    WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+    PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER
+    OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+    SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+    LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+    USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
+    AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+    LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+    IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+    THE POSSIBILITY OF SUCH DAMAGE.
+
+-}
+
+
+{--
+    An efficient implementation of
+    'https://en.wikipedia.org/wiki/Persistent_data_structure persistent' 
+    ordered maps from keys to values
+    based on 'http://en.wikipedia.org/wiki/AVL_tree AVL trees'.
+
+    ## Properties of ordered maps
+    
+    An AVL tree is a self-balancing binary search tree. 
+    In an AVL tree, the heights of the two child subtrees of any node 
+    differ by at most one; if at any time they differ by more than one, 
+    rebalancing is done to restore this property. 
+    
+    Lookup, insertion, and deletion all take O(log n) time in both the average 
+    and worst cases, where n is the number of nodes in the tree prior to the 
+    operation. Insertions and deletions may require the tree to be rebalanced 
+    by one or more tree rotations.
+
+    AVL trees are height-balanced, but not weight-balanced nor μ-balanced,
+    that is, sibling nodes can have hugely differing numbers of descendants.
+
+    ## Properties of this implementation
+
+    Keys will always be strict, whereas values can remain un-evaluated until
+    two values will have to be combined. 
+
+    Combination of two values takes place when a mapping for 
+    an already existing key is inserted in a map. In order to prevent
+    building up of thunks that could lead to stack overflows later, the
+    function combining the values will be evaluated right away, and this may 
+    trigger evaluation of one or both values in turn. 
+    
+    The default function used by operations like 'insert' or 'union' is 'const'; 
+    and this will cause evaluation of the *new* value. Take a look at
+    the following example:
+
+    > insert 7 undefined (insert 7 25 empty)            -- will fail
+    > insert 7 42 (insert 7 undefined empty)            -- will succeed
+    > insertWith (+) 7 42 (insert 7 undefined empty)    -- will fail
+
+    The last expression will fail because ('+') needs to evaluate both 
+    arguments. OTOH, expressions like
+
+    > fold (\t\v -> insertWith (+) 42 v t) empty [1..1_000_000]
+ 
+    will not cause stack overflow when later the value associated with 42 is
+    actually used, nor will it need heap memory for one million thunks.
+
+    ## Operations
+
+    ### Creating Maps
+
+    Get an empty map with 'TreeMap.mempty' or 'TreeMap.empty', make a singleton one
+    with 'singleton' or turn an association list into a 'TreeMap' with 'fromList'.
+    The more general function 'fromListWith' allows custom handling of 
+    associations with duplicate keys.
+
+    ## Add, Change or Remove Associations
+
+    Use 'insert', 'delete', 'adjust' and 'replace'. The more general form of 'insert' 
+    is 'insertWith' which accepts a function to combine the given value with an
+    already existing one.
+
+    ## Lookups
+
+    The basic function is 'lookup', of which 'member' and 'lookupDefault' are variants.
+    The operator ('!!') may be used when the existence of the keys looked for is out
+    of the question.
+    
+    Because a tree map is ordered, we can find the associations with the smallest
+    and largest keys in logarithmic time. See 'findMin' and 'findMax'. 
+
+    ## Set operations
+
+    There is 'union', 'difference' and 'intersection'. More general functions 
+    'unionWith' and 'intersectionWith' allow combination of the affected values.
+
+    ## Folds
+
+    Left folds as well as right folds are provided by 'foldValues' and 'foldrValues'. 
+    Variants 'foldWithKey' and 'foldrWithKey' allow examination not only of the value, 
+    but also of the key and they walk the tree in key order.
+
+    Frequently needed functions such as 'values', 'keys', 'each' and 'size' are just
+    predefined folds for your convenience.
+
+    ## Filtering
+
+    Create a subset of an existing map with 'filterValues' or 'filterWithKey'.
+
+    ## Transformations
+
+    'mapValues', 'mapWithKey' and 'traverseWithKey' should cover any need to 
+    transform an existing map.
+
+    ### Naming Conventions
+
+    Functions whose name have the _With_ suffix take a custom function to combine two
+    values and are thus more general than the ones without that suffix. 
+    Most often it is the case that 
+    > xxx = xxxWith const
+
+    Functions whose name have the _Values_ suffix operate on the values of the mappings
+    contained in the map and take an appropriate custom function as argument. 
+    The _Values_ suffix also serves to avoid conflicts with
+    Prelude functions (i.e. 'map', 'filter', 'fold', 'foldr').
+
+    The companions of the _Values_ functions have the suffix _WithKey_ and accept 
+    functions that take an extra argument for the key. The key portion of
+    a mapping or association is always passed first, followed by the associated value.
+
+-}
+module frege.data.TreeMap
+        inline (singleton, insert, insertWith, delete, lookup, 
+                union, unions, 
+                foldValues, foldWithKey, foldrValues, foldrWithKey) 
+    where
+
+-- import frege.data.List (elemBy, partitioned, sortBy, groupBy)
+import frege.Prelude hiding (!!)
+import frege.data.Monoid as M(Monoid)
+import Data.Traversable(traverse, Traversable)
+
+--- _O(1)_ Create a singleton map
+singleton ∷ Ord k ⇒ k → v → TreeMap k v
+singleton k v = TreeMap.Leaf{key=k, value=v}
+
+--- _O(n)_ Compute the size of the map
+size ∷ TreeMap k v → Int
+size TreeMap.Node{left, right} = 1 + size left + size right
+size TreeMap.Leaf{} = 1
+size TreeMap.Nil = 0
+
+{--
+    _O(log n)_
+    
+    > insert k v map
+    
+    returns a 'TreeMap' where _k_ is associated with _v_ such that
+    
+    > lookup k (insert k v map) = Just v
+    
+    If _k_ was already associated with some value in _map_, then _v_ will get 
+    evaluated to WHNF, otherwise it is left alone. 
+-}
+insert k v m = TreeMap.insertWork const m k v
+
+{-- 
+    _O(log n)_
+    > insertWith f k v m
+    If _m_ does not contain _k_, this works like 'insert'.
+    Otherwise, the existing association of _k_ with some value _v'_ is replaced by
+    an association of _k_ with the result of evaluating 
+    > f v v'
+    in the resulting map. 
+
+    Strict evaluation is necessary to prevent building up of large thunks 
+    of the form
+    > f v3 (f v2 (f v1 v0))
+
+    Note that
+    > insert = insertWith const
+    and that this will evaluate the *new* value in case of an update. If you
+    want to prevent this, use
+
+    > replace k v = insert k v . delete k
+    
+    The replaced value will be evaluated only if the given function is strict
+    in the second argument. Since 'const' is lazy in the second argument, the
+    following will be fine:
+    
+    > insert "foo" 7 (insert "foo" undefined (delete "foo" m))
+    
+    That is, the value that is inserted for a given key first is not evaluated on
+    insertion, and only evaluated on update if the update function demands it, which
+    is not the case for a plain 'insert'.
+-} 
+insertWith f k v m = TreeMap.insertWork f m k v
+
+{-- 
+    _O(log n)_
+    > delete k tm
+    is a 'HashMap' m such that
+    > lookup k m = Nothing
+    and for any other key _o_
+    > lookup o m = lookup o tm
+
+    Less formally, the association of _k_ with some value, if any, 
+    is removed in the result, while all other associations are retained.
+
+    If _tm_ didn't contain _k_ in the first place,
+    > delete k tm = tm    
+-}
+delete ∷ Ord k ⇒ k → TreeMap k v → TreeMap k v
+delete k tm = tm.delete k
+
+{--
+    _O(log n)_
+    > lookup k m
+    If _k_ is associated with some value _v_  in map _m_, it returns
+    > Just v
+    and otherwise
+    > Nothing 
+-}
+lookup ∷ Ord k ⇒ k → TreeMap k v → Maybe v
+lookup k hm = hm.lookup k
+
+--- _O(log n)_
+--- Find the minimum element in the tree. For empty trees, this is  'Nothing'.
+findMin ∷ TreeMap k v → Maybe (k, v)
+findMin map
+    | null map  =  Nothing
+    | otherwise =  case map.leftmost of
+        leaf  →   Just (leaf.key, leaf.value)
+
+--- _O(log n)_
+--- Find the maximum element in the tree. For empty trees, this is 'Nothing'.
+findMax ∷ TreeMap k v → Maybe (k, v)
+findMax map
+    | null map  =  Nothing
+    | otherwise =  case map.rightmost of
+        leaf  →   Just (leaf.key, leaf.value)
+
+--- _O(log n)_ 
+--- Checks whether the key is present in the map
+member ∷ Ord a ⇒ a → TreeMap a b → Bool
+member k = maybe false (const true) . lookup k
+
+{-- _O(log n)_ 
+
+    Return the value to which the specified key is mapped, 
+    or the default value if this map contains no mapping for the key.
+-}
+lookupDefault ∷ Ord b ⇒ a → b → TreeMap b a → a
+lookupDefault v k = fromMaybe v . lookup k
+
+{-- _O(log n)_
+ 
+     Return the value associated with the given key in the map.
+     Fails with 'error' if the key is not present.
+-}
+protected (!!) ∷ Ord k ⇒ TreeMap k v → k → v
+protected (!!) = TreeMap.index
+infixl 16 !!
+
+{-- _O(log n)_ 
+    
+    Adjust the value tied to a given key in this map only if it is present. 
+    Otherwise, leave the map alone. 
+-}
+adjust :: Ord k => (v → v) → k → TreeMap k v → TreeMap k v
+adjust !f k hm = case lookup k hm of
+    Just v  → insertWith (\vn \vo → f vn)  k v hm
+    Nothing → hm
+
+{-- _O(log n)_
+    > replace k v m = insert k v . delete k $ m
+
+    Insert or update the association of _k_ with _v_ in _m_
+    but avoid evaluation of _v_ even if _m_ already contains _k_.
+
+    See also notes concerning updates on function 'insertWith'.
+-} 
+replace ∷ Ord k ⇒ k → v → TreeMap k v → TreeMap k v
+replace k v = insert k v . delete k
+
+{-- _O(m*log n)_
+
+    > unionWith f left right
+
+    Computes the union of two hash maps by inserting the elements of the _left_
+    map into the _right_ map.
+
+    If a key occurs in both maps, the function _f_ provided in the first argument 
+    will be applied to the value from the _left_ map and the _right_ map like so:
+    
+    > f leftval rightval
+    
+    to compute the result that goes into the resulting map.
+    
+    This works in the same way as 'insertWith', that is, 
+    the value from the _left_ hash map will be evaluated while the
+    value from the _right_ map may be evaluated only if the function demands it.
+    However, values associated with keys that are member of only one map are
+    left alone.
+-}
+unionWith ∷ Ord k ⇒ (v→v→v) → TreeMap k v → TreeMap k v → TreeMap k v
+unionWith !f left right
+    | null left  = right
+    | null right = left
+    | otherwise  = TreeMap.foldL Eq (TreeMap.insertWork f) right left
+
+{-- _O(m*log n)_
+
+    Computes the union of two hash maps.
+
+    If a key occurs in both maps, the value from the left map will be 
+    evaluated and taken over to the new map.
+
+    Because
+    > union  =  unionWith const 
+    the considerations concerning strictness apply for 'union' in the same
+    way as for 'unionWith'.
+-}
+union ∷ Ord k ⇒ TreeMap k v → TreeMap k v → TreeMap k v
+union = unionWith const
+
+{--
+    The union of all 'TreeMap's in a list.
+-}
+unions ∷ Ord k ⇒ [TreeMap k v] → TreeMap k v
+unions = fold union empty
+
+{--
+    _O(n)_
+
+    > foldValues f a map
+
+    applies the operation _f_ to the values in the _map_ in no particular order. 
+-}
+foldValues ∷ (a → v → a) → a → TreeMap k v → a
+foldValues f a  = TreeMap.foldL Eq (\a\_\v → f a v) a
+
+{--
+    _O(n)_
+
+    > foldWithKey f a map
+
+    applies the operation _f_ to the keys and values in the _map_ 
+    using the left identity _a_ as starting value 
+    from the left in ascending key order. 
+
+    > f (f (f a k0 v0) k1 v1) kn vn 
+-}
+foldWithKey ∷ (a → c → b → a) → a → TreeMap c b → a
+foldWithKey f a = TreeMap.foldL Lt f a
+
+{--
+    _O(n)_
+
+    > foldrValues f a map
+
+    applies the operation _f_ to the values in the _map_ in no particular order. 
+-}
+foldrValues ∷ (v → a → a) → a → TreeMap k v → a
+foldrValues f a  = TreeMap.foldR Eq (\_\v\a → f v a) a
+
+{--
+    _O(n)_
+
+    > foldrWithKey f a map
+
+    applies the operation _f_ to the keys and values in the _map_ 
+    using the right identity _a_ as starting value
+    from the right in descending key order:
+    
+    > f k0 v0 (f k1 v1 (f kn vn a))  
+-}
+foldrWithKey ∷ (c → b → a → a) → a → TreeMap c b → a
+foldrWithKey f a = TreeMap.foldR Gt f a
+
+{-- _O(n)_
+
+    Transform a map by applying a function to every value.
+-}
+mapValues :: (v→u) → TreeMap k v → TreeMap k u
+mapValues = TreeMap.mapV
+
+{--
+    _O(n)_ 
+
+    Transform a map by applying a function to every key and its
+    associated value.
+-}
+mapWithKey :: (k -> v -> u) -> TreeMap k v -> TreeMap k u
+mapWithKey = TreeMap.mapKV
+
+{--
+    _O(n)_
+
+    Transform a map by applying an applicative functor to every key
+    and its associated value.
+-}
+traverseWithKey :: Applicative a ⇒ (k→v→a u) → TreeMap k v → a (TreeMap k u)
+traverseWithKey = TreeMap.traverseKV
+
+{--
+    _O(n)_
+
+    Filter a map, retaining only mappings whose key and value satisfy
+    a given predicate.
+-}
+filterWithKey ∷ Ord k  ⇒ (k→v→Bool) → TreeMap k v → TreeMap k v
+filterWithKey = TreeMap.filterKV
+
+{--
+    _O(n)_
+
+    Filter a map, retaining only mappings whose value satisfies
+    a given predicate.
+-}
+filterValues ∷ Ord k  ⇒ (v→Bool) → TreeMap k v → TreeMap k v
+filterValues !p hm = TreeMap.filterKV (\_\v -> p v) hm
+
+{--
+    _O(n*log m)_ 
+
+    Computes the difference of two maps. 
+
+    Returns a map that contains the mappings of the first map 
+    whose keys do not exist in the second.
+-}
+difference ∷ Ord k ⇒ TreeMap k v → TreeMap k u → TreeMap k v
+difference left right = filterWithKey (\k\_ → not (k `member` right)) left
+
+{--
+    _O(n*log m)_ 
+
+    Computes the intersection of two maps. 
+
+    Return a map that contains the mappings of the first map 
+    for keys that also exist in the second.
+-}
+intersection ∷ Ord k ⇒ TreeMap k v → TreeMap k u → TreeMap k v
+intersection left right = filterWithKey (\k\_ → k `member` right) left
+
+{--
+    _O(n*log m)_
+
+    Computes the intersection of two maps, combining the values with a
+    given function.
+-}
+intersectionWith ∷ Ord k ⇒ (v→u→w) → TreeMap k v → TreeMap k u → TreeMap k w
+intersectionWith !f left right = foldWithKey combine empty left
+    where
+        combine a k v = case lookup k right of
+            Just rv → insert k (f v rv) a 
+            Nothing → a
+
+{--
+    _O(n)_
+
+    Build a map from an association list.
+    If the list contains duplicate mappings, the later mappings take precedence.
+-}
+fromList ∷ Ord a ⇒ [(a,b)] → TreeMap a b
+fromList  = TreeMap.insertList empty   
+
+{--
+    _O(n)_
+    
+    Build a map from an association list.
+    Uses the provided function to merge values associated 
+    with duplicate keys.
+-}
+fromListWith ∷ Ord k ⇒ (v→v→v) → [(k,v)] → TreeMap k v
+fromListWith !f = fold ins empty where
+    ins map (k,v) = insertWith f k v map
+
+--- produces a list of the values in the map, in no particular order.
+values ∷ TreeMap a b → [b]
+values = foldrValues (:) []
+
+--- produces the key/value pairs of a map sorted by key
+each ∷ TreeMap a b → [(a,b)]
+each = foldrWithKey (\k\v\kvs → (k,v)!:kvs) []
+
+--- produces the keys of the map in ascending order
+keys ∷ TreeMap a b  → [a]
+keys = foldrWithKey (\k\v\kvs → k !: kvs) []
+
+data TreeMap k v = 
+          protected Nil    --- the empty tree 
+        | protected Node { !höhe :: Int, !left, !right :: (TreeMap k v), !key :: k, value ::  v}
+        | protected Leaf { !key :: k, value :: v }  --- short for Node 1 Nil Nil k v
+        where
+    
+    -- depth (Node _ l r _ _) = max (depth l) (depth r)
+    -- depth Leaf{} = 1
+    -- depth _ = 0
+
+    balance (Node _ l r _ _) = height l - height r
+    balance _ = 0
+    
+    height Node{höhe} = höhe
+    height Leaf{} = 1
+    height _ = 0
+
+    rotright (Node _ (Node _ ll lr lk lv) r k v) = Node sa ll x lk lv
+        where
+            sx = 1 + max (height lr) (height r)
+            x = if null lr && null r then Leaf k v else Node sx lr r k v
+            sa = 1 + max (height ll) (height x)
+    rotright (Node _ (Leaf lk lv) r k v) = Node sa Nil x lk lv
+        where
+            sx = 1 + height r
+            x  = if null r then Leaf k v else Node sx Nil r k v
+            sa = 1 + height x
+    rotright t = t
+    
+    rotleft (Node _ l (Node _ rl rr rk rv) k v) = Node sb x rr rk rv
+        where
+            sx = 1 + max (height l) (height rl)
+            x = if null l && null rl then Leaf k v else Node sx l rl k v
+            sb = 1 + max (height x) (height rr)
+    rotleft (Node _ l (Leaf rk rv) k v) = Node sb x Nil rk rv
+        where
+            sx = 1 + height l
+            x = if null l then Leaf k v else Node sx l Nil k v
+            sb = 1 + height x
+    rotleft t = t
+    
+    drotlr (Node s l r k v) = rotright (Node s (rotleft l) r k v)
+    drotlr nil = nil
+    
+    drotrl (Node s l r k v) = rotleft  (Node s l (rotright r) k v)
+    drotrl nil = nil
+
+    rebalance (x@Node s l r k v) =
+        if hl + 1 < hr then
+            if balance r < 1 then rotleft x else drotrl x
+        else if hl > hr + 1 then        -- left subtree higher
+            if balance l >= 0 then rotright x else drotlr x
+        else x where
+            hl = height l
+            hr = height r
+    rebalance nil = nil
+
+    rightmost (this@Node{})  
+        | null this.right   =  this
+        | otherwise         =  rightmost this.right
+    rightmost Nil           =  error "TreeMap.findMax empty"
+    rightmost leaf          =  leaf
+
+    leftmost (this@Node{})
+        | null this.left    =  this
+        | otherwise         =  leftmost this.left
+    leftmost Nil            =  error "TreeMap.findMin empty"
+    leftmost leaf           =  leaf
+
+    --- do the dirty work for insert operations
+    insertWork f (Node s l r  k1 v1) !k v =
+        case k <=> k1 of 
+            Lt -> case insertWork f l k v of 
+                    !nl -> case 1 + max (height nl) (height r) of 
+                        !ns -> rebalance (Node ns nl r k1 v1)
+            Eq -> case f v v1 of
+                    !nv → Node s l r k nv
+            Gt -> case insertWork f r k v of 
+                    !nr -> case 1 + max (height l) (height nr) of
+                        !ns -> rebalance (Node ns l nr k1 v1)
+    insertWork f (Leaf k1 v1) !k v =
+        case k <=> k1 of 
+            Lt -> Node 2 (Leaf k v) Nil k1 v1 
+            Eq -> case f v v1 of
+                    !nv → Leaf k nv
+            Gt -> Node 2 Nil (Leaf k v) k1 v1
+    insertWork f nil k v = Leaf k v
+
+    --- _O(log n)_
+    --- > tm.insert k v 
+    --- Variant of 'insert' that is better suited for left folds and supports dot-notation.
+    insert ∷ Ord a ⇒ TreeMap a b → a → b → TreeMap a b
+    insert = insertWork const
+
+    --- _O(log n)_
+    --- > tm.delete k
+    --- Variant of 'delete' that is better suited for left folds and supports dot-notation 
+    delete (x@Leaf k1  _) k = if k == k1 then Nil else x
+
+    delete   (Node _ l   Nil k1 v1) k = if k == k1 then l else
+        case delete l k of
+            Nil → Leaf k1 v1
+            nl  → rebalance (Node (1 + height nl) nl Nil k1 v1)
+
+    delete   (Node _ Nil r   k1 v1) k = if k == k1 then r else
+        case delete r k of
+            Nil → Leaf k1 v1
+            nr  → rebalance (Node (1 + height nr) Nil nr k1 v1)
+
+    delete (Node s l r k1 v1) k =
+        case k <=> k1 of
+            Lt -> let
+                    nl = delete l k
+                    ns = 1 + max (height nl) (height r)
+                in rebalance (Node ns nl r k1 v1)
+            Gt -> let
+                    nr = delete r k
+                    ns = 1 + max (height l) (height nr)
+                in rebalance (Node ns l nr k1 v1)
+            Eq -> case leftmost r of
+                lmost -> let    -- r may not be Nil here, see above
+                        nr = delete r lmost.key
+                        ns = 1 + max (height l) (height nr)
+                    in rebalance (TreeMap.Node ns l nr lmost.key lmost.value)
+                -- TreeMap.Nil -> error "cannot happen"
+    delete nil k = nil
+
+    filterKV :: Ord k ⇒ (k→v→Bool) → TreeMap k v → TreeMap k v
+    filterKV !p Nil = Nil
+    filterKV !p !m
+        | p m.key m.value = case (fl,fr) of
+            -- (Nil, Nil) →  Nil
+            (_,  Nil)  →  fl
+            (Nil, _)   →  fr
+            _          →  case leftmost fr of
+                -- because fr is not Nil, this can't be Nil either
+                minr →  rebalance (Node hr fl dr minr.key minr.value)
+                            where
+                                hr   = 1 + max (height fl) (height dr)
+                                dr   = delete fr minr.key
+        | null fl, null fr = Leaf m.key m.value     -- stripped  
+        | otherwise = -- at least one of fl, fr is not Nil, therefore m must be Node
+                      rebalance m.{höhe=nh, left=fl, right=fr}
+        where
+            fl = if m.{left?}  then filterKV p m.left  else Nil  -- filtered left tree
+            fr = if m.{right?} then filterKV p m.right else Nil  -- filtered right tree
+            nh = 1 + max (height fl) (height fr)    -- new height
+
+    lookup (TreeMap.Node _ l r !k1 v) !k =
+                    case k <=> k1 of 
+                        Lt -> lookup l k
+                        Gt -> lookup r k
+                        Eq -> Just v
+    lookup (Leaf k1 v) !k = if k == k1 then Just v else Nothing
+    lookup nil _ = Nothing
+    
+    index Node{left, right, key, value} !k =
+        case k <=> key of
+            Lt → index left k
+            Gt → index right k
+            Eq → value
+    index Leaf{key,value} k | k == key = value  
+    index nil k = error "key not found in TreeMap"
+
+    {--
+        > foldL o f a map
+        Fold a tree by applying an operation to an accumulator 
+        and key and value of every node, 
+        whereby the nodes are visited in a certain order
+        specified by the first argument. Let the tree be
+        >                       root 
+        >                     /     \
+        >                    /       \
+        >                   left    right
+        then the result is:
+        - @Eq@ the operation is first applied to the root node, 
+            and the result is passed to the left subtree, 
+            and the result of that is passed to the fold of the right subtree. 
+            Also known as "preorder" traversal.
+        - @Lt@ the operation is applied to the result of the 
+            fold done with the left sub-tree and the root node,
+            and the result of that is passed to the fold of the right subtree.
+            Also known as "inorder" traversal. This causes the operation to get
+            applied to the key/value pairs in ascending key order.
+        - @Gt@ like with @Lt@, but the subtrees are processed in reverse order, 
+            which results in application of the operation to the key/value pairs in
+            descending order. 
+    -}
+    foldL ∷ Ordering → (c → a → b → c) → c → TreeMap a b → c
+    foldL !o !f !a Leaf{key,value} = f a key value 
+    foldL !o !f !a t
+        | t.null = a
+        | otherwise = case o of
+            Eq → foldL Eq f (foldL Eq f (f a t.key t.value) t.left) t.right  
+            Lt → foldL Lt f (f (foldL Lt f a t.left) t.key t.value ) t.right
+            Gt → foldL Gt f (f (foldL Gt f a t.right) t.key t.value ) t.left
+    
+    --- foldR o f a map
+    --- Like 'TreeMap.foldL', but the function is right associative.
+    --- The following yields the key of _map_ in ascending order:
+    --- > foldR Gt (\k\v\a → k:a) [] map
+    foldR ∷ Ordering → (a → b → c → c) → c → TreeMap a b → c
+    foldR !o !f !a Leaf{key,value} = f key value a
+    foldR !o !f !a t
+        | t.null = a
+        | otherwise = case o of
+            Eq → foldR Eq f (foldR Eq f (f t.key t.value a) t.left) t.right  
+            Lt → foldR Lt f (f t.key t.value (foldR Lt f a t.left)) t.right
+            Gt → foldR Gt f (f t.key t.value (foldR Gt f a t.right)) t.left
+ 
+
+    mapV f Nil = Nil
+    mapV f Leaf{key,value}  = case f value of
+        !v -> Leaf key v
+    mapV f (Node i l r k v) = case f v of
+        !v' -> case mapV f l of
+            !left -> case mapV f r of
+                !right -> Node i left right k v'
+
+    mapKV f Nil = Nil
+    mapKV f Leaf{key,value}  = Leaf key (f key value)
+    mapKV f (Node i l r k v) = Node i (mapWithKey f l) (mapWithKey f r) k  (f k v)
+
+    traverseKV f Nil = pure Nil
+    traverseKV f Leaf{key,value} =  Leaf key <$> f key value
+    traverseKV f (Node i l r k v) = (Node i) <$> tl <*> tr <*> (pure k) <*> (f k v)
+        where
+            tl = traverseKV f l
+            tr = traverseKV f r  
+
+    insertList :: Ord  a  => TreeMap a b -> [(a, b)] -> TreeMap a b
+    insertList t kvs = fold ins t kvs where
+        ins t (k,v) = t.insert k v
+        
+    --- version of lookup that is optimised for 'String' keys
+    lookupS    :: TreeMap String value -> String -> Maybe value
+    lookupS (Node _ l r k1 v) !k =
+                    case String.compareTo k k1 of
+                        cmp | cmp < 0 = lookupS l k
+                            | cmp > 0 = lookupS r k
+                            | otherwise = Just v
+    lookupS Leaf{key, value} !k = if key == k then Just value else Nothing 
+    lookupS Nil !k = Nothing
+
+    --- version of lookup that is optimised for 'Int' keys
+    lookupI    :: TreeMap Int value -> Int -> Maybe value
+    lookupI (Node _ l r k1 v) !k =
+                    if k < k1 then lookupI l k
+                    else if k > k1 then lookupI r k
+                    else Just v
+    lookupI Leaf{key, value} !k = if key == k then Just value else Nothing
+    lookupI Nil !k = Nothing
+    --- version of insert that is optimized for 'Int' keys
+    insertI :: TreeMap Int value -> Int -> value -> TreeMap Int value
+    insertI (Node s l r  k1 v1) !k v =
+        case k <=> k1 of 
+            Lt -> case insertI l k v of 
+                    !nl -> case 1 + max (height nl) (height r) of 
+                        !ns -> rebalance (Node ns nl r k1 v1)
+            Eq -> Node s l r k v
+            Gt -> case insertI r k v of 
+                    !nr -> case 1 + max (height l) (height nr) of
+                        !ns -> rebalance (Node ns l nr k1 v1)
+    insertI (Leaf k1 v1) !k v =
+        case k <=> k1 of 
+            Lt -> Node 2 (Leaf k v) Nil k1 v1 
+            Eq -> Leaf k v
+            Gt -> Node 2 Nil (Leaf k v) k1 v1
+    insertI Nil !k v = Leaf k v
+
+    insertkvI k v t = insertI t k v
+    updatekvI k v t = insertI t k v
+
+
+    insertS :: TreeMap String value -> String -> value -> TreeMap String value
+    insertS (Node s l r  k1 v1) !k v =
+        case k <=> k1 of 
+            Lt -> case insertS l k v of 
+                    !nl -> case 1 + max (height nl) (height r) of 
+                        !ns -> rebalance (Node ns nl r k1 v1)
+            Eq -> Node s l r k v
+            Gt -> case insertS r k v of 
+                    !nr -> case 1 + max (height l) (height nr) of
+                        !ns -> rebalance (Node ns l nr k1 v1)
+    insertS (Leaf k1 v1) !k v =
+        case k <=> k1 of 
+            Lt -> Node 2 (Leaf k v) Nil k1 v1 
+            Eq -> Leaf k v
+            Gt -> Node 2 Nil (Leaf k v) k1 v1
+    insertS Nil !k v = Leaf k v
+
+    insertkvS k v t = insertS t k v
+    updatekvS k v t = insertS t k v
+
+--- 'TreeMap' can be used as array element
+derive ArrayElement (TreeMap a b)
+
+derive Show  (TreeMap k v)
+
+instance ListEmpty (TreeMap a) where
+    null TreeMap.Nil = true
+    null _ = false
+    empty = TreeMap.Nil
+
+instance Ord a => Monoid (TreeMap a b) where
+    mempty = TreeMap.Nil
+    mappend = union
+
+instance Functor (TreeMap a) where
+    fmap = TreeMap.mapV
+
+instance Traversable (TreeMap k) where
+    {--
+        _O(n)_ 
+
+        Transform a map by applying a function to every value.
+    -}
+    traverse f = traverseWithKey (const f)
+    foldl = foldValues
+    foldr = foldrValues
+
+type TreeSet a  = TreeMap a ()
+
+including s o = insert o () s
+contains  s o
+    | Nothing <- TreeMap.lookup o s  = false
+    | otherwise = true;
+
+fromKeys = fold ins empty 
+    where
+        ins :: Ord a => TreeSet a -> a -> TreeSet a 
+        ins t k = t.insert k ()
+-- union s1 = TreeMap.insertList s1 . each
+-- intersection s1 s2 = (TreeMap.insertList empty . filter ((s2 `contains`) . fst) . TreeMap.each) s1 
+-- diff s1 s2 = (TreeMap.insertList empty . filter (not . (s2 `contains`) . fst) . TreeMap.each) s1

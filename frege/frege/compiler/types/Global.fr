@@ -1,0 +1,529 @@
+--- The central data structure of the compiler, along with the monad
+module frege.compiler.types.Global 
+        inline (stio, changeST, putST, getST, 
+                    changeSTT, getSTT, liftIO, liftStG)
+    where 
+
+import  frege.data.TreeMap as TM(TreeMap, each)
+import  frege.java.Net(URLClassLoader)
+import  frege.control.monad.State  (State, StateT)
+
+import  frege.compiler.enums.Flags  as  Compilerflags(Flag, Flags, isOn, isOff)
+import  frege.compiler.enums.TokenID(TokenID)
+import  frege.compiler.types.Positions
+import  frege.compiler.types.Tokens
+-- import  frege.compiler.Classtools  as  CT()
+import  frege.data.Bits  (BitSet.BitSet, BitSet.member, BitSet.union bitunion, BitSet.intersection, BitSet.difference, Bits.`.^.`)
+import  frege.compiler.types.NSNames
+import  frege.compiler.enums.Literals
+import  frege.compiler.types.JNames
+import  frege.compiler.types.AbstractJava as JT()
+import  frege.compiler.types.SNames
+import  frege.compiler.types.Packs
+import  frege.compiler.types.QNames
+import  frege.compiler.types.External
+import  frege.compiler.types.Types
+import  frege.compiler.types.SourceDefinitions as SD()
+import  frege.compiler.types.Symbols
+import  frege.compiler.types.Targets
+
+--- compiler options
+data Options = !Options {
+    source :: String   --- our source file
+    sourcePath :: [String] --- path names where source files can be found
+    flags :: Flags     --- some 'Flag's
+    dir::String        --- value of the -d option or "."
+    path::[String]     --- value of the -fp option plus classpath depending on WITHCP
+    prefix::String     --- value of the -prefix option or ""
+    encoding :: Maybe String    --- used for construction of input file
+    tRanges :: [(Int, Int)]     --- ranges for trace output
+    target  :: Target           --- the target we are compiling to, i.e. "1.8"
+    extending :: Maybe Sigma    --- the (java) class the module is extending
+    implementing :: [Sigma]     --- the (java) interfaces the module is implementing
+    code :: [Token]             --- the extra java code to include in the output
+  }
+
+
+data Severity = HINT | WARNING | ERROR
+
+
+data Message = !Msg { pos :: Position, level :: Severity, text :: String }
+
+
+{--
+    Informs how tokens like 'VARID', 'CONID' and 'QUALIFIER' have been
+    resolved.
+    
+    [Left ()] this is a namespace name
+    [Right _] this is a type name, member name, constructor or (local) variable 
+-}
+type IdInfo = Either () QName
+
+
+{--
+    Package data that will be needed from importing packages:
+    
+    - the symbol table to look up 'VName', 'TName' and 'MName's
+    - the local table to look up 'Local's
+    - the table of QName/JName mappings
+-}
+data PackTab = PTab {
+    symtab :: Symtab                     --- Symbol table for named package items
+    locals :: TreeMap Int Symbol            --- local ids identified by uid
+}
+
+
+type Symbol = SymbolT Global
+
+
+type Symtab = TreeMap String Symbol
+
+
+--- items that are created early and seldom changed later so that copying them all the time is costly
+data SubSt = !Sub {
+    loader      :: MutableIO URLClassLoader --- class loader for access to imported classes
+    toks        :: JArray Token         --- array of tokens returned from scanner
+    idKind      :: TreeMap KeyToken IdInfo --- information about how id tokens got resolved
+    packageDoc  :: Maybe String         --- documentation for this package
+    sourcedefs  :: [SD.DefinitionS]     --- package definitions
+    numErrors   :: Int                  --- number of errors found so far
+    resErrors   :: Int                  --- number of variable resolution errors found so far
+    messages    :: [Message]            --- list of 'Message's (contains messages in reverse order)
+    nextPass    :: Int                  --- next pass (used in fregIDE only)
+    cancelled   :: IO Bool              {-- Tell if processing is cancelled. The eclipse IDE will put a value here that
+                                            checks a progress monitor. In batchmode this is of course always false.
+                                            We need this because certain passes can take a long time,
+                                            but usually do a 'foreach'-loop that could be terminated after
+                                            a substep. See 'forsome' -}
+    thisPack    :: Pack                 --- the current package
+    thisPos     :: Position             --- from *package* ... *where* 
+    nsPos       :: TreeMap NSName Position --- where NS was introduced
+    packWhy     :: TreeMap Pack [NSName]   {-- Tells for which namespace the package was imported.
+                                            Will be created during import. -}
+    nsUsed      :: TreeMap NSName ()    --- Has an entry for each name space encountered during name resolution.
+    stderr      :: MutableIO PrintWriter    --- error messages go here, UTF-8 encoded
+    toExport    :: [SName]                  --- inlineable functions from this package
+    code        :: CharSequence             --- original code (for error messages, etc.)
+}
+
+
+--- items that are set and used during code generation
+data GenSt = !Gen {
+    printer :: MutableIO PrintWriter    --- generated java code goes here, UTF-8 encoded
+    tunique :: Int                      --- unique numbers for taus
+    runique :: Int                      --- unique numbers for rhos
+    sunique :: Int                      --- unique numbers for sigmas
+    xunique :: Int                      --- unique numbers for exprs
+    tTree   :: TreeMap TauA Int           --- tau table
+    rTree   :: TreeMap RhoA Int           --- rho table
+    sTree   :: TreeMap SigmaA Int         --- sigma table
+    xTree   :: TreeMap ExprA Int          --- expr table
+    expSym  :: TreeMap QName Int          --- keeps track of expression numbers used for exported symbols
+    consts  :: TreeMap (Literalkind, String, Bool) Int   --- constant table
+    symi8   :: TreeMap Symbol SymInfo8     --- cached information about symbols return/arg types
+    jimport :: TreeMap String Pack         --- packages we have a java import statement for, by base name
+    main    :: String                   --- bare name of the top level class, set in GenMeta
+}
+
+
+--- compiler state, appears like it was global, but threaded through 'StG' monad
+data Global = !Global {
+    options  :: Options                  --- compiler options
+    sub      :: SubSt                    --- seldom changed items
+    gen      :: GenSt                    --- things used in code generation
+    unique   :: Int                      --- source for uniq integers
+    packages :: TreeMap Pack Symtab         --- map packages to symbol table
+    namespaces  :: TreeMap NSName Pack      --- map namespaces to packages
+    javaEnv :: TreeMap String ([String],[QName]) --- names of supertypes and types that implement a certain java type
+    genEnv  :: [Symbol]                  --- symbols of function that is being compiled
+    locals :: TreeMap Int Symbol            --- local ids identified by name
+    typEnv :: [QName]                    --- names of functions being type checked
+    tySubst :: TreeMap Int Tau              --- substitutions for type variables
+} where
+    --- true if and only if we are generating code for a top level item
+    toplevel (g::Global)    = null g.genEnv
+    -- make it look like all the items live in Global
+    -- optab (g::Global)       = g.sub.optab
+    tRanges (g::Global)     = g.options.tRanges
+    sourcePath ∷ Global → [String]
+    sourcePath (g::Global)  = g.options.sourcePath
+    packageDoc (g::Global)  = g.sub.packageDoc
+    definitions (g::Global) = g.sub.sourcedefs
+    stderr  (g::Global)     = g.sub.stderr
+    printer (g::Global)     = g.gen.printer
+    tunique (g::Global)     = g.gen.tunique
+    runique (g::Global)     = g.gen.runique
+    sunique (g::Global)     = g.gen.sunique
+    xunique (g::Global)     = g.gen.xunique
+    tTree (g::Global)       = g.gen.tTree
+    rTree (g::Global)       = g.gen.rTree
+    sTree (g::Global)       = g.gen.sTree
+    xTree (g::Global)       = g.gen.xTree
+    thisPack (g::Global)    = g.sub.thisPack
+    resolved :: Global -> Token -> Maybe IdInfo 
+    resolved g t = g.sub.idKind.lookup (KeyTk t)
+    -- namespaces (g::Global)  = g.sub.namespaces
+    errors (g::Global)      = if IDEMODE `member` g.options.flags 
+                                then g.sub.numErrors - g.sub.resErrors
+                                else g.sub.numErrors
+    -- genEnv (g::Global)      = g.genEnv
+    thisTab :: Global -> Symtab
+    thisTab g = case g.packages.lookup g.thisPack of
+        Just st -> st
+        Nothing -> if  IDEMODE `member` g.options.flags 
+            then  error ("no symtab for module " ++ show (g.unpack g.thisPack))
+            else  empty -- be tolerant in the IDE
+    
+    --- prepend a package name with the current prefix
+    unpack :: Global -> Pack -> String
+    unpack g p = g.options.prefix ++ p.raw
+    
+    --- convert 'Pack' to 'JName'
+    packClass :: Global -> Pack -> JName
+    packClass g p 
+        | m ~ ´^((\S+)\.)?(\w+)$´ <- g.unpack p
+        = case (m.group 2, m.group 3) of
+            (Just qn, Just base) = JName qn base
+            (Nothing, Just base) = JName "" base
+            _ -> JName "unbekannte" "Klasse"    -- should not happen
+        | otherwise = error ("bad module name " ++ p.raw)
+
+    --- tell if a 'Qname' is from the module we're just compiling
+    our :: Global -> QName -> Bool
+    our  g   (TName p  _) = p. == (Global.thisPack g)
+    our  g   (VName p  _) = p. == (Global.thisPack g)
+    our  g   (MName t  _) = our g t
+    our  g   (Local {})   = true
+
+    --- tell if a 'Symbol' is from the module we're just compiling
+    ourSym :: Global -> Symbol -> Bool
+    ourSym g sy = our g (Symbol.name sy)
+
+    --- find the 'Symbol' for a 'QName', which may be a 'SymL' (symbolic link) 
+    find :: Global -> QName  -> Maybe Symbol
+    find g (this@Local{uid}) =  g.locals.lookupI uid 
+    find g (this@TName p s) = case g.packages.lookup p of
+        Just env -> env.lookupS this.key
+        Nothing  -> Nothing
+    find g (this@VName p s) = case g.packages.lookup p of
+        Just env -> env.lookupS s
+        Nothing  -> Nothing
+    find g (MName t s) = findm g t s
+    --- find a member of a type, type class or instance  
+    findm ∷ Global → QName → String → Maybe Symbol
+    findm g t s  = case findit g t  of
+        Just sy | sy.{env?} = sy.env.lookupS s
+        Just (SymA {typ}) = case instTSym typ g of
+            Just sym 
+                | Just r <- findm g sym.name s  = Just r
+                | ForAll _ (RhoTau{tau=tau1}) <- typ,       -- look if its 
+                  [TCon{name}, _, tau2] <- tau1.flat,       -- type T = Mutable s X
+                  name == TName pPreludeIO "Mutable",       -- and look into X
+                  Just other <- instTauSym tau2 g = findm g other.name s
+                | otherwise = Nothing  
+            Nothing  -> Nothing
+        _ -> Nothing
+    --- like 'Global.find', but follow symbolic links
+    findit :: Global -> QName  -> Maybe Symbol
+    findit g t  = case find g t  of
+        Just sy -> follow g sy
+        Nothing -> Nothing
+    --- follow a symbolic link
+    follow ∷ Global → Symbol → Maybe Symbol
+    follow g (ali@SymL {alias}) = findit g alias
+    follow g sym = Just sym
+
+    --- tell if the 'MetaTv' is bound
+    bound :: Global -> MetaTvT a -> Maybe Tau
+    bound g (Flexi{uid}) = g.tySubst.lookupI uid
+    bound g (Rigid{})   = Nothing
+    
+    --- tells if the target we are compiling for has lambda support
+    hasLambdaSupport ∷ Global → Bool
+    hasLambdaSupport g = g.options.target > java7  
+
+
+{--
+    This predicate tells if a certain package is a Prelude package
+    (and so does not need a Prelude import)
+
+    Treatment as Prelude package can be forced
+    by prepending the *package* keyword with *protected*
+-}
+inPrelude :: Pack -> Global -> Bool
+inPrelude p g = (p `elem` map fst preludePacks)
+              || Flags.member INPRELUDE g.options.flags
+
+
+--- Determine type symbol of some type 
+--- This is either a function, or basically a 'Tau' type
+instTSym ∷ Sigma → Global → Maybe Symbol
+instTSym      (ForAll _ (RhoTau _ tau)) g = instTauSym tau g
+--         no need to deconstruct this again
+instTSym _ {- (ForAll _ (RhoFun{}))  -} g = g.findit (TName pPreludeBase "->")
+
+
+-- instTSym _ g = Nothing
+
+
+--- return type symbol for constructor of tau, if any
+instTauSym ∷ Tau → Global → Maybe Symbol
+instTauSym tau g = case tau of
+        TCon {name} -> Global.findit g name
+        TApp a _    -> instTauSym a g
+        _           -> Nothing
+
+
+--- The names of the java primitive types 
+primitiveTypes ∷ [String]
+primitiveTypes = ["byte", "short", "boolean", "char", "int", "long", "float", "double" ]
+
+
+{-- 
+    "Reserved" module names.
+    
+    If the last component of a module name equals a name of a class or interface in
+    @java.lang@ or @frege.run@ it will not be imported in the generated java code.
+    
+    This is so that we don't have to use the long names for classes that we need
+    all the time (think @Func@, @Integer@, @String@ etc.) just to avoid
+    name clashes with imported modules. 
+-}
+reservedNames = TM.fromKeys (snd javaLangNames
+                    ++ snd fregeRunNames
+                    ++ snd fregeRuntimeNames
+                    ++ targetNames
+                    ++ otherReserved)
+
+--- check if a module name is reserved
+isReserved m = case reservedNames.lookupS m of
+    Just _  → true
+    _       → false
+
+{--
+    The short name of some class name in a (Map fully-qualified-name short-name).
+
+    The names herein must be independent of the compilation target.
+-}
+shortClassName = TM.fromList [ (k ++ "." ++ n, n) | 
+            (k,ns)  ← [javaLangNames, fregeRunNames, fregeRuntimeNames, fregeRuntimePhantomNames ],
+            n       ← ns
+    ]
+
+--- Abbreviate a class name, if possible
+abbreviate ∷ Global → String → String
+abbreviate g k = case shortClassName.lookupS k of
+    Just s | g.gen.main != s    = s
+    _                           = k
+
+--- The name we must use for target dependent classes like Func, Lazy and Thunk that are used in the code generator.
+targetName ∷ Global → String → String
+targetName g s = if g.gen.main == s then
+                if g.hasLambdaSupport 
+                    then "frege.run8." ++ s
+                    else "frege.run7." ++ s
+            else s
+
+--- When a native name starts with @package.@ or @module.@, it will be replaced according to target
+substRuntime ∷ Global → String → String
+substRuntime g s
+    | g.hasLambdaSupport = s.replaceFirst ´^(package|module)\.´ "frege.run8."
+    | otherwise          = s.replaceFirst ´^(package|module)\.´ "frege.run7."
+
+
+javaLangNames,fregeRunNames, fregeRuntimeNames ∷ (String, [String])
+javaLangNames = (,) "java.lang" [
+    -- java.lang Interfaces
+    "Appendable", "AutoCloseable", "CharSequence", "Cloneable", "Comparable",
+    "Iterable", "Readable", "Runnable",
+    -- java.lang Classes
+    "Boolean", "Byte", "Character", "Class", "ClassLoader", "ClassValue",
+    "Compiler", "Double", "Enum", "Float", "InheritableThreadLocal", 
+    "Integer", "Long", "Math", "Number", "Object", "Package", "Process",
+    "ProcessBuilder", "Runtime", "RuntimePermission", "SecurityManager",
+    "Short", "StackTraceElement", "StrictMath", "String", "StringBuffer",
+    "StringBuilder", "System", "Thread", "ThreadGroup", "ThreadLocal",
+    "Throwable", "Void",
+    -- java.lang Exceptions & Errors (omitted)
+    -- java.lang Annotations
+    "Deprecated", "FunctionalInterface", "Override", "SafeVarargs", 
+    "SuppressWarnings", ]
+
+--- The corresponding classes will be automatically imported in GenMeta
+fregeRunNames = (,) "frege.run" [
+    "Kind", "RunTM"
+    ]
+
+--- The corresponding classes will be automatically imported in GenMeta
+fregeRuntimeNames = (,) "frege.runtime" [
+     "Meta"
+    ]
+
+fregeRuntimePhantomNames = (,) "frege.runtime.Phantom" [ "RealWorld" ]
+
+--- The following will be imported as either @frege.run7.XXX@ or @frege.run8.XXX@,
+--- depending on the compilation target.
+targetNames = ["Func", "Lazy", "Thunk"]
+
+--- Other reserved names, see 'reservedNames'
+--- [@K@] the name of the nested class where constant expressions are kept.
+otherReserved = ["K"]
+
+--- avoid writing 'State' 'Global' all the time
+type StG = State Global
+
+
+--- avoid writing 'StateT' 'Global' 'IO' all the time
+type StIO = StateT Global IO
+
+
+liftIO :: IO a -> StIO a
+liftIO = StIO.liftIO
+
+
+liftStG :: StG a -> StIO a
+liftStG = State.promote
+
+
+{-- Convenience function for injecting an @a@ into ('StG').
+    This is just 'StG.return' typed as @a -> State Global a@ -}
+stio :: a -> StG a
+stio !a = StG.pure a
+
+
+
+{--
+    Convenience function for getting the state.
+    This replaces the ugly:
+    > (s::Global) <- State.get
+-}
+getST :: StG Global
+getST = State.get
+
+
+{--
+    Convenience function for getting the state.
+    This replaces the ugly:
+    > (s::Global) <- StateT.get
+-}
+getSTT :: StIO Global
+getSTT = StateT.get
+
+
+{--
+    Convenience function for putting the state back.
+    This is just 'State.put' retyped.
+    -}
+putST :: Global -> StG ()
+putST s = State.put s
+
+
+{--
+    Convenience function for changing the state.
+    This is just 'State.modify' retyped.
+    -}
+changeST :: (Global -> Global) -> StG ()
+changeST f = State.modify f
+
+
+{--
+    Convenience function for changing the state.
+    This is just 'StateT.modify' retyped.
+    -}
+changeSTT :: (Global -> Global) -> StIO ()
+changeSTT f = StateT.modify f
+
+
+--- absurd true message aborts the compiler with "message"
+absurd :: Bool -> String -> StG ()
+absurd c msg = if c then error msg else stio ()
+
+
+{-- do a 'StG' action for each element of a list -}
+foreach :: [a] -> (a -> StG b) -> StG ()
+foreach list f = foldr (>>) (stio ()) (map f list)
+
+
+{-- do a 'StIO' action for each element of a list while not cancelled -}
+forsome ∷ [a] → (a→StIO b) → StIO ()
+forsome [] f = return ()
+forsome (a:as) f = do
+    g <- getSTT
+    b <- liftIO g.sub.cancelled
+    if b then return () else do
+        f a
+        forsome as f
+
+
+{-- map a 'StG' action over each element of a list and return the resulting list in 'StG' -}
+mapSt :: (a -> StG b) -> [a] -> StG [b]
+mapSt f [] = stio []
+mapSt f (a:as) = do
+    a <- f a
+    as <- mapSt f as
+    stio (a:as)
+
+
+{-- fold with 'StG' action -}
+foldSt :: (a -> b -> StG a) -> a -> [b] -> StG a
+foldSt f a [] = stio a
+foldSt f a (b:bs) = do
+        a <- f a b
+        foldSt f a bs
+
+
+-- ------------  position functions ------------------
+--- Position of the *package* keyword. If there is none falls back to 'Position.null'
+packageStart :: Global -> Position
+packageStart g = case filter ((PACKAGE ==) • Token.tokid) g.sub.toks.toList of
+    t:_ -> Pos t t
+    _   -> Position.null
+
+
+--- Position of the last character in the file. If there is none falls back to 'Position.null'
+packageEnd :: Global -> Position
+packageEnd g = case dropWhile ((Int.maxBound. ==) • Token.offset) (reverse g.sub.toks.toList) of
+    (tok:_) -> positionOf tok.{value=" ", offset = tok.offset + tok.length - 1, col = tok.col + tok.length - 1}
+    _       -> Position.null
+
+
+--- get the tokens that make up this item
+tokens :: Position -> Global -> [Token]
+tokens pos
+    | pos == Position.null = const [pos.first]
+    | otherwise = filter wanted
+                 • takeWhile ((< e) • Token.offset)
+                 • dropWhile ((< s) • Token.offset)
+                 • toList
+                 • SubSt.toks
+                 • Global.sub
+         where
+            -- wanted :: Token -> Bool
+            wanted t
+                | id. == COMMENT = false
+                | id. == DOCUMENTATION = false
+                | otherwise = true
+                where id = Token.tokid t
+            e = pos.end
+            s = pos.start
+
+
+
+{--
+    Information needed for generating function calls, etc.
+    (For new code generator.)
+
+    -}
+data SymInfo8 = SI8 {
+        returnJT    :: JT.JType     --- the type delivered by a call to this function
+        argJTs      :: [JT.JType]   --- declared argument java types
+        argSigs     :: [Sigma]       --- argument sigma types
+        retSig      :: Sigma         --- return sigma type
+    }
+
+--- produce a unique number
+uniqid :: StG Int
+uniqid = do
+    g <- getST
+    putST g.{unique <- (1+)}
+    pure g.unique

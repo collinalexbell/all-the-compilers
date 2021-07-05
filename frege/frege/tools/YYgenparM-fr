@@ -1,0 +1,136 @@
+{-
+
+    this file will be appended to every parser YYgen.fr builds
+
+ -}
+
+dropBrace !n (t:ts) = case yychar t of
+    '{' -> t:dropBrace (n+1) ts
+    '}' | n == 1 = ts
+        | otherwise = t : dropBrace (n-1) ts
+    _   -> t : dropBrace n ts
+;
+dropBrace n [] = [];
+
+-- the main loop of the parser
+yyloop (yyvals@(st, _):_) (yytoks@yyt:yyts) =
+    case yyaction st yyt of
+        YYAction act
+            | act == yyAccept -> YYM.pure (yyaccept (yyvals, yytoks))  -- will this ever happen?
+            | act == yyErr    -> do
+                            let fun = elemAt yyrecs st
+                            toks <- fun yytoks
+                            yyloop yyvals toks
+            | act == yyBrace = yyloop yyvals (yyt.{tokid=CHAR, value="}"} : dropBrace 1 yytoks) -- insert '}'
+            -- shift?
+            | act >= 0, yydebug, traceLn (show st ++ ": shift to " ++ show act ++ " on " ++ yyshow yyt) = undefined
+            | act >= 0 = yyloop ((act, YYTok yyt)!:yyvals) yyts
+            -- must be reduction
+            | yydebug, traceLn (show st ++ ": reduce by rule " ++ yyrule (-act)) = undefined
+            | otherwise = do
+                vals <- yyreduce (-act) yyvals
+                yyloop vals yytoks
+;
+yyloop (yyvals@(st, _):_) [] =
+    case yyeaction st of
+        YYAction act
+            | act == yyAccept -> YYM.pure (yyaccept (yyvals, []))
+            | act == yyErr = do
+                yyerror yyEOF ("syntax error on end of file")
+                YYM.pure (yyvals, [])
+            -- shift?
+            | act >= 0 -> error ("Can't shift on end of file in state " ++ show act)
+            -- must be reduction
+            | yydebug, traceLn (show st ++ ": reduce by rule " ++ yyrule (-act)) = undefined
+            | otherwise = do
+                vals <- yyreduce (-act) yyvals
+                yyloop vals []
+    ;
+yyloop [] yytoks = error "empty stack in yyloop";
+
+yyaction n tok = case itemAt yyacts n of {
+    Just fun -> fun tok;
+    Nothing  -> YYAction yyErr;
+};
+
+yyeaction n = case elemAt yyeacts n of  {
+    0 -> YYAction yyErr;
+    this -> YYAction this; 
+};
+
+{-- nowarn: application of 'yybadprod' will diverge --};
+yybadprod p yyvs = error ("bad stack for rule " ++ show p ++ ": " ++ showst yyvs);
+
+
+
+-- drop tokens until token is valid in this state
+yydrop i [] = yyrecover i [];
+yydrop i (t:ts) = case yyaction i t of {
+        YYAction err
+            | yyErr == err, yydebug, trace (show i ++ ": error recovery drops " ++ yyshow t ++ "\n") = undefined
+            | yyErr == err = yydrop i ts
+            | otherwise  =  YYM.pure (t:ts);
+    };
+yyrecover i []
+    | yydebug, trace (show i ++ ": error recovery reaches end of file\n") = undefined
+    | otherwise = YYM.pure [];
+
+yyrecover i (ts@t:_) = do
+    yyerror (yyline t) ("syntax error on " ++ yynice t)
+    yydrop i ts
+;
+
+yyexpect n trep (ts@t:_) = do
+    yyerror (yyline t) ("expected " ++ yynice trep ++ ", found " ++ yynice t)
+    YYM.pure (trep:ts)
+;
+
+yyexpect n trep [] = do
+    yyerror yyEOF ("expected " ++ yynice trep ++ ", found end of file")
+    YYM.pure [trep]
+;
+
+yyparsing n item (ts@t:_) = do
+    yyerror (yyline t) ("unexpected " ++ yynice t ++ " while trying to parse " ++ item)
+    yydrop n ts
+;
+yyparsing n item [] = do
+    yyerror yyEOF ("unexpected end of file while parsing " ++ item)
+    yyrecover n []
+;
+yybadstart n item (ts@t:_) = do
+    yyerror (yyline t) ("syntax error, " ++ item ++ " cannot start with " ++ yynice t)
+    yydrop n ts
+;
+yybadstart n item [] = do
+    yyerror yyEOF ("end of file while expecting " ++ item)
+    yyrecover n []
+;
+yyreduce red yyvs = case itemAt yyprods red of
+    Just fun -> do
+        reduced <- fun yyvs
+        case reduced of
+            (yyv, yyvals@(popst, _):_) -> case yygos.genericItemAt popst of
+                Just arr -> case elemAt arr red of
+                    go | go > 0, yydebug, trace (show popst
+                                    ++ ": after reduction goto "
+                                    ++ show go ++ "\n") = undefined
+                       | go > 0 = YYM.pure ((go, yyv):yyvals)
+                       | otherwise = error ("nowhere to go in state "
+                                                ++ show popst ++ " after reduction " ++ show red)
+                Nothing -> error ("nowhere to go in state "
+                                            ++ show popst ++ " after any reduction")
+            _ -> error ("reduction " ++ show red ++ " yields nonsensical result.")
+    Nothing -> error ("reduction " ++ show red ++ " is unknown.")
+;
+
+
+yyparse yytoks = do
+    res <- yyloop [(0, YYStart ())] yytoks
+    case res of
+        ([(_, YYAcc x)], []) -> YYM.pure (Just x)
+        ([(_, YYAcc x)], (yyt:_)) -> do
+            yyerror (yyline yyt) ("expected end of file, found `" ++ yynice yyt ++ "`")
+            YYM.pure (Just x)
+        _ -> YYM.pure Nothing;
+;

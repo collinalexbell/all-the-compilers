@@ -1,0 +1,298 @@
+{--
+    Classes from java.io
+-}
+
+protected package frege.java.IO where
+
+import frege.java.Lang public(IOException, PrintStream)
+import frege.java.Lang as Lang' (Byte, Exception) -- private imports
+import frege.prelude.PreludeBase
+import frege.prelude.PreludeIO
+import frege.prelude.PreludeText
+import frege.prelude.PreludeList
+import frege.prelude.PreludeMonad
+import frege.prelude.PreludeArrays
+
+data FileNotFoundException = pure native java.io.FileNotFoundException
+derive Exceptional FileNotFoundException
+
+data UnsupportedEncodingException = pure native java.io.UnsupportedEncodingException
+derive Exceptional UnsupportedEncodingException
+
+data EOFException = pure native java.io.EOFException where
+    pure native new :: String -> EOFException
+derive Exceptional EOFException
+
+
+--- frege equivalent of @java.io.OutputStream@
+data OutputStream = native java.io.OutputStream where
+    native write :: Mutable s OutputStream -> ArrayOf s Byte -> ST s () throws IOException
+                  | Mutable s OutputStream -> ArrayOf s Byte -> Int -> Int -> ST s () throws IOException
+                  | Mutable s OutputStream -> Int -> ST s () throws IOException
+
+--- frege equivalent of @java.io.FileOutputStream@
+data FileOutputStream = native java.io.FileOutputStream where
+    --- > FileOutputStream.new file true 
+    --- writes to the end of a file rather than the beginning
+    native new :: File -> IOMutable FileOutputStream
+                    throws FileNotFoundException
+                | File -> Bool -> IOMutable FileOutputStream
+                    throws FileNotFoundException
+                | String -> IOMutable FileOutputStream
+                    throws FileNotFoundException
+                | String -> Bool -> IOMutable FileOutputStream
+                    throws FileNotFoundException
+    --- Writes the specified *byte* to this file output stream.  
+    native write :: MutableIO FileOutputStream -> Int -> IO ()
+                    throws IOException
+
+--- frege equivalent of @java.lang.AutoCloseable@
+data AutoCloseable = native java.lang.AutoCloseable where
+    native close :: Mutable s AutoCloseable -> ST s () throws Exception
+
+--- frege equivalent of @java.io.Closeable@
+data Closeable = native java.io.Closeable where
+    native close :: Mutable s Closeable -> ST s () throws IOException
+
+--- frege equivalent of @java.io.Flushable@
+data Flushable = native java.io.Flushable where
+    native flush :: Mutable s Flushable -> ST s () throws IOException
+
+--- forward declaration of URI
+protected data URI = pure native java.net.URI
+
+data File = pure native java.io.File where
+    pure native new           :: String -> File
+                              |  File -> String -> File
+    pure native toURI         :: File -> URI
+    --- warning: [deprecation] Use 'getPath' instead
+    pure native getPathF  getPath    :: File -> String
+    
+    --- Separator for elements of a path name, i.e. "/" on Unix
+    pure native separator        java.io.File.separator
+                              :: String
+    --- Separator for elements of a path, i.e. ":" on Unix
+    pure native pathSeparator    java.io.File.pathSeparator
+                              :: String
+    --- The (relative) path name. Not necessarily valid.
+    pure native getPath       :: File -> String
+    pure native getName       :: File -> String
+    native canRead            :: File -> IO Bool
+    native canWrite           :: File -> IO Bool
+    pure native isAbsolute    :: File -> Bool
+    native isDirectory        :: File -> IO Bool
+    native isFile             :: File -> IO Bool
+    native exists             :: File -> IO Bool
+    native mkdirs             :: File -> IO Bool
+    native delete             :: File -> IO Bool
+    native renameTo           :: File -> File -> IO Bool
+    native lastModified       :: File -> IO Long
+    pure native getParentFile :: File -> Maybe File
+    native list               :: File -> IO (Maybe (MutableIO (JArray String)))
+    --- Create an empty file in the default temp directory.
+    --- > createTempFile "abc" ".suffix"
+    --- The prefix must be at least 3 characters long!
+    native createTempFile java.io.File.createTempFile
+                         :: String -> String -> IO File
+                                                throws IOException
+
+instance Serializable File
+
+instance Show File where show = File.getPath
+
+data Writer = native java.io.Writer where
+    native write :: Mutable s Writer -> Int -> ST s () throws IOException
+                 |  Mutable s Writer -> String -> ST s () throws IOException
+                 |  Mutable s Writer -> String -> Int -> Int -> ST s () throws IOException
+    putChar :: Mutable s Writer -> Char -> ST s ()
+    putChar w c = write w (ord c)
+
+data OutputStreamWriter = native java.io.OutputStreamWriter where
+    native new :: Mutable s OutputStream -> String -> STMutable s OutputStreamWriter
+                                throws UnsupportedEncodingException
+
+data PrintWriter = native java.io.PrintWriter where
+    --- print a 'String'
+    native print    :: Mutable s PrintWriter -> String -> ST s ()
+    --- print a 'String' followed by a line terminator, or just a line terminator
+    native println  :: Mutable s PrintWriter -> String -> ST s ()
+                    |  Mutable s PrintWriter -> ST s ()
+    --- format and print 1 to 9 values, see 'String.format' 
+    native printf{} :: Mutable s PrintWriter -> String -> a -> ST s ()
+                    |  Mutable s PrintWriter -> String -> a -> b -> ST s ()
+                    |  Mutable s PrintWriter -> String -> a -> b -> c -> ST s ()
+                    |  Mutable s PrintWriter -> String -> a -> b -> c -> d -> ST s ()
+                    |  Mutable s PrintWriter -> String -> a -> b -> c -> d -> e -> ST s ()
+                    |  Mutable s PrintWriter -> String -> a -> b -> c -> d -> e -> f -> ST s ()
+                    |  Mutable s PrintWriter -> String -> a -> b -> c -> d -> e -> f -> g -> ST s ()
+                    |  Mutable s PrintWriter -> String -> a -> b -> c -> d -> e -> f -> g -> h -> ST s ()
+                    |  Mutable s PrintWriter -> String -> a -> b -> c -> d -> e -> f -> g -> h -> i -> ST s ()
+    native new      :: String -> IOMutable PrintWriter throws FileNotFoundException
+                    |  File -> IOMutable PrintWriter throws FileNotFoundException
+                    |  File -> String -> IOMutable PrintWriter 
+                                throws FileNotFoundException, UnsupportedEncodingException
+                    |  Mutable s OutputStream -> STMutable s PrintWriter
+                    |  Mutable s OutputStream -> Bool -> STMutable s PrintWriter
+                    |  Mutable s Writer -> STMutable s PrintWriter
+                    |  Mutable s Writer -> Bool -> STMutable s PrintWriter
+
+--- nowarn: Don't warn because of constantness
+--- The standard output 'PrintWriter'
+native stdout "frege.runtime.Runtime.stdout.get()" :: MutableIO PrintWriter
+
+--- nowarn: Don't warn because of constantness
+--- The standard error 'PrintWriter'
+native stderr "frege.runtime.Runtime.stderr.get()" :: MutableIO PrintWriter
+
+--- nowarn: Don't warn because of constantness
+--- The standard input 'BufferedReader'
+native stdin  "frege.runtime.Runtime.stdin.get()"  :: MutableIO BufferedReader
+        
+{-- 
+    Frege type for a @java.io.StringWriter@
+    
+    Not intended for direct use but rather as something
+    a 'PrintWriter' can be made of. (Though, because
+    of the 'Appendable' inheritance, one could 
+    still 'Appendable.append' directly.)
+    
+    To be used like:
+    
+    > action :: PrintWriter -> IO ()
+    > action =  ...
+    > actionOnStringWriter :: IO String  
+    > actionOnStringWriter = do
+    >       sw <- StringWriter.new
+    >       pr <- sw.printer
+    >       action pr
+    >       pr.close
+    >       sw.toString  
+    -}    
+data StringWriter = native java.io.StringWriter where
+    --- create a fresh 'StringWriter'
+    native new      :: () -> STMutable s StringWriter
+    --- get the content of a 'StringWriter' as 'String'    
+    native toString :: Mutable s StringWriter -> ST s String
+    --- make a 'PrintWriter' that prints to this 'StringWriter'
+    printer :: Mutable s StringWriter -> STMutable s PrintWriter
+    printer this = PrintWriter.new this -- IOMut PrintWriter
+
+            
+-- ----------------------------------------------------------------------------
+-- Input Streams & Readers
+-- ----------------------------------------------------------------------------
+
+data InputStream = native java.io.InputStream where
+    native available :: Mutable s InputStream -> ST s Int throws IOException
+    native mark :: Mutable s InputStream -> Int -> ST s ()
+    native markSupported :: Mutable s InputStream -> ST s Bool
+    native read :: Mutable s InputStream -> ST s Int throws IOException
+                 | Mutable s InputStream -> ArrayOf s Byte -> ST s Int throws IOException
+                 | Mutable s InputStream -> ArrayOf s Byte -> Int -> Int -> ST s Int throws IOException
+    native reset :: Mutable s InputStream -> ST s () throws IOException
+    native skip :: Mutable s InputStream -> Long -> ST s Long throws IOException
+
+data FileInputStream = native java.io.FileInputStream where
+    native new :: File -> IOMutable FileInputStream 
+                    throws FileNotFoundException
+                | String  -> IOMutable FileInputStream 
+                    throws FileNotFoundException
+
+data Reader = native java.io.Reader where
+    native mark :: Mutable s Reader -> Int -> ST s () throws IOException
+    native markSupported :: Mutable s Reader -> ST s Bool
+    {--
+        Reads a single character and returns it as 'Int' in the range 0 to 65535.
+        Returns -1 if the end of the stream has been reached.
+        
+        Throws 'IOException' if an I/O error occurs.
+    -}
+    native read :: Mutable s Reader -> ST s Int throws IOException
+                 | Mutable s Reader -> ArrayOf s Char -> ST s Int throws IOException
+                 | Mutable s Reader -> ArrayOf s Char -> Int -> Int -> ST s Int throws IOException
+    native ready :: Mutable s Reader -> ST s Bool throws IOException
+    native reset :: Mutable s Reader -> ST s () throws IOException
+    native skip :: Mutable s Reader -> Long -> ST s Long throws IOException
+
+    {--
+        Read the next character from the input stream.
+        Throws 'EOFException' if the end of the stream has been reached, or 'IOException' if
+        an I/O error occurs.
+    -}
+    getChar :: Mutable s Reader -> ST s Char
+    getChar rdr = do
+        i <- rdr.read
+        if i < 0 then throwST (EOFException.new "getChar") else return (chr i)
+
+data InputStreamReader = native java.io.InputStreamReader where
+    native new :: Mutable s InputStream -> String -> STMutable s InputStreamReader
+                    throws UnsupportedEncodingException
+    
+data BufferedReader = native java.io.BufferedReader where
+    native new :: Mutable s Reader -> STMutable s BufferedReader
+    {--
+        Reads a line of text. A line is considered to be terminated 
+        by any one of a line feed ("\n"), a carriage return ("\r"), 
+        or a carriage return followed immediately by a linefeed.
+        
+        [Returns:] 'Just' _string_, where _string_ is the contents of the line, 
+        not including any line-termination characters, 
+        or 'Nothing' if the end of the stream has been reached.
+
+        [Throws:] IOException - If an I/O error occurs
+    -}
+    native readLine :: Mutable s BufferedReader -> ST s (Maybe String)
+                    throws IOException
+    {--
+        Reads all lines, returns them as a list of Strings, and closes the reader when finished.
+        The list is reversed in the process (and thus not fully lazy but materialized).
+    -}
+    getLines :: Mutable s BufferedReader -> ST s [String]
+    getLines br = go []  where
+        go acc = do
+            xms <- br.readLine
+            case xms of
+                Just s ->  go (s:acc) 
+                _      ->  br.close >> return (reverse acc)
+
+    {-- 
+        Reads the next line from a buffered reader using 'BufferedReader.readLine', 
+        and returns the string or throws 'EOFException' on end of file. 
+        -}       
+    getLine :: Mutable s BufferedReader -> ST s String
+    getLine br = readLine br >>= maybe (throwST (EOFException.new "getLine")) return
+    
+
+{-- 
+    Convenience function to open a file and wrap it with an UTF-8 decoding
+    buffered 'Reader'.
+    
+    May throw 'FileNotFoundException'
+    -}
+openReader :: String -> IOMutable BufferedReader
+openReader fileName = do
+    fis <- FileInputStream.new fileName
+    isr <- InputStreamReader.new fis "UTF-8"                    
+    BufferedReader.new isr
+
+{--
+    Convenience function to open a file for writing through an UTF-8 encoding
+    'PrintWriter'.
+    -}
+openWriter :: String -> IOMutable PrintWriter
+openWriter fileName = do
+    let file = File.new fileName
+    PrintWriter.new file "UTF-8"
+
+{--
+    Convenience function to open a file in append mode for 
+    writing through an UTF-8 encoding
+    'PrintWriter'.
+    
+    May throw 'FileNotFoundException'
+    -}
+appendWriter :: String -> IOMutable PrintWriter
+appendWriter fileName = do
+        fos <- FileOutputStream.new fileName true
+        ofw <- OutputStreamWriter.new fos "UTF-8"
+        PrintWriter.new ofw

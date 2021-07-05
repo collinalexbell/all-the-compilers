@@ -1,0 +1,29 @@
+(import cstdio)
+
+(import macros)
+(import vector)
+(import algorithms)
+(import concepts)
+
+(std.concepts.instantiate Vector int)
+(std.concepts.instantiate sort (Iterator (Vector int)))
+(std.concepts.instantiate for-each (Iterator (Vector int)))
+
+(def print-num
+  (fn extern void ((n int))
+    (printf "%d, " n)
+    (return)))
+
+(def main
+  (fn extern-c int (void)
+    (let ((v (Vector int))
+          (i int 0))
+      (for (setv i 100) (> i 0) (decv i)
+        (push-back v i))
+
+      (for-each (begin v) (end v) (# print-num int))
+      (printf "\n")
+      (sort (begin v) (end v))
+      (for-each (begin v) (end v) (# print-num int))
+      (printf "\n")
+    0)))

@@ -1,0 +1,681 @@
+__, Copyright 2012-2020 Dustin DeWeese
+  | This file is part of PoprC.
+  |
+  |  PoprC is free software: you can redistribute it and/or modify
+  |  it under the terms of the GNU General Public License as published by
+  |  the Free Software Foundation, either version 3 of the License, or
+  |  (at your option) any later version.
+  |
+  |  PoprC is distributed in the hope that it will be useful,
+  |  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  |  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  |  GNU General Public License for more details.
+  |
+  |  You should have received a copy of the GNU General Public License
+  |  along with PoprC.  If not, see <http://www.gnu.org/licenses/>.
+  |______________________________________________________________________
+
+module lib:
+
+imports:
+  module num
+  module list
+  module stack
+  module control
+
+
+module num:
+
+imports:
+  module stack
+  module control
+
+__ max of two values
+max: [] ap20 dup . dup tail | [<= !] . popr nip
+
+__ min of two values
+min: [] ap20 dup . dup tail | [> !] . popr nip
+
+__ is argument odd?
+odd: 1 &b 1 ==
+
+even: 1 &b 0 ==
+
+bound: [dup_under >= !] dip21 dup_under <= !
+
+up_to: 0 swap bound
+
+module list:
+
+imports:
+  module control
+  module stack
+  module logic
+
+__ take rightmost value from quote
+head: popr nip
+top: dup head
+
+__ return the length of a list
+length:
+  [0 swap] pushl
+    [[[1+] [tail] para] .]
+    [popr popr valid]
+    iterate tail head
+
+__ right fold
+__ [... x] y [fn] foldr -> y'
+foldr:
+  [-swap2] ap30 __ fn xs y
+    [[foldr_step] .]
+    [tail head popr valid]
+    iterate head
+foldr_step: [popr] dip12 over3 ap21 nip
+
+__ left fold
+__ [... x] y [fn] foldl -> y'
+foldl:
+  swap2 [[]] ap20 __ fn xs y
+    [[foldl_step] .]
+    [popr drop head popr valid]
+    iterate head ap11 nip
+foldl_step: [popr over2 pushl] dip23 .
+
+dropl:
+  [] ap20
+    [[[tail] [1-] para] .]
+    [head 0 >]
+    iterate tail head
+
+__ [a.. x] [b..] -> [a..] [x b..]
+movr: [popr] dip12 pushl
+
+__ not working
+__ split_at: [[[]] pushl] dip11 [[movr] .] swap times ap02 swap2 drop
+split_at:
+  [[] swap] ap20
+    [[[movr] dip22 1-] .]
+    [head 0 >]
+    iterate tail get2
+
+__ index operator
+__ [f] index -> x
+@: dropl head
+
+__ a [a -> a] -> [a]
+iteratel:  dup [peek] dip22 [iteratel] $$ swap pushr
+
+__ a [f] -> [... a f f f a f f a f a]
+itercat: dup_under itercat_loop swap pushr
+itercat_loop: dup [itercat_loop] pushl [pushl dup head] dip22 $ swap .
+
+concat: [] [.] foldr
+
+__ [xs] [f] map -> [xs']
+map:
+  [popr dup [seq] pushl] dip13 __ [xs] x [x seq] [f]
+    dup [swap . pushl] dip31  __ [xs] [x f*] [f] (* = x seq)
+    [map] pushl swap __ [xs] [[f] map] [x f*]
+    [$] dip21 . __ [[xs] [f] map . x f*]
+
+__ [xs] s [f] map_with -> [xs']
+map_with:
+  [[popr] dip12 swap] dip23 __ [xs] s x [f]
+    dup [$$-] dip32 swap __ [xs] s' [f] x'
+    [map_with] dip31 pushr
+
+__ a [b..] [p] pushif
+__ a p       ==> [a b..]
+__ otherwise ==> [b..]
+pushif:
+  [over] dip23 $
+    -swap2 dup [pushl] dip21
+    ifte
+
+__ [..x] [f] $top -> [..x] [f] xf
+$top: dup2 . head
+
+__ [l] [p] next_match -> [l'] x
+next_match:
+  $top [nip [popr] dip12 !!]
+       [[[tail] dip11 next_match] dip22 not!!] | $$$-
+
+__ [l] [p] filter -> [..x..] such that for all x, x p == True
+filter: tuck next_match [swap filter] dip21 pushr
+
+__ second implementation that fuses after map
+__ TODO remove need for this
+filter2:
+  [popr] dip12 tuck peek []ap20 __ [...] [fn] [x fx]
+    [filter2] dip21
+    [[pushr] dip21 !]
+    [[drop] dip21 not!] | . $
+
+__ a n listdup --> [a... x n]
+listdup: [] -swap2 [swap pushl] pushl swap times
+
+reverse: [] [swap pushr] foldr
+
+__ [... a] [... b] pop_par --> [...] [...] a b
+pop_par: [popr] dip12 popr [swap] dip22
+top_par: [top] dip12 top [swap] dip22
+
+__ pop the smaller integer from two lists
+__ NOTE why does this compile slow?
+pop_min:
+  [top_par <=] ap20
+    [[[popr] dip12 swap] dip23] __ a <= b
+    [[popr] dip12 not] | . popr! get3 __ a > b
+
+pushl_seq: over seq pushl
+pushl_seq2: pushl_seq pushl_seq
+
+__ [a] [b] [acc]
+merge_step: [pop_min] dip23 pushl_seq
+
+__ [a] [b] [acc]
+merge_loop:
+  [] ap30 dup
+    [] [[swap] dip22] | . __ [[a] [b] [acc]] | [[b] [a] [acc]]
+    [. [head] dip11 otherwise] . swap
+    [merge_step merge_loop] . | head
+
+merge: [] merge_loop
+
+half_rem: dup 2/ dup [-] dip21
+
+_[ broken
+
+__ split_list: [half_rem [dup [split_at] dip22] dip23 -swap2 []ap20 [[] ap20] dip21]. get2
+split_list: half_rem [dup [split_at] dip22] dip23 -swap2
+
+sort:
+  dup length []ap20
+    [get2 dup [split_list []ap20 [[]ap20] dip21] dip22 1 > !!] __ split
+    [tail head] __ strip off the length
+    [merge] __ combine
+    bitree
+
+]_
+
+split_list: dup length dup [2/ split_at] dip22
+
+seq_list: dup True [seq] foldr seq
+
+sort:
+  [split_list 1 > !!] __ split
+    [] __ transform
+    [merge seq_list _hack_ ] __ combine
+    bitree
+
+__ [list] key
+assoc_step: [popr get2] dip13 =s
+
+assoc:
+  tuck assoc_step
+    [!]
+    [[drop swap assoc] dip31 not!] | ap41 nip
+
+__ remove: [head] swap [=s not] pushl . filter
+
+repeat: dup [repeat]$ swap pushr
+
+__ [... a] [... b] popr_para -> [...] [...] a b
+popr_para: [popr] dip12 popr [swap] dip22
+
+__ [... a] [... b] [f] zip1 -> [...] [...] [f] [a b f]
+zip1: [popr_para] dip24 dup -swap3 pushl_seq2
+
+__ [... a] [... b] [f] zip -> [... f a b f]
+zip: [zip1] ap31 [zip] swap [. head] dip21 .
+
+__ [... a] [... b] c [f] zip1_with -> [...] [...] c' [f] [f']
+zip1_with: [[popr_para] dip24] dip35 dup -swap4 ap31 -swap2
+
+__ [... a] [... b] c [f] zip_with -> [... c' f a b c f]
+zip_with: [zip1_with] ap41 [zip_with] swap [. head] dip21 .
+
+__ [... [a b]] unzip -> [... a] [... b]
+unzip: dup [popr drop head] map swap [head] map
+
+__ split interleaved streams marked with Left/Right
+__ [[..., xl Left, xr Right]] -> [... xl] [... xr]
+unzip_either:
+  [[head Left =:=] filter,
+   [head Right =:=] filter] fork
+   [[popr drop head] map] both
+
+pushq: [[]ap10] swap . ap10
+pushq2: [[]ap20] swap . ap20
+pushq3: [[]ap30] swap . ap30
+pushq4: [[]ap40] swap . ap40
+pushq5: [[]ap50] swap . ap50
+pushq6: [[]ap60] swap . ap60
+pushq7: [[]ap70] swap . ap70
+
+pick:
+  [popr]
+    [swap popr [swap] dip22] | $$--
+
+pick_either:
+  [popr [Right] pushl]
+    [swap popr [Left] pushl [swap] dip22] | $$--
+
+interleave: pick -swap2 [interleave] $$ swap pushr
+
+__ [[fa]] [[fb]] c -> [fa fb | ...]
+interleave_with:
+  [pick] dip23 swap $-seq __ [a] [b] c0' c1'
+    [interleave_with] dip31 dup [pushr] dip21 seq
+
+interleave_with2:
+  [[[[].] map,
+    [[interleave_apply_right].] map] para] dip22 interleave_with
+      [] [swap .] foldr
+
+__ [l] [r] a [f] -> [l fa] [r] a' (left), [l] [r fa] a' (right)
+interleave_apply_left: $-seq [swap2] dip33 pushr -swap2
+interleave_apply_right: $-seq [swap] dip22 pushr swap
+
+__ [l] [r] x Left/Right -> [l x] [r] / [l] [r x]
+either_push:
+  [Left =:= [[swap] dip22 pushr swap] dip32 !!]
+    [Right =:= [pushr] dip21 !!] | $$$$-
+
+module stack:
+
+imports:
+  module control
+
+__ [x_1 ... x_n] -> x_n ... x_1 []
+pull: popr swap
+pull2: pull pull
+pull3: pull2 pull
+pull4: pull3 pull
+pull5: pull4 pull
+pull6: pull5 pull
+pull7: pull6 pull
+pull8: pull7 pull
+
+get2: ap02 swap2 drop
+get3: ap03 swap3 drop
+get4: ap04 swap4 drop
+get5: ap05 swap5 drop
+get6: ap06 swap6 drop
+get7: ap07 swap7 drop
+
+tail: popr drop
+tail2: tail tail
+
+rev3: [] ap30 pull3 drop
+
+__ a b -> b
+nip: swap drop
+nip2: swap2 drop
+nip3: swap3 drop
+
+__ a b  -> b a b
+tuck: [] ap20 dup . pull3 drop
+
+__ a b -> a b a
+over: swap dup [swap] dip22
+over2: swap2 dup [-swap2] dip33
+over3: swap3 dup [-swap3] dip44
+over4: swap4 dup [-swap4] dip55
+
+dup2: [] ap20 dup . ap04 swap4 drop
+
+dup_under: [dup] dip12
+
+__ x_1 x_2 ... x_n -> x_2 ... x_n x_1
+swap2: [] swap pushr swap pushr pushl pull3 drop
+swap3: [] swap pushr swap pushr swap pushr pushl pull4 drop
+swap4: [] swap pushr swap pushr swap pushr swap pushr pushl pull5 drop
+swap5: [] swap pushr swap pushr swap pushr swap pushr swap pushr pushl pull6 drop
+swap6: [] swap pushr swap pushr swap pushr swap pushr swap pushr swap pushr pushl pull7 drop
+swap7: [] swap pushr swap pushr swap pushr swap pushr swap pushr swap pushr swap pushr pushl pull8 drop
+
+__ x_2 ... x_n x_1 -> x_1 x_2 ... x_n
+-swap2: swap2 swap2
+-swap3: swap3 swap3 swap3
+-swap4: swap4 swap4 swap4 swap4
+-swap5: swap5 swap5 swap5 swap5 swap5
+-swap6: swap6 swap6 swap6 swap6 swap6 swap6
+
+exch2: swap2 swap -swap2
+exch3: swap3 swap -swap3
+exch4: swap4 swap -swap4
+
+module control:
+
+imports:
+  module stack
+  module logic
+  module list
+
+__ if then else
+ifte: [] ap20 swap pushr [not!] [nip!] | . head
+
+__ ifte2: rot [swap drop 0 != !] [0 == !] | pushl pushl pushl popr swap drop cut
+
+__ apply a quote underneath the top
+dip11: swap pushr ap12 swap2 drop
+dip12: swap pushr ap13 swap3 drop
+dip13: swap pushr ap14 swap4 drop
+dip14: swap pushr ap15 swap5 drop
+dip15: swap pushr ap16 swap6 drop
+dip16: swap pushr ap17 swap7 drop
+
+dip21: swap pushr ap22 swap2 drop
+dip22: swap pushr ap23 swap3 drop
+dip23: swap pushr ap24 swap4 drop
+dip24: swap pushr ap25 swap5 drop
+dip25: swap pushr ap26 swap6 drop
+dip26: swap pushr ap27 swap7 drop
+
+dip31: swap pushr ap32 swap2 drop
+dip32: swap pushr ap33 swap3 drop
+dip33: swap pushr ap34 swap4 drop
+dip34: swap pushr ap35 swap5 drop
+dip35: swap pushr ap36 swap6 drop
+dip36: swap pushr ap37 swap7 drop
+
+dip41: swap pushr ap42 swap2 drop
+dip42: swap pushr ap43 swap3 drop
+dip43: swap pushr ap44 swap4 drop
+dip44: swap pushr ap45 swap5 drop
+dip45: swap pushr ap46 swap6 drop
+dip46: swap pushr ap47 swap7 drop
+
+dip51: swap pushr ap52 swap2 drop
+dip52: swap pushr ap53 swap3 drop
+dip53: swap pushr ap54 swap4 drop
+dip54: swap pushr ap55 swap5 drop
+dip55: swap pushr ap56 swap6 drop
+dip56: swap pushr ap57 swap7 drop
+
+dip61: swap pushr ap62 swap2 drop
+dip62: swap pushr ap63 swap3 drop
+dip63: swap pushr ap64 swap4 drop
+dip64: swap pushr ap65 swap5 drop
+dip65: swap pushr ap66 swap6 drop
+dip66: swap pushr ap67 swap7 drop
+
+__ a [f] -> fa
+$: ap11 nip
+$$: ap21 nip
+$$$: ap31 nip
+$$$$: ap41 nip
+$-: ap12 nip2
+$$-: ap22 nip2
+$$$-: ap32 nip2
+$$$$-: ap42 nip2
+$--: ap13 nip3
+$$--: ap23 nip3
+$$$--: ap33 nip3
+$$$$--: ap43 nip3
+
+$seq: [dup] dip12 $ swap seq
+$-seq: [dup] dip12 $- swap2 seq2
+
+__ a [f] -> fa [f]
+$keep: dup [$] dip21
+$$keep: dup [$$] dip31
+$$$keep: dup [$$$] dip41
+$-keep: dup [$-] dip22
+$$-keep: dup [$$-] dip32
+$$$-keep: dup [$$$-] dip42
+
+__ apply a quote underneath N items to extract something
+__ a b c ... [f] withN -> fa0 b c ... fa1
+with2: dip12 swap
+with3: [with2] pushl dip23 swap
+with4: [with3] pushl dip34 swap
+with5: [with4] pushl dip45 swap
+with6: [with5] pushl dip56 swap
+
+__ a [f] -> a fa
+peek: dup_under $
+
+__ [a] [f] -> [a] [a f]
+peek_cmp: dup_under .
+
+__ a [f] -> fa a
+->: peek swap
+
+->cmp: peek_cmp swap
+
+__ a [f] [g] -> fa ga
+fork: [->] dip22 $
+
+fork_cmp: [->cmp] dip22 .
+
+__ a [f] [g] [h] -> fa ga ha
+fork3: [[->] dip22 ->] dip33 $
+
+fork_cmp3: [[->cmp] dip22 ->cmp] dip33 .
+
+__ a b [f] [g] -> fa gb
+para: [dip11] dip32 $
+
+__ a b [f] -> fa fb
+both: dup para
+
+__ a [cond] [f] -> fa
+__ f fails if cond does not return True
+if: [peek] dip22 swap [$] dip21 !
+
+__ a [f b] -> fa if b, otherwise a
+ifdo: dup [dup] swap . [[drop] dip21 not] . | ap12 swap2 drop !
+
+__ a b -> a b [a b]
+in2: [] ap20 dup [get2] dip12
+in3: [] ap30 dup [get3] dip13
+
+__ a [fn] [test] -> apply fn to a while a [test] $ is True
+iterate:
+  in2 [iterate] .  __ a [fn] [test] [[fn] [test] iterate]
+    [swap] dip22 . swap __ a [fn [fn] [test] iterate] [test]
+    [fork] ap20 ifdo
+
+while:
+   over [$keep dup_under while] dip22 vifte
+
+__ apply [f] n times
+times: __ a [f] n
+  [] ap30
+    [[times_step] .]
+    [head 0 >]
+    iterate tail2 head
+times_step: [$keep] dip22 1-
+
+__ m [f] a -> a
+maybe:
+  rev3 __ a [f] m
+    [[drop] dip21 Nothing =:= !]
+    [Just =:= ! swap $] | . $$
+
+__ e [f1] [f2] -> a
+either:
+  [Right =:= !] swap . swap
+    [Left =:= !] swap . | . head
+
+!!: [[] ap20] dip21! get2
+!!!: [[] ap30] dip31! get3
+
+__ x [split] [f] [combine] diamond -> x'
+__              .-> f -.
+__ x -> split -<        >-> combine -> x'
+__              '-> f -'
+diamond: [[$-] dip22 both] dip32 $$
+
+__ x [split] [f] [combine] bitree -> x'
+bitree:
+  over3 over2 $ __ f x -> x'
+    [in3 [bitree]. quote dip11 diamond] dip41 __ diamond bitree
+    default
+
+seq2: [[]ap20] dip21 seq get2
+
+__ feed x as an input to each quote and compose them
+__ this is the reader monad
+__ [ ... , ... ] [x] scatter1 ---> [ ... x ... ]
+__ [x] [[ ... , ... , ...]] scatter ---> [ x ... x ... x ... ]
+scatter1: [swap .] pushl dip11 .
+scatter: swap [scatter1] pushl [] swap foldr __ rename to splice?
+
+__ extract values
+__ this is the writer monad
+__ [[ ... x, ... y, ... ]] gather ---> [ ... ... ... ] [x y]
+
+gather1: . pull [pushr] dip21
+gather_r:
+  [[] []] [swap pushr [gather1] .] foldr get2
+gather: reverse gather_r
+__ these don't work yet:
+__ gather: [[] []] [pushr [gather1] .] foldl get2
+__ gather:
+__   [] [[gather1] swap . pushl] foldr
+__     [] [] swap2 $$-
+
+
+module logic:
+
+imports:
+  module stack
+  module control
+
+or: [not!] [True swap!] | ap21 nip symbol_t
+and: [!] [False swap not!] | ap21 nip symbol_t
+implies: swap not or
+
+__ A B default -> A, or B if A fails
+default: dup_under otherwise |
+
+otherwise2: __ a0 a1 b0 b1
+  [] ap20 otherwise otherwise get2
+
+vifte: [swap] dip22 otherwise dup swap2 otherwise |
+
+valid: True False vifte
+
+___ A A B other -> B, B A B other -> A
+other: [] [swap] | [[=:=] dip21 swap!] . $$$
+
+module algorithm:
+
+imports:
+  module stack
+  module list
+  module control
+  module num
+  module logic
+
+__ greatest common divisor (using Euclid's algorithm)
+gcd:
+  [] ap20 __ quote arguments [a b]
+    [[tuck %] .] __ step: [a b] -> [b (a % b)]
+    [head 0 !=] __ while: b != 0
+    iterate tail head __ return: a
+
+__ acc x power -> if odd power, acc*x, otherwise acc
+acc_odd_power: [[*] dip21 odd] ap20 ifdo
+
+__ x power -> x*x power/2
+reduce_power: [dup *] [1 >>b] para
+
+__ acc x power -> acc' x^2 power/2
+power_step: in2 [acc_odd_power] dip31 get2 reduce_power
+
+__ raise to integer power using binary exponentiation
+^:
+  [1 -swap2] ap20
+    [[power_step] .]
+    [head 0 !=]
+    iterate tail2 head
+
+sum: 0 [+] foldr
+sumf: 0.0 [+f] foldr
+
+avgf: dup sumf swap length ->f /f
+
+__ decreasing list from initial element
+__ ERROR: user_func.c:424: flat_call: Assertion `tn->pos' failed
+__ iota: [1-] pushl [[dup 1-] .] [head 0 >] iterate
+iota2: [[dup 1-] .] [head 0 >] iterate
+__ iota3: [] pushl [[dup 1-] .] [head 0 >] iterate
+
+__ x lo hi inrange -> bool
+in_range: [over] dip23 <= [>=] dip21 and
+
+module io:
+
+imports:
+  module stack
+  module control
+  module logic
+  module list
+
+read_std: "stream,in:std" open read [close] dip21
+write_std: ["stream,out:std" open] dip12 write close
+unread_std: ["stream,in:std" open] dip12 unread close
+
+__ IO h buf
+getline_loop:
+  [read] dip23 swap [] ap40 dup __ [IO h buf str] x2
+    __ no newline
+    [dup "" =s __ test for empty read
+      [drop] __ return buf
+      [++ getline_loop] ifte ap43 swap3 drop] . swap __ continue
+    ["\n" strsplit swap [++ unread] dip42 dup] . __ newline
+    popr -swap2 swap vifte get3
+
+getline: "" getline_loop
+
+getline_std: "stream,in:std" open getline [close] dip21
+
+__ IO h -> bool
+is_eof:
+  read dup [unread] dip32 "" =s
+
+__ Array addr [fn] -> Array
+update_array: [tuck read_array [swap] dip22] dip23 $ write_array
+
+__ Array a f -> Array
+stream_modify_array1: [dup [read_array] dip22 swap] dip23 $ write_array
+stream_modify_array:
+  [stream_modify_array1 dup True swap seq] pushl
+    [swap] dip22 map_with
+
+ __ [RA] -> [[Array -> Array R B]]
+stream_read_array:
+  [[read_array quote __ [R]
+     [[]] pushl] __ [[R] []]
+     ap10] map
+
+__ [WA] [W] -> [[Array -> Array R B]]
+stream_write_array:
+  [[write_array dup [True swap seq] pushl __ [B]
+     [[] swap] pushl] __ [[] [B]]
+     ap20] zip
+
+__ Array sRA sWA sW -> sR sB
+stream_read_write_array_1:
+  [[write_array dup True swap seq [Right] pushl] ap20] zip
+    [[[read_array [Left] pushl] pushl] map] dip11
+    interleave
+    swap [$-] map_with
+
+stream_read_write_array: stream_read_write_array_1 unzip_either
+
+__ Array sRA -> sR sB {hide}
+stream_read_write_array_ro:
+  [[read_array [Left] pushl] pushl] map
+    swap [$-] map_with
+    unzip_either
+
+__ Array sWA sW -> sR sB {hide}
+stream_read_write_array_wo:
+  [[write_array dup True swap seq [Right] pushl] ap20] zip
+    swap [$-] map_with
+    unzip_either

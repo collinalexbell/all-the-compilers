@@ -1,0 +1,496 @@
+#!/usr/bin/perl
+
+use warnings;
+use strict;
+
+use File::Basename;
+use Getopt::Long;
+use JSON::XS qw(decode_json);
+use List::Util qw(first);
+
+my @NAMESPACES;
+my $CASING;
+my %IMPORTS;
+
+my %TYPE_MAP = (
+    'char'               => 'char',
+    'signed-char'        => 'char',
+    'unsigned-char'      => 'uint8',
+    'int'                => 'int',
+    'signed-int'         => 'int',
+    'unsigned-int'       => 'uint',
+    'short'              => '(short-type)',
+    'signed-short'       => '(short-type)',
+    'unsigned-short'     => '(ushort-type)',
+    'long'               => '(long-type)',
+    'signed-long'        => '(long-type)',
+    'unsigned-long'      => '(ulong-type)',
+    'long-long'          => '(long-long-type)',
+    'signed-long-long'   => '(long-long-type)',
+    'unsigned-long-long' => '(ulong-long-type)',
+    'float'              => 'float',
+    'double'             => 'double',
+    'ptrdiff_t'          => 'ptrdiff',
+    'size_t'             => 'size',
+    'uint8_t'            => 'uint8',
+    'uint16_t'           => 'uint16',
+    'uint32_t'           => 'uint32',
+    'uint64_t'           => 'uint64',
+    'int8_t'             => 'int8',
+    'int16_t'            => 'int16',
+    'int32_t'            => 'int32',
+    'int64_t'            => 'int64',
+);
+
+my %CASING_MAP = (
+    none     => \&casing_none,
+    standard => \&casing_standard,
+    camel    => \&casing_camel,
+    lisp     => \&casing_lisp,
+);
+
+sub usage
+{
+    print <<EOF;
+Usage: $0 [options] < {c2ffi-output} > {dale-header}
+Convert c2ffi data into Dale headers.
+
+Options:
+  --casing=CASING   Format names in a specific way.  Options are none
+                    (default), standard (lowercase words separated
+                    by underscores), camel (camel case), and Lisp
+                    (lowercase words separated by hyphens).
+  --namespace=NS    If provided, bindings that begin with the
+                    specified string will be put within a namespace
+                    having that name, and the string prefix will be
+                    removed from the binding name.
+  --file=FILE       If provided, only bindings that appear in the
+                    specified file(s) will be considered.
+EOF
+    exit(2);
+}
+
+sub case_string
+{
+    my ($string) = @_;
+
+    my $casing_fn = $CASING_MAP{$CASING};
+    my $new_string = $casing_fn->($string);
+    return $new_string;
+}
+
+sub type_to_string
+{
+    my ($type) = @_;
+
+    our $in_function;
+
+    my $tag = $type->{'tag'};
+    $tag =~ s/^://;
+
+    if ($tag eq 'pointer') {
+        return "(p ".(type_to_string($type->{'type'})).")";
+    }
+    if ($tag eq 'array') {
+        if ($in_function) {
+            return "(p ".(type_to_string($type->{'type'})).")";
+        } else {
+            return "(array-of ".$type->{'size'}." ".
+                   (type_to_string($type->{'type'})).")";
+        }
+    }
+    if ($tag eq 'bitfield') {
+        my $bf_type = type_to_string($type->{'type'});
+        return sprintf("(bf %s %s)",
+                       $bf_type,
+                       $type->{'width'});
+    }
+    if ($tag eq 'union') {
+        return $type->{'name'};
+    }
+    if ($tag eq 'function-pointer') {
+        return "(p void)";
+    }
+    my $mapped_type = $TYPE_MAP{$tag};
+    if ($mapped_type) {
+        if ($mapped_type =~ /^\(/) {
+            $IMPORTS{'stdlib'} = 1;
+        }
+        return $mapped_type;
+    }
+    if ($tag eq 'struct') {
+        my $new_name = case_string($type->{'name'});
+        return $new_name;
+    }
+
+    for my $namespace (@NAMESPACES) {
+        if ($tag =~ /^${namespace}\w/) {
+            $tag =~ s/^${namespace}/${namespace}./;
+            last;
+        }
+    }
+
+    my $new_name = case_string($tag);
+
+    return $new_name;
+}
+
+sub type_to_flat_string
+{
+    my ($type) = @_;
+
+    my $str = type_to_string($type);
+    $str =~ tr/() /   /;
+    $str =~ s/ //g;
+
+    return $str;
+}
+
+my %SC_MAP = (
+    'static' => 'intern',
+    'none'   => 'extern-c',
+    'extern' => 'extern-c',
+);
+
+sub storage_class_to_string
+{
+    return $SC_MAP{$_[0]};
+}
+
+sub process_function
+{
+    my ($data) = @_;
+
+    our $in_function = 1;
+
+    my @params =
+        map { sprintf("(%s %s)", $_->{'name'},
+                                 type_to_string($_->{'type'})) }
+            @{$data->{'parameters'}};
+    if (not @params) {
+        @params = 'void';
+    }
+    my $param_str = "(".(join ' ', @params).")";
+
+    my $new_name = case_string($data->{'name'});
+
+    my $original_fn =
+        sprintf("NC(def %s (fn %s %s %s))",
+                $data->{'name'},
+                storage_class_to_string($data->{'storage_class'}
+                                     || $data->{'storage-class'}),
+                type_to_string($data->{'return-type'}),
+                $param_str);
+
+    my $is_in_namespace =
+        first { $data->{'name'} =~ /^$_\w/ }
+            @NAMESPACES;
+
+    if (($new_name ne $data->{'name'}) or $is_in_namespace) {
+        my $sc = storage_class_to_string($data->{'storage_class'}
+                                      || $data->{'storage-class'});
+        $sc =~ s/\-c$//;
+        return (
+            sprintf("(def %s (fn %s %s %s %s))",
+                    $data->{'name'},
+                    $sc,
+                    type_to_string($data->{'return-type'}),
+                    $param_str,
+                    "(".$data->{'name'}.
+                    ((@{$data->{'parameters'}})
+                        ? " ".(join ' ', map { $_->{'name'} }
+                                             @{$data->{'parameters'}})
+                        : "").
+                    ")"),
+            $original_fn
+        );
+    } else {
+        return $original_fn;
+    }
+}
+
+sub process_variable
+{
+    my ($data) = @_;
+
+    sprintf("(def %s (var extern %s))",
+            $data->{'name'},
+            type_to_string($data->{'type'}));
+}
+
+sub process_const
+{
+    my ($data) = @_;
+
+    sprintf("(def %s (var intern %s%s))",
+            $data->{'name'},
+            type_to_string($data->{'type'}),
+            ($data->{'value'} ? ' '.$data->{'value'} : ''));
+}
+
+sub process_struct
+{
+    my ($data) = @_;
+
+    my @fields =
+        map { sprintf("(%s %s)", case_string($_->{'name'}),
+                                 type_to_string($_->{'type'})) }
+            @{$data->{'fields'}};
+    my $field_str = (@fields ? " (".(join ' ', @fields).")" : "");
+
+    sprintf("(def %s (struct extern%s))",
+            $data->{'name'},
+            $field_str);
+}
+
+sub process_enum
+{
+    my ($data) = @_;
+
+    $IMPORTS{'enum'} = 1;
+
+    my @fields =
+        map { sprintf("(%s %s)", case_string($_->{'name'}), $_->{'value'}) }
+            @{$data->{'fields'}};
+    my $field_str = (@fields ? " (".(join ' ', @fields).")" : "");
+
+    sprintf("(def-enum %s extern int%s)",
+            $data->{'name'},
+            $field_str);
+}
+
+sub process_typedef
+{
+    my ($data) = @_;
+
+    my $type_tag = $data->{'type'}->{'tag'};
+    if (($type_tag eq ':struct')
+            or ($type_tag eq ':union')
+            or ($type_tag eq ':enum')) {
+        return;
+    }
+
+    my $type = type_to_string($data->{'type'});
+    if (not $type) {
+        $data->{'type'}->{'name'} = $data->{'name'};
+        return process_struct($data->{'type'});
+    } elsif (not ($type eq 'void')) {
+        sprintf("(def %s (struct extern ((a %s))))",
+                $data->{'name'},
+                $type);
+    }
+}
+
+sub process_union
+{
+    my ($data) = @_;
+
+    $IMPORTS{'variant'} = 1;
+
+    my $name = $data->{'name'};
+
+    my @constructors =
+        map { sprintf("(%s-%s ((value %s)))",
+                      case_string($name),
+                      type_to_flat_string($_->{'type'}),
+                      type_to_string($_->{'type'})) }
+            @{$data->{'fields'}};
+    my $constructor_str = join ' ', @constructors;
+
+    sprintf("(def-variant %s (%s))",
+            $name,
+            $constructor_str);
+}
+
+sub name_to_parts
+{
+    my ($name) = @_;
+
+    if ($name =~ /_/) {
+        my @parts = map { lc $_ } split /_/, $name;
+        return @parts;
+    }
+    if ($name =~ /[a-z0-9][A-Z0-9]/) {
+        my @parts;
+        for (;;) {
+            my $used = 0;
+            while ($name =~ s/([A-Z0-9]+[a-z0-9]+)$//) {
+                unshift @parts, $1;
+                $used = 1;
+            }
+            while ($name =~ s/([a-z])([A-Z0-9]+)$/$1/) {
+                unshift @parts, $2;
+                $used = 1;
+            }
+            if (not $used) {
+                last;
+            }
+        }
+        if ($name) {
+            unshift @parts, $name;
+        }
+        return @parts;
+    }
+    return ($name);
+}
+
+sub casing_none
+{
+    my ($name) = @_;
+
+    return $name;
+}
+
+sub casing_standard
+{
+    my ($name) = @_;
+
+    return join '_', map { lc $_ } name_to_parts($name);
+}
+
+sub casing_camel
+{
+    my ($name) = @_;
+
+    return join '', map { ucfirst lc $_ } name_to_parts($name);
+}
+
+sub casing_lisp
+{
+    my ($name) = @_;
+
+    return join '-', map { lc $_ } name_to_parts($name);
+}
+
+sub print_binding
+{
+    my ($binding, $no_casing) = @_;
+
+    if (not $no_casing) {
+        $no_casing = ($binding =~ s/^(NC)//);
+    }
+    if (not $no_casing) {
+        my ($name) = ($binding =~ /^\(.*? (.*?) /);
+        my $new_name = case_string($name);
+        $binding =~ s/ (.*?) / $new_name /;
+    }
+
+    print $binding,"\n";
+
+    return 1;
+}
+
+my %PROCESS_MAP = (
+    function => \&process_function,
+    extern   => \&process_variable,
+    struct   => \&process_struct,
+    const    => \&process_const,
+    enum     => \&process_enum,
+    typedef  => \&process_typedef,
+    union    => \&process_union,
+);
+
+sub main
+{
+    my ($files) = @_;
+
+    my %file_lookup = map { $_ => 1 } @{$files};
+
+    if (not $CASING_MAP{$CASING}) {
+        print STDERR "Casing is invalid: must be one of ".
+                     (join ', ', keys %CASING_MAP)."\n";
+        usage();
+    }
+
+    our $in_function = 0;
+
+    my @bindings;
+
+    while (defined (my $entry = <STDIN>)) {
+        chomp $entry;
+        if (($entry eq '[') or ($entry eq ']')) {
+            next;
+        }
+        $entry =~ s/,\s*$//;
+        if (not $entry) {
+            next;
+        }
+        my $data = decode_json($entry);
+        if (@{$files}) {
+            my $path = $data->{'location'};
+            $path =~ s/:.*//;
+            my $name = basename($path);
+            if (not $file_lookup{$name}) {
+                next;
+            }
+        }
+        my $tag = $data->{'tag'};
+        if ($PROCESS_MAP{$tag}) {
+            my @results = $PROCESS_MAP{$tag}->($data);
+            if (@results) {
+                push @bindings, @results;
+            }
+        } else {
+            warn "unable to process tag '$tag'";
+        }
+    }
+
+    my @imports = sort keys %IMPORTS;
+    if (@imports) {
+        for my $import (@imports) {
+            print "(import $import)\n";
+        }
+        print "\n";
+    }
+
+    BINDING: for (my $i = 0; $i < @bindings; $i++) {
+        my $binding = $bindings[$i];
+        my ($name) = ($binding =~ /^N?C?\(.*? (.*?) /);
+        if (not defined $name) {
+            die $binding;
+        }
+        my ($type) = ($binding =~ /^\(def \S+? \((\w+?) /);
+
+        for my $namespace (@NAMESPACES) {
+            if ($name =~ /^${namespace}\w/) {
+                if ($type eq 'fn') {
+                    print_binding($bindings[++$i]);
+                }
+                $name =~ s/^${namespace}//;
+                $binding =~ s/ (.*?) / $name /;
+                print "(namespace $namespace \n";
+                print_binding($binding);
+                print ")\n";
+                next BINDING;
+            }
+        }
+
+        my $new_name = case_string($name);
+
+        if (((($binding =~ /\($name /)
+                and ($binding !~ /\(\($name/))
+                or ($name ne $new_name))
+                and ($type eq 'fn')) {
+            print_binding($bindings[++$i]);
+        }
+
+        print_binding($binding);
+    }
+}
+
+my @files;
+my $help;
+GetOptions("namespace=s", \@NAMESPACES,
+           "casing=s", \$CASING,
+           "file=s", \@files,
+           "help", \$help);
+if (not $CASING) {
+    $CASING = 'none';
+}
+if ($help) {
+    usage();
+}
+
+main(\@files);
+
+1;

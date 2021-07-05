@@ -1,0 +1,125 @@
+--- Type renaming for package names.
+module frege.compiler.types.Packs where 
+
+import  frege.compiler.types.NSNames
+
+{--
+ * A package name can not be read without resort to the global state,
+ * because it includes the prefix given on the command line.
+ * However, one can compare them, i.e. @p == P "frege.Prelude"@
+ -}
+abstract newtype Pack = P String where
+    --- create a package name in the canonical form (i.e. "frege.prelude.PreludeBase")
+    new  = P . magicPack
+    {-- 
+        Retrieve the raw, unprefixed package name.
+    
+        The only justification for using this function is
+        that the result will never be used as a native class name.
+        
+        In all other cases, the name must be retrieved using
+        > Global.unpack g pack
+        -}
+    raw (P s) = s
+    --- Make a namespace name from a package name by taking the trailing word characters
+    --- For always-to-import Prelude packages, the namespace name is derived from 'preludePacks'
+    nsName p | [n] <- [ NSX s | (p', Just s) <- preludePacks, p' == p ] = n
+    nsName (P (m ~ ´(\w+)$´)) = NSX (unJust (m.group 1))
+    nsName (P s) = Prelude.error ("nsName: illegal package name " ++ s.show)
+
+    (P a) ==  (P b) = a String.==  b
+    (P a) <=> (P b) = a String.<=> b
+    hashCode (P a) = String.hashCode a
+
+
+instance Eq   Pack
+
+instance Ord  Pack
+
+derive   Show Pack
+
+--- The value of the property @-Dfrege.prelude@ or just "frege.Prelude"
+pPrelude = (Pack.new • fromMaybe "frege.Prelude" • System.getProperty) "frege.prelude"
+
+--- > Pack.new "frege.prelude.PreludeBase"
+pPreludeBase    = Pack.new "frege.prelude.PreludeBase"
+
+--- > Pack.new "frege.java.util.Regex"
+pUtilRegex      = Pack.new "frege.java.util.Regex"
+
+--- > Pack.new "frege.prelude.PreludeText"
+pPreludeText    = Pack.new "frege.prelude.PreludeText"
+
+--- > Pack.new "frege.prelude.PreludeList"
+pPreludeList    = Pack.new "frege.prelude.PreludeList"
+
+--- > Pack.new "frege.prelude.PreludeMonad"
+pPreludeMonad   = Pack.new "frege.prelude.PreludeMonad"
+
+--- > Pack.new "frege.prelude.Math"
+pPreludeMath    = Pack.new "frege.prelude.Math"
+
+--- > Pack.new "frege.control.Semigroupoid"
+pControlSemi    = Pack.new "frege.control.Semigroupoid"
+
+--- > Pack.new "frege.prelude.PreludeArrays"
+pPreludeArrays  = Pack.new "frege.prelude.PreludeArrays"
+
+--- > Pack.new "frege.prelude.PreludeIO"
+pPreludeIO      = Pack.new "frege.prelude.PreludeIO"
+
+--- > Pack.new "frege.prelude.PreludeDecimal"
+pPreludeDecimal = Pack.new "frege.prelude.PreludeDecimal"
+
+
+{-- List of Prelude packages and the namespace that needs to be assigned on import time
+
+    These are automatically recognized as Prelude-Packages.
+
+    For each of them, a java import will be generated and
+    names from them appear in Class.name form in java code.
+
+    If the package's namespace must be present at compile time,
+    the second component of the tuple must be given as 'Just' @name@
+-}
+preludePacks = (pPreludeBase,  Just "PreludeBase") : map fppack [
+                    -- ("Native", Just "PreludeNative"),   -- because of various literals
+                    ("Decimal", Just "PreludeDecimal"),    -- becuase of decimal support
+                    ("List",    Just "PreludeList"),       -- because of list comprehension
+                    ("Text",    Just "PreludeText"),       -- because of derive Show
+                    ("Monad",   Just "PreludeMonad"),      -- because of derive Show
+                    ("IO",      Just "PreludeIO"),         -- because of derive Exceptional
+                    ("Arrays",  Just "PreludeArrays"),     -- because of derive ArrayElement 
+               ] ++ [
+                    (pUtilRegex, Just "Regexp"),           -- because of regex literals & patterns 
+               ]
+       where
+            fppack (s,mb) = (Pack.new ("frege.prelude.Prelude" ++ s), mb)
+
+{--
+    When a package name consists of more than just a 'CONID' 
+    and the first character is an uppercase letter, then this 
+    letter is replaced by its lowercase equivalent and the
+    string @"frege."@ prepended to form the real package name.
+    
+    > magicPack "Data.List" = "frege.data.List"
+    > magicPack "List"      = "List"  
+    -}
+magicPack (nm@´\.´)
+    | fst.isUpperCase = "frege." ++ fst.toLowerCase.display ++ tail nm
+    where 
+        fst = String.charAt nm 0
+magicPack nm = nm
+
+
+--- The reverse of 'magicPack', converts @"frege.data.List"@ to @"Data.List"@
+--- The following should hold for package names that start with an uppercase:
+--- > unmagicPack . magicPack = id
+--- The following should hold for package names that start with "frege.c" 
+--- > magicPack . unmagicPack = id
+unmagicPack (m~´^frege\.(.)(.*)´)
+    | Just c <- m.group 1, Just rest <- m.group 2, 
+      not (c.charAt 0).isUpperCase
+    = c.toUpperCase ++ rest
+unmagicPack nm = nm
+

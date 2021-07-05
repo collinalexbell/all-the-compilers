@@ -1,0 +1,34 @@
+(import cstdio)
+
+(import macros)
+(import vector)
+(import algorithms)
+(import concepts)
+
+(std.concepts.instantiate Vector int)
+(std.concepts.instantiate find-if-not (Iterator (Vector int)))
+
+(def odd
+  (fn extern bool ((a int))
+    (= 1 (& a 1))))
+
+(def main
+  (fn extern-c int (void)
+    (let ((v (Vector int))
+          (i int 0))
+      (for true (< i 10) (incv i)
+        (push-back v i))
+
+      (let ((b (Iterator (Vector int)) (begin v))
+            (e (Iterator (Vector int)) (end   v))
+            (f (Iterator (Vector int))))
+        (while (< b e)
+          (setv f (find-if-not b e (# odd)))
+          (if (not (= e f))
+              (do (printf "Found %d\n" (@ (source f)))
+                  (setv b (successor f))
+                  0)
+              (do (printf "No more found\n")
+                  (setv b f)
+                  0)))))
+    0))

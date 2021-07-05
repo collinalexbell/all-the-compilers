@@ -1,0 +1,34 @@
+build
+dist
+pkg
+tmp
+nbproject/private
+Duby Plugin/nbproject/private
+examples/appengine/war/
+*.class
+target
+.redcar
+.DS_Store
+Gemfile.lock
+vendor/
+*~
+
+.ruby-*
+
+tmp_test
+
+# ignore generated jar files
+
+javalib/mirah-bootstrap.jar
+javalib/mirah-builtins.jar
+javalib/mirah-newast-transitional.jar
+javalib/jruby-complete.jar
+javalib/mirah-util.jar
+javalib/mirah-compiler.jar
+javalib/mirah-mirrors.jar
+javalib/mirahc-prev.jar
+javalib/asm-5.jar
+
+# git ignore netbeans files
+
+nb-configuration.xml

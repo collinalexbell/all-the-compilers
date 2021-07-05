@@ -1,0 +1,64 @@
+--- Java classes from package @java.util.concurrent@
+
+module frege.java.util.Concurrent where
+
+import Java.Util
+
+--- Thrown when a task is submitted to an 'ExecutorService' that was shut down or whose queue is full.
+data RejectedExecutionException = pure native java.util.concurrent.RejectedExecutionException
+derive Exceptional RejectedExecutionException
+
+data TimeUnit = pure native java.util.concurrent.TimeUnit where
+    pure native milliSeconds java.util.concurrent.TimeUnit.MILLISECONDS :: TimeUnit
+
+data BlockingQueue e = native java.util.concurrent.BlockingQueue where
+    --- add element to blocking queue, throw exception if not possible
+    native add      :: MutableIO (BlockingQueue e) -> e -> IO Bool throws IllegalStateException
+    --- add element to blocking queue, return false if not possible
+    native offer    :: MutableIO (BlockingQueue e) -> e -> IO Bool
+    --- add element to blocking queue, block until possible
+    native put      :: MutableIO (BlockingQueue e) -> e -> IO () throws InterruptedException
+    
+    --- get and remove element from blocking queue, throw exception if it is empty
+    native remove   :: MutableIO (BlockingQueue e) -> IO e throws NoSuchElementException
+    {-- 
+        1. Get and remove element from blocking queue, return null if it is empty.
+        
+        2. Get and removes element of this queue, waiting up to the specified wait time if necessary for an element to become available.
+        Return null if nothing becomes available.
+        
+    --}
+
+    native poll     :: MutableIO (BlockingQueue e) -> IO (Maybe e)
+                     | MutableIO (BlockingQueue e) -> Int -> TimeUnit -> IO (Maybe e) throws InterruptedException
+    --- get and remove element from blocking queue, block until something is available
+    native take     :: MutableIO (BlockingQueue e) -> IO e throws InterruptedException
+
+data ArrayBlockingQueue e = native java.util.concurrent.ArrayBlockingQueue where
+    {--
+        Creates an ArrayBlockingQueue with the given (fixed) capacity and the specified access policy.
+        
+        If the 'Bool' argument is missing, the default access policy is used.
+        If it is @true@ then queue accesses for threads blocked on insertion or removal, 
+        are processed in FIFO order; 
+        otherwise the access order is unspecified.
+        
+        The capacity must be greater than 0, otherwise an 'IllegalArgumentException' is thrown.
+    -}
+    native new      :: Int -> IOMutable (ArrayBlockingQueue e)
+                     | Int -> Bool ->  IOMutable (ArrayBlockingQueue e)           
+
+
+--- The Java 'http://docs.oracle.com/javase/7/docs/api/java/util/concurrent/ExecutorService.html executor service' interface.
+data ExecutorService = native java.util.concurrent.ExecutorService where
+    --- The default executor service of the Frege runtime
+    native executorService frege.run.Concurrent.executorService :: () -> IOMutable ExecutorService
+    --- Tells if this executor has been shut down.
+    native isShutdown :: MutableIO ExecutorService -> IO Bool
+    ---  Tells if all tasks have completed after 'ExecutorService.shutdown'.
+    native isTerminated :: MutableIO ExecutorService -> IO Bool
+    --- Initiates an orderly shutdown in which previously submitted tasks are executed, but no new tasks will be accepted.
+    native shutdown :: MutableIO ExecutorService -> IO ()
+    --- Submit a 'Runnable' for execution.
+    --- Note that unlike in Java, no Future is returned.
+    native submit :: MutableIO ExecutorService -> MutableIO Runnable -> IO () throws RejectedExecutionException

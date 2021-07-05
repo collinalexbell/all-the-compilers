@@ -1,0 +1,2 @@
+(import enum)
+(def-enum myenum extern int (True False ((b int))))

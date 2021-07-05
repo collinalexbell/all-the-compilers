@@ -1,0 +1,4 @@
+#! /bin/sh
+# We use the compiler detected by configure
+@JAVAC@ -bootclasspath  @prefix@/jre/lib/rt.jar ${1+"$@"}
+exit $?

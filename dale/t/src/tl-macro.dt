@@ -1,0 +1,11 @@
+(import macros)
+(import cstdio)
+
+(using-namespace std.macros
+(def def-main-fn
+  (macro intern (rest)
+    (def arg-count (var auto \ (arg-count mc)))
+    (def varargs-list (var auto \ (get-varargs-list mc arg-count rest)))
+    (qq def main (fn extern-c int (void) (uql varargs-list) 0))))
+)
+(def-main-fn (printf "Hello world part 2\n"))

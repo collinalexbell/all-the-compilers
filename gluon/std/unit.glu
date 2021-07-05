@@ -1,0 +1,17 @@
+//! The unit type.
+
+let { Eq, Ord, Ordering, Show } = import! std.prelude
+let { const } = import! std.function
+let { Bool } = import! std.bool
+
+let eq : Eq () = { (==) = const (const True) }
+
+let ord : Ord () = { eq = eq, compare = const (const EQ) }
+
+let show : Show () = { show = const "()" }
+
+{
+    eq,
+    ord,
+    show,
+}

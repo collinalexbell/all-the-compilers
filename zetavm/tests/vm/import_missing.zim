@@ -1,0 +1,23 @@
+#zeta-image
+
+main_entry = {
+    instrs: [
+        { op: "push", val:"./_missing_package_" },
+        { op: "import", ret_to: @main_ret },
+    ]
+};
+
+main_ret = {
+    instrs: [
+        { op: "ret" },
+    ]
+};
+
+main = {
+    name: "main",
+    params: [],
+    num_locals: 1,
+    entry: @main_entry
+};
+
+{ main: @main };

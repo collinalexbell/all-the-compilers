@@ -1,0 +1,15 @@
+(import cstdio)
+(import macros)
+(import dtm-enum-macro)
+
+(def m
+  (macro intern (void)
+    (printf "%d %d %d %d %d %d %d %d %d %d %d\n"
+            a b c d e f g h i j k)
+    (nullptr DNode)))
+
+(m)
+
+(def main
+  (fn extern-c int (void)
+    0))

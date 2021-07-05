@@ -1,0 +1,78 @@
+--- Enumeration for the compiler flags
+module frege.compiler.enums.Flags where
+
+import Data.Bits (BitSet())
+
+--- the compiler flags
+data Flag =
+    HINTS               --- print hints 
+    | VERBOSE           --- be verbose 
+    | WARNINGS          --- print warnings 
+    | WITHCP            --- use the class path for looking up imports 
+    | RUNJAVAC          --- run the Java compiler 
+    | INPRELUDE         --- @protected module@ no automatic import of frege.Prelude
+    | MAKE              --- make sure imported modules are up to date 
+    | IDEMODE           --- errors are only collected, not printed 
+    | IDETOKENS         --- tokens are cleaned up after parsing
+    | INLINE            --- inline functions marked for inlining 
+    | SPECIAL           --- set temporarily to suppress un-aliasing
+    | NODOCWARNINGS     --- set temporarily to suppress documentation text warnings
+    -- EXPERIMENTAL      --- use the experimental new feature of the day
+    | OPTIMIZE          --- inline even more aggressively
+    | COMMENTS          --- generate java comments
+    | OVERLOADING       --- suppress error messages during overloading
+    | PROPERTC          {-- target VM has proper tail calls
+                            This will mark all symbols as 'RSafeTC'  -}
+    | NOUNLET           --- do not globalize things from let expressions
+    | STRICTLRPATS      {-- do not change order of pattern matching, match strictly left to right
+                            (This is Haskell standard, since strictness of functions mustn't change.) -}
+    | USEUNICODE        --- for type showing: use symbols instead of ascii sequences
+    | USEGREEK          --- for type showing: make variable names in greek
+    | USEFRAKTUR        --- for type showing: make variable names in fraktur
+    -- trace options
+    | TRACE1 | TRACE2 | TRACE3 | TRACE4 | TRACE5 | TRACE6 | TRACE7 | TRACE8 | TRACE9 | TRACE10
+    | TRACET | TRACEX | TRACEM | TRACEO | TRACES | TRACEG | EXPLAIN | TRACEZ | TRACEK
+
+
+derive Show Flag
+derive Enum Flag
+
+--- 'BitSet' for 'Flag's
+type Flags = BitSet Flag
+
+
+--- get flag bit
+flag :: Flag -> Flags
+flag = Flags.singleton
+
+
+--- @setFlag flags f@ set flag _f_ in _flags_
+setFlag fs f = Flags.unionE fs f
+
+
+--- @flagSet f flags@ set flag _f_ in _flags_
+flagSet = flip Flags.unionE
+
+
+--- @clrFlag flags f@ clear flag _f_ in _flags_
+clrFlag fs f = Flags.differenceE fs f
+
+--- > flagClr f flags
+--- clear flag _f_ in _flags_
+flagClr = flip Flags.differenceE
+
+--- check if flag is on
+isOn :: Flags -> Flag -> Bool
+isOn flags f = Flags.member f flags
+
+
+--- check if flag is off
+isOff :: Flags -> Flag -> Bool
+isOff fs = not . isOn fs
+
+--- check if any trace flags are on
+tracing :: Flags -> Bool
+tracing = not . null . traceFlags.intersection
+
+--- trace flags
+traceFlags = Flags.fromList [TRACE1 .. TRACEK]

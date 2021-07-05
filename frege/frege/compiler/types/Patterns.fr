@@ -1,0 +1,85 @@
+--- Data type for patterns.
+module frege.compiler.types.Patterns where 
+
+import  frege.compiler.types.Positions
+import  frege.compiler.enums.Literals
+import  frege.compiler.types.SNames
+import  frege.compiler.types.QNames
+import  frege.compiler.types.Types
+
+{--
+    Patterns appear in the following places:
+    - on the left hand side of function definitions
+    - between the backslash and the arrow in a lambda @\p -> x@
+    - in case alternatives
+    - generally, on the left hand side of the @<-@ in @do@ 
+      expressions, list comprehensions and pattern guards.
+    - on the left hand side of a @=@ in pattern bindings
+
+    The parser has no rules for patterns, however. It parses
+    expressions, which are later transformed to patterns. However,
+    not all valid expressions are also valid patterns.
+
+    'PConFS' patterns are replaced by 'PCon' in the "translate definitions" pass. 
+ -}
+data PatternT q =
+      !PVar    { pos::Position, uid::Int, var::String }                     --- > p
+    | PCon     { pos::Position, qname::q, pats :: [PatternT q] }            --- > Con p1 p2 p3
+    | PConFS   { pos::Position, qname::q, fields::[(String, PatternT q)] }  --- > Con { field1, field2=pat }
+    | !PAt     { pos::Position, uid::Int, var::String, pat::PatternT q}     --- > a@pat
+    | !PUser   { pat :: PatternT q, lazy :: Bool}                           --- > !pat or ?pat
+    | !PLit    { pos::Position, kind::Literalkind, value::String, negated::Bool}           --- > 42 ´foo´
+    | !PAnn    { pat::PatternT q, typ::SigmaT q}                            --- > pat::forall a.Eq a => a -> a
+    | !PMat    { pos::Position, uid::Int, var::String, value::String}       --- > m~´foo´
+
+
+
+type PatternS = PatternT SName
+
+
+type Pattern  = PatternT QName
+
+
+
+instance Positioned (PatternT a) where
+    is p = "pattern"
+    --- get the line number of a pattern
+    getpos (PAnn p t)   = (getpos p).merge t.getpos
+    getpos (PUser{pat})    = getpos pat
+    getpos (PCon {pos,pats}) = fold Position.merge pos (map getpos pats)
+    getpos (PAt {pos,pat})   = pos.merge pat.getpos
+    getpos p | p.{pos?} = p.pos
+             | otherwise = Position.null
+    -- untyped 'Pattern', this is yet another identity function
+    -- untyped p = p
+
+--- Get the variables in a pattern in the form of 'PVar's
+--- This does not care about duplicates, but duplicates are forbidden anyway.
+patVars :: PatternT a -> [PatternT a]
+patVars = loop [] where
+    loop acc (p@PVar{})           = p:acc
+    loop acc PAt{pos,var,uid,pat} = loop nacc pat where nacc = PVar{pos,var,uid} : acc
+    loop acc PMat{uid,pos,var}    = PVar{pos,var,uid} : acc
+    loop acc PCon{pats}           = fold loop acc pats
+    loop acc PConFS{fields}       = fold loop acc (map snd fields)
+    loop acc p | p.{pat?}         = loop acc p.pat
+    loop acc _                    = acc
+
+
+--- Get the variables in a pattern in the form of 'Local's
+patNames :: PatternT a -> [QName]
+patNames = loop [] where
+    loop acc (p@PVar{})           = Local p.uid p.var:acc
+    loop acc PAt{pos,var,uid,pat} = loop nacc pat where nacc = Local uid var : acc
+    loop acc PMat{uid,pos,var}    = Local uid var : acc
+    loop acc PCon{pats}           = fold loop acc pats
+    loop acc PConFS{fields}       = fold loop acc (map snd fields)
+    loop acc p | p.{pat?}         = loop acc p.pat
+    loop acc _                    = acc
+
+--- trim a 'Pattern' so that we have only 'PVar', 'PCon' and 'PLit' left
+trimmed :: Pattern -> Pattern
+trimmed PMat{pos, uid, var}  = PVar{pos, uid, var}
+trimmed p 
+    | p.{pat?} = trimmed p.pat
+    | otherwise = p

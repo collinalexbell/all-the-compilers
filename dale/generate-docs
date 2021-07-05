@@ -1,0 +1,210 @@
+#!/usr/bin/env perl
+
+use strict;
+use warnings;
+
+my @files = qw(
+    2-1-introspection.md
+    2-2-ctype.md
+    2-3-math.md
+    2-4-macros.md
+    2-5-stdlib.md
+    2-6-assert.md
+    2-7-concepts-core.md
+    2-8-concept-defs.md
+    2-9-concepts.md
+    2-10-utility.md
+    2-11-derivations.md
+    2-12-algorithms.md
+    2-13-list.md
+    2-14-vector.md
+    2-15-set.md
+    2-16-map.md
+    2-17-array.md
+    2-18-shared-ptr.md
+    2-19-unique-ptr.md
+    2-20-operator-macros.md
+    2-21-enum.md
+    2-22-bitset-enum.md
+    2-23-variant.md
+    3-1-cerrno.md
+    3-2-cfloat.md
+    3-3-clocale.md
+    3-4-cmath.md
+    3-5-csignal.md
+    3-6-cstdio-core.md
+    3-7-cstdio.md
+    3-8-ctime.md
+    3-9-cstdlib.md
+    3-10-cstring.md
+    3-11-cctype.md
+    3-12-csetjmp.md
+);
+
+my @examples = qw(
+    hello-world
+    hello-name
+    type-deduction
+    overloading
+    anonymous-functions
+    macros
+    typed-macros
+    introspection
+    error-reporting
+    derivations
+    containers
+    variants
+);
+
+sub file_to_title
+{
+    my ($file) = @_;
+    $file =~ s/\.md//;
+    $file =~ s/-/./;
+    $file =~ s/-/ /;
+    return $file;
+}
+
+sub file_to_name
+{
+    my ($file) = @_;
+    $file =~ s/\.md//;
+    $file =~ s/^\d+-\d+-//;
+    return $file;
+}
+
+sub file_to_path
+{
+    my ($file) = @_;
+    $file =~ s/\.md//;
+    $file =~ s/^\d+-\d+-//;
+    if (-e "modules/$file.dt") {
+        return "modules/$file.dt";
+    } else {
+        return "modules/linux/$file.dt";
+    }
+}
+
+sub update_examples
+{
+    my @readme;
+    open my $fh, '<', 'README.md' or die $!;
+    while (defined (my $line = <$fh>)) {
+        if ($line =~ /^### Examples/) {
+            push @readme, $line;
+            for my $example (@examples) {
+                push @readme, "\n",
+                              "**$example**\n\n",
+                              "```\n";
+                open my $e_fh, '<', "eg/doc/$example.dt" or die $!;
+                while (defined (my $line = <$e_fh>)) {
+                    push @readme, $line;
+                }
+                push @readme, "```\n```\n";
+                my @output = `./dalec -lm eg/doc/$example.dt 2>&1`;
+                @output = grep { !/lower than advertised precision/ } @output;
+                if ($? == 0) {
+                    push @output, `./a.out`;
+                }
+                for (@output) {
+                    s/^eg\/doc\//.\//;
+                }
+                push @readme, ((map { "> $_" } @output),
+                               "```\n");
+            }
+            push @readme, "\n";
+            while (defined (my $line = <$fh>)) {
+                if ($line =~ /^### Bugs/) {
+                    push @readme, $line;
+                    last;
+                }
+            }
+        } else {
+            push @readme, $line;
+        }
+    }
+    close $fh;
+    open $fh, '>', 'README.md' or die $!;
+    for my $line (@readme) {
+        print $fh $line;
+    }
+    close $fh;
+}
+
+update_examples();
+
+for (my $i = 0; $i < @files; $i++) {
+    my $file = $files[$i];
+    my $title = file_to_title($file);
+    my $name  = file_to_name($file);
+    my $path  = file_to_path($file);
+    my $prev_file = ($i > 0)       ? $files[$i - 1] : undef;
+    my $next_file = ($i < $#files) ? $files[$i + 1] : undef;
+    open my $fh, '>', "doc/$file" or die $!;
+    print $fh "# Dale\n\n";
+    my $nav_str = '';
+    if (!$prev_file) {
+        $prev_file = "1-13-tools.md";
+    }
+    $nav_str .= "[Previous](./$prev_file)";
+    if ($next_file) {
+        $nav_str .= " | ";
+        $nav_str .= "[Next](./$next_file)";
+    }
+    $nav_str .= "\n\n";
+    print $fh "$nav_str";
+    print $fh "## $title\n\n";
+    close $fh;
+    my $res = system("./module-to-markdown < $path >> doc/$file");
+    if ($res != 0) {
+        die "module-to-markdown failed ($path)";
+    }
+    open $fh, '>>', "doc/$file" or die $!;
+    print $fh "$nav_str";
+    close $fh;
+}
+
+unlink 'doc/all.md';
+open my $fh, '>', 'doc/all.md' or die $!;
+print $fh "# Dale";
+my @standard =
+    map  { $_->[0] }
+    sort { $a->[1] <=> $b->[1] }
+    map  { my ($num) = /^doc\/\d+\-(\d+)\-/;
+           [ $_ => $num ] }
+    map  { chomp; $_ }
+        `ls doc/1-*.md`;
+for my $file (@standard) {
+    open my $u_fh, '<', $file or die $!;
+    while (defined (my $line = <$u_fh>)) {
+        if ($line =~ /^# Dale/) {
+            next;
+        }
+        if ($line =~ /^\[Previous\]/) {
+            next;
+        }
+        if ($line =~ /^\[Next\]/) {
+            next;
+        }
+        $line =~ s/^## (\d+\.\d+ (.*))/## <a name="$2"><\/a> $1/;
+        $line =~ s/\[(`?)(.*?)(`?)\]\(.*?\)/[$1$2$3](#$2)/g;
+        print $fh $line;
+    }
+    close $u_fh;
+}
+close $fh;
+for (my $i = 0; $i < @files; $i++) {
+    my $file = $files[$i];
+    my $title = file_to_title($file);
+    my $name  = file_to_name($file);
+    my $path  = file_to_path($file);
+    open my $fh, '>>', "doc/all.md" or die $!;
+    print $fh "## <a name=\"$name\"></a> $title\n\n";
+    close $fh;
+    my $res = system("./module-to-markdown < $path >> doc/all.md");
+    if ($res != 0) {
+        die "module-to-markdown failed";
+    }
+}
+
+1;

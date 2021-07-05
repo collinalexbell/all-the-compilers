@@ -1,0 +1,25 @@
+--- Java classes from package @java.util.zip@
+
+module frege.java.util.Zip where
+
+import Java.Util(Enumeration)
+
+data ZipException = pure native java.util.zip.ZipException
+derive Exceptional ZipException
+
+
+data ZipFile = native java.util.zip.ZipFile where
+    native new     :: File -> IOMutable ZipFile throws ZipException, IOException
+    native entries' entries :: MutableIO ZipFile -> IOMutable (Enumeration (extends (MutableIO ZipEntry)))
+    entries ∷ MutableIO ZipFile → IOMutable (Enumeration (MutableIO ZipEntry))
+    entries zip = zip.entries'
+    native getInputStream :: MutableIO ZipFile -> MutableIO ZipEntry -> IOMutable InputStream throws IOException
+    --- get the 'ZipEntry' for the specified name, or 'Nothing' if not found.
+    native getEntry :: MutableIO ZipFile -> String -> IO (Maybe (MutableIO ZipEntry))
+    
+data ZipEntry = native java.util.zip.ZipEntry where
+    native new          :: MutableIO ZipEntry -> IOMutable ZipEntry
+                         | String   -> IOMutable ZipEntry
+    native getName      :: MutableIO ZipEntry -> IO String
+    native isDirectory  :: MutableIO ZipEntry -> IO Bool 
+    

@@ -1,0 +1,1 @@
+fails:IO.readlines encodes lines using the default internal encoding, when set

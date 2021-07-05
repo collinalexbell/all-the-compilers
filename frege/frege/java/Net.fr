@@ -1,0 +1,76 @@
+{--
+    Java types from java.net
+-}
+package frege.java.Net where
+
+data MalformedURLException = pure native java.net.MalformedURLException
+derive Exceptional MalformedURLException
+
+data URISyntaxException = pure native java.net.URISyntaxException
+derive Exceptional URISyntaxException
+
+{--
+    Frege type for @java.net.URL@, note that we do not support operations
+    that mutate the URL, hence we regard every instance as immutable.
+-}
+data URL = pure native java.net.URL where
+    native new              :: String -> IO URL throws MalformedURLException
+                            |  URL -> String -> IO URL throws MalformedURLException
+    native openStream       :: URL -> IOMutable InputStream throws IOException
+    pure native toString    :: URL -> String
+    --- convenience method to get a 'URLConnection'
+    native openConnection   :: URL -> IOMutable URLConnection throws IOException
+    
+type URLArray = JArray URL
+derive ArrayElement URL
+-- instance Cloneable URLArray
+-- 
+-- data URLArray = native "java.net.URL[]" where
+--     native new    "java.net.URL[]"  :: Int -> STMutable s URLArray
+--     native getAt  "frege.runtime.Array.<java.net.URL>arrayGet"
+--                                     :: Mutable s URLArray -> Int -> ST s (Maybe URL)
+--     native setAt  "frege.runtime.Array.<java.net.URL>arraySet"
+--                                     :: Mutable s URLArray -> Int -> URL -> ST s ()
+--     pure native itemAt "frege.runtime.Array.<java.net.URL>arrayGet"
+--                                     :: URLArray -> Int -> Maybe URL
+--     --- use this only if it is absolutely sure that there are no nulls in the array
+--     pure native elemAt "frege.runtime.Array.<java.net.URL>arrayGet"
+--                                     :: URLArray -> Int -> URL
+--     pure native length "frege.runtime.Array.<java.net.URL>arrayLen"
+--                                                 :: URLArray -> Int
+--     toList (a::URLArray) = elems a 0
+--         where
+--             elems (a::URLArray) i
+--                 | i < a.length = case itemAt a i of
+--                     Just s  -> s:elems a (i+1)
+--                     Nothing -> elems a (i+1)
+--                 | otherwise = []
+--     fromListST :: [URL] -> STMutable u URLArray
+--     fromListST urls = (URLArray.new urls.length >>= loop 0 urls) where
+--         loop j (x:xs) arr = do URLArray.setAt arr j x; loop (j+1) xs arr
+--         loop j []     arr = return arr
+--     fromList urls = ST.run (fromListST urls >>= readonly id)
+-- 
+
+
+data URLConnection = native java.net.URLConnection where
+    native connect        :: MutableIO URLConnection -> IO () throws IOException
+    native getInputStream :: MutableIO URLConnection -> IOMutable InputStream throws IOException
+    native getContentType :: MutableIO URLConnection -> IO (Maybe String)
+
+
+data URI = pure native java.net.URI where
+    pure native new                        :: String -> (URISyntaxException|URI)
+    pure native create java.net.URI.create :: String -> URI
+    pure native toURL                      :: URI -> (MalformedURLException|URL)
+    pure native toString                   :: URI -> String
+    pure native toASCIIString              :: URI -> String
+    pure native relativize                 :: URI -> URI -> URI
+
+
+-- type URLClassLoader = MutableIO URLClassLoaderIO
+data URLClassLoader = native java.net.URLClassLoader where
+        native new             :: MutableIO URLArray -> MutableIO ClassLoader -> IOMutable URLClassLoader
+        native loadClass{}     :: MutableIO URLClassLoader -> String -> IO (ClassNotFoundException|Class a)
+        native getResource     :: MutableIO URLClassLoader -> String -> IO (Maybe URL)
+        native findResource    :: MutableIO URLClassLoader -> String -> IO (Maybe URL)

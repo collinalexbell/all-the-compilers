@@ -1,0 +1,11 @@
+*~
+*.o
+*.a
+*.out
+*.gch
+*\#
+*.\#*
+*.dSYM
+carp.out
+carp
+!examples/carp

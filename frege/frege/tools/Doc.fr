@@ -1,0 +1,462 @@
+{- 
+
+    Copyright © 2011 - 2021, Ingo Wechsung
+    All rights reserved.
+
+    Redistribution and use in source and binary forms, with or
+    without modification, are permitted provided that the following
+    conditions are met:
+
+        Redistributions of source code must retain the above copyright
+        notice, this list of conditions and the following disclaimer.
+
+        Redistributions in binary form must reproduce the above
+        copyright notice, this list of conditions and the following
+        disclaimer in the documentation and/or other materials provided
+        with the distribution. Neither the name of the copyright holder
+        nor the names of its contributors may be used to endorse or
+        promote products derived from this software without specific
+        prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE
+    COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR
+    IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+    WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+    PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER
+    OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+    SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+    LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+    USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
+    AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+    LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+    IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+    THE POSSIBILITY OF SUCH DAMAGE.
+
+    -}
+
+{--
+ * This program reads java class files that are the result
+ * of compiling a frege package and writes
+ * a documentation of that package. All public classes, instances,
+ * data types, type aliases and functions are listed along with
+ * programmer supplied documentation from _doc_ comments.
+ *
+ * Usage:
+ * >java frege.tools.Doc [-d docpath] your.frege.Package ...
+ * This creates or updates the documentation files for the
+ * packages named on the command line. A documentation file for package
+ * @a.b.C@ will be written in file @docpath/a/b/C.html@, where @docpath@
+ * must be an existing directory.
+ *
+ * If the @-d@  flag is not given, the current directory is assumed for
+ * @docpath@.
+ *
+ * The generated HTML will contain links to the documentation files of imported
+ * packages, which are assumed to exist in the same @docpath@.
+ -}
+
+module  frege.tools.Doc where
+
+import frege.Prelude hiding(print, println, Integral, div, seq, join, break)
+
+import Data.TreeMap as TM(TreeMap, keys, values, each, insert)
+import Data.List as DL(sortBy, groupBy, intersperse)
+import Data.Bits
+
+import Compiler.enums.Flags as Compilerflags(VERBOSE)
+import Compiler.enums.Visibility(Public)
+
+import  Compiler.types.Positions(Position)
+import  Compiler.types.NSNames
+import  Compiler.types.SNames(Simple)
+import  Compiler.types.Packs
+import  Compiler.types.ImportDetails
+import  Compiler.types.QNames
+import  Compiler.types.Symbols
+import  Compiler.types.Global as G
+
+import  Compiler.common.CompilerOptions (standardGlobal, stdOptions, theClassLoader, pathRE)
+import  Compiler.common.Errors(printErrors)
+
+import frege.compiler.passes.Imp     as I()
+import frege.compiler.Main      as C()
+-- import frege.compiler.Utilities  as U(print, println)
+import frege.compiler.Classtools as CT()
+
+import frege.tools.doc.Utilities
+import frege.control.monad.State as S(execState)
+import frege.java.util.Zip
+import frege.java.Util (Enumeration)
+
+data DocOpts = DOpt {
+        verbose :: Bool     --- print a line for each documentation file
+        docdir  :: String   --- path name of documentation root, must exist
+        except  :: [String] --- excluded modules
+        path    :: [String] --- class path
+    }
+
+options = DOpt {verbose = false, docdir = ".", except = [], path = [] }
+
+main :: [String] → IO Bool
+main args
+    | null args = usage >> pure false
+    | any (~ ´^-h(elp)?´) args = usage >> pure false
+    | any (~ ´^-\?´)      args = usage >> pure false
+main args = do
+    -- now   <- System.currentTimeMillis()
+    mbopt <- scanOpts options args
+    case mbopt of
+        Nothing -> pure false
+        Just (docopt, cs) -> do
+            global <- standardGlobal
+            let opt1
+                    | docopt.verbose = stdOptions.{flags <- flip BitSet.unionE VERBOSE}
+                    | otherwise      = stdOptions
+                -- We put the excepted modules in 'Option.sourcePath'
+                opt = opt1.{dir = docopt.docdir, 
+                            sourcePath = docopt.except,
+                            path = docopt.path }
+            results <- mapM (docThing global.{options = opt}) cs
+            let es = filter ((!=0) . Global.errors) . concat $ results
+            forM_ es printErrors.run
+            pure (null es)
+
+scanOpts :: DocOpts -> [String] -> IO (Maybe (DocOpts, [String]))
+scanOpts opt [] = usage >> (return $ Just (opt, []))
+scanOpts opt ("-d" : docdir : rest) = do
+    let dd = File.new docdir
+    dir <- dd.isDirectory
+    wri <- dd.canWrite
+    if dir
+    then if wri
+    then scanOpts opt.{docdir} rest
+    else do
+        stderr.println (docdir ++ " is not writable.")
+        return Nothing
+    else do
+        stderr.println (docdir ++ " is not an existing directory.")
+        return Nothing
+scanOpts opt ("-v" : rest) = scanOpts opt.{verbose=true} rest
+scanOpts opt ("-x" : mods : rest) = do
+    let modx = ´,\s*´.splitted mods
+    scanOpts opt.{except <- (++ modx)} rest
+ 
+scanOpts opts ("-cp":path:args) = do
+    let ps = pathRE.splitted path
+    let pschecked = map peCheck ps
+        peCheck pe = do
+            let isjar = String.toUpperCase pe ~ ´\.(ZIP|JAR)$´
+                f = File.new pe
+            exists <- f.exists
+            readable <- f.canRead
+            isdir  <- f.isDirectory
+            if exists
+              then if readable
+                then if isdir
+                  then return true
+                  else if isjar then IO.return true
+                    else do
+                        stderr.println (pe ++ " should be a jar or zip archive or a directory")
+                        return false
+                else do
+                    stderr.println (pe ++ " is not readable")
+                    return false
+              else do
+                stderr.println (pe ++ " does not exist")
+                return false
+    bits <- sequence pschecked
+    rest <- scanOpts opts.{path = ps} args
+    if fold (&&) true bits then return rest else return Nothing    
+
+scanOpts opt (args@ ´^-´ : rest) = do
+    if head args == "-help"
+    then do
+        usage
+        return Nothing
+    else do 
+        stderr.println ("illegal command line argument '" ++ head args
+            ++ "', try -help" )
+        return Nothing    
+        
+scanOpts opt args = return (Just (opt, args))
+
+usage = mapM_ stderr.println [
+        "Usage: java -jar fregec.jar frege.tools.Doc [-cp classpath] [-v] [-d opt] [-x mod,...] modules ...",
+        "", 
+        "   -v              print a message for each processed module",
+        "   -d docdir       specify root directory for documentation",
+        "                   Documentation for module x.y.Z will be written to",
+        "                   $docdir/x/y/Z.html",
+        "   -cp classpath   (additional) class path where modules can be found",
+        "   -x mod1[,mod2]  exclude modules whose name starts with 'mod1' or 'mod2'", 
+        "",
+        "    Modules can be specified in three ways:",
+        "      my.nice.Module  by name, the Java class for this module must be on the class path",
+        "      directory/      all modules that could be loaded if the given directory was",
+        "                      on the class path, except excluded ones",
+        "      path.jar        all modules in the specified JAR file, except excluded ones",
+        "",
+        "Example: document base frege distribution without compiler modules",
+        "   java -cp fregec.jar frege.tools.Doc -d doc -x frege.compiler fregec.jar",
+    ]
+    
+docThing :: Global -> String -> IO [Global]
+docThing global arg = do
+    let f = File.new arg
+    directory <- f.isDirectory
+    regular   <- f.isFile
+    
+    if directory || regular
+        then do
+            let silent = global -- .{options <- D.Options.{flags <- flip BitSet.unionE IDE}}
+            let gpath  = silent.{options <- G.Options.{path  <- (arg:)}} 
+                                                    -- flags <- flip BitSet.differenceE WITHCP}}
+            loader <- theClassLoader gpath.options  
+            let gopts = gpath.{sub <- G.SubSt.{loader}}
+                 
+            if directory then docDir  gopts  f [] 
+                         else docArch gopts  f
+        else do
+            (_, g) <- StIO.run (work arg) global
+            return [g]
+
+docArch :: Global -> File ->  IO [Global]
+docArch opts f = do
+        j <- ZipFile.new f 
+        ns <- j.entries
+            >>= Enumeration.toList
+            >>= mapM ZipEntry.getName 
+            `finally` j.close
+        let mods = (filter (not . excluded) . map ftom . filter classes) ns
+            proc m = fmap snd (StIO.run (work m) opts)
+        mapM proc mods
+    `catch` zipex
+    `catch` ioex
+  where
+    -- predicate for excluded modules
+    excluded s = any (s.startsWith) opts.options.sourcePath
+    -- predicate to filter class files of top level classes
+    classes name = name ~ ´\.class$´ && name !~ ´\$´
+    -- make module name from path name
+    ftom path = mod 
+        where
+            mod          = withoutClass.replaceAll ´\\|/´ "."
+            withoutClass = path.replaceFirst ´\.class$´ ""
+    zipex :: ZipException -> IO [Global]
+    zipex zex = do
+        let path = f.getName
+        stderr.println zex.show
+        stderr.println ("(is " ++ path ++ " not a valid ZIP or JAR file?)")
+        return []
+    ioex  :: IOException  -> IO [Global]
+    ioex iox = do
+        stderr.println iox.show
+        return []            
+                                    
+docDir :: Global -> File -> [String] -> IO [Global]
+docDir opts f pcs = do
+    -- let name = f.getPath
+    -- stderr.println ("Entering " ++ name)
+    mbcontent <- f.list
+    case mbcontent of
+        Nothing -> return []      -- empty directory
+        Just arr -> do
+            list <- readonly toList arr
+            globs <- mapM (docDirEntry opts f pcs) list
+            return (concat globs)
+    
+
+docDirEntry :: Global -> File -> [String] -> String -> IO [Global]
+docDirEntry opts f pcs ent = do
+    let f = File.new f ent
+    directory <- f.isDirectory
+    regular   <- f.isFile
+    if directory then do
+        docDir opts f (ent:pcs) 
+    else if regular then do
+        if ent ~ ´\.class$´ && ent !~ ´\$´          --
+        then do
+            let base = strhead ent (ent.length - ".class".length)
+                pack = joined "." (reverse (base:pcs))
+            -- name <- f.getPath
+            -- stderr.println ("Found " ++ name ++ " taken as " ++ pack)
+            if any pack.startsWith opts.options.sourcePath
+            then return []
+            else do
+                (_,g)  <- StIO.run (work pack) opts
+                return [g]
+        else return []
+    else return []
+
+
+--- make 1 documentation file
+work c = do
+    -- doio $ stderr.println ("work " ++ c)
+    changeSTT Global.{options <- Options.{source = c}}
+    g <- getSTT
+    changeSTT Global.{sub <- SubSt.{thisPack = Pack.new g.options.source}}
+    g <- getSTT
+    changeSTT Global.{namespaces <- insert g.thisPack.nsName g.thisPack}
+    changeSTT Global.{namespaces <- insert (NSX "PreludeBase")     pPreludeBase}
+    -- unless (inPrelude g.thisPack g) do
+    --     changeSTT Global.{namespaces <- insertkv (NSX "Prelude")     pPrelude}
+        -- I.importClass Position.null pPrelude
+    when (g.errors == 0) continueImport
+
+mkLinks :: NSName -> Pack -> StG ()
+mkLinks ns pack = do
+    g <- getST
+    case g.packages.lookup pack of
+        Nothing -> stio ()
+        Just env -> do
+            let syms = {- filter (wanted g) -} (values env)
+            foreach syms link
+  where 
+    
+    link :: Symbol -> StG ()
+    link (sym::Symbol) = do
+        g <- getST
+        case g.thisTab.lookupS sym.name.key of
+            Just _  -> return ()
+            Nothing -> let rsym = fromMaybe sym (g.findit sym.name) in 
+                        I.linkHere (ns.unNS)
+                            pack
+                            protoItem.{name=Simple sym.pos.first.{value=sym.name.base},
+                                       members = if rsym.{env?} && not rsym.{clas?}
+                                                    then Just [] else Nothing, 
+                                       alias=sym.name.base}
+                            sym
+
+continueImport = do
+    g <- getSTT
+    p <- I.getFP (g.unpack g.thisPack)
+    case p of
+        Right Nothing → pure () -- not a frege package, this is not an error in doc
+        _ → do
+            r <- I.importClassData Position.null (NSX "Tool") g.thisPack
+            case r of
+                Nothing -> pure ()      -- errors printed later
+                Just fp -> do
+                    C.openFilePrinter ".html"
+                    when (BitSet.member VERBOSE g.options.flags) do
+                        liftIO $ stderr.println("documenting " ++ g.options.source)
+                    continueNamespaces fp
+
+data Date = native java.util.Date where
+    native new      :: Long           -> ST s (Mutable s Date)
+    native toString :: Mutable s Date -> ST s String
+
+stime time = ST.run (Date.new time >>= Date.toString)
+
+continueNamespaces :: CT.FregePackage -> StIO ()
+continueNamespaces fp = do
+    g <- getSTT
+    let packs = [ Pack.new p | p <- fp.imps ]
+        nspcs = [ NSX      p | p <- fp.nmss ]
+        ins t (n,p) = TreeMap.insert t n p
+        nss   = fold ins g.namespaces (zip nspcs packs)
+    changeSTT Global.{namespaces = nss}
+    liftStG $ foreach (each nss) (uncurry mkLinks)
+    g <- getSTT
+    let pdoc = fp.doc
+        -- pack = g.thisPack.un
+        doc = Doc sections
+        sections = title:sectPack ++ imports ++ tableOC 
+                    -- ++ types ++ classes ++ insts ++ dat ++ vals ++ ordered
+                    ++ definitions
+                    ++ insts ++ ordered
+                    ++ [valide]
+        title = h1 (seq [(text "Module "), code ((text . unmagicPack) g.thisPack.raw)])
+        sectPack =
+            {- par (seq [text " Source file: ", code (text fp.source)])
+            : h3 (text "Module Documentation")
+            : -} docit g (if pdoc == "" then Nothing else Just pdoc)
+        tableOC = [h3 (text "Table of Content"), toc]
+        toc = ul (Just "data") (tocpars [
+                                        (asyms++csyms++dsyms
+                                            ++(sortBy (comparing Symbol.pos) (funs++links)), "data", "Definitions"),
+                                        -- (asyms, "data", "Type Aliases"),
+                                        -- (csyms, "data", "Type Classes"),
+                                        -- (dsyms, "data", "Data Types"),
+                                        -- (funs,  "data", "Functions and Values"),
+                                        (expfuns, "of", "Re-Exported Items"),
+                                        -- ([], "case", "Functions and Values by Type"),
+                                        (isyms, "instance", "Instances"),
+                                        ]
+                                ++ if null allfuns then []
+                                     else [LI [div (XRef("#case") (text "Functions and Values by Type"))]]) 
+                    where
+            tocpars (([], _, _):xs) = tocpars xs
+            tocpars [] = []
+            tocpars ((ss, lbl, txt):xs) =
+                LI [div (XRef ("#" ++ lbl) (text txt)),
+                    DL Nothing (map (unlabelFst . fmap (const []) . docSym g) ss)] 
+                    -- div (joins 3 (flip sref g) ss)] 
+                    : tocpars xs
+            unlabelFst (a,b) = (unlabel a, b)
+        imports = [h3 (text "Imports"),
+                    ul Nothing (map imppar (zip packs nspcs))]
+        imppar (p,ns) = LI [div (seq [text "import ",
+                                      PRef p Nothing ((text . unmagicPack) (Pack.raw p)),
+                                      text " as ",
+                                      text (NSName.unNS ns)])]
+        -- types = if null asyms then []
+        --         else [h2 ((text "Type Aliases")),
+        --                 DL (Just "clas") (map (docSym g) asyms)]
+        -- classes = if null csyms then []
+        --         else [h2 ((text "Classes")),
+        --                 DL (Just "clas") (map (docSym g) csyms)]
+        insts = if null isyms then []
+                else [h2 (XLbl "instance" (text "Instances")),
+                        DL (Just "inst") (map (docSym g) isyms)]
+        -- dat  =  if null dsyms then []
+        --         else [h2 ((text "Data Types")),
+        --                 DL (Just "data") (map (docSym g) dsyms)]
+        -- vals =  if null funs && null links then []
+        --         else [h2 ((text "Functions and Values")),
+        --                 DL (Just "func") (map (docSym g) (funs ++ links))]
+        ordered = if null allfuns then []
+                else [h2 (XLbl "case" (text "Functions and Values by Type")),
+                        DL (Just "func") (map docTypes ordfuns)]
+        definitions = [h2 (XLbl "data" (text "Definitions")),
+                        DL (Just "data") (map (docSym g) sourcesyms)]
+        sourcesyms = sortBy (comparing Symbol.pos) (asyms ++ csyms ++ dsyms ++ funs ++ links) 
+        asyms = sortBy (comparing Symbol.name) [sym | sym@SymA {pos} <- values g.thisTab]
+        csyms = sortBy (comparing Symbol.name) [sym | sym@SymC {pos} <- values g.thisTab]
+        isyms = sortBy (comparing Symbol.name) [sym | sym@SymI {pos} <- values g.thisTab]
+        dsyms = sortBy (comparing Symbol.name) [sym | sym@SymT {pos} <- values g.thisTab]
+        funs  = sortBy (comparing Symbol.name) [sym | sym@SymV {pos} <- values g.thisTab]
+        links = sortBy (comparing Symbol.name) [sym | sym@SymL {alias} <- values g.thisTab,
+                                                    g.our alias,
+                                                    other <- g.findit alias,
+                                                    not other.{flds?},  -- no constructor aliases
+                                                    noclassmember g other.name]
+            where
+                noclassmember g (MName tname _) = case g.findit tname of
+                    Just SymC{} -> false
+                    other       -> true
+                noclassmember f _ = true
+        allfuns = funs ++ [ s | syms <- [csyms, isyms, dsyms], sym :: Symbol <- syms,
+                                sym.{env?},
+                                s <- values sym.env, Symbol.{typ?} s ]
+        ordfuns = groupBy (using Symbol.typ) (sortBy (comparing Symbol.typ) allfuns)
+        expfuns = sortBy (comparing Symbol.name) [sym | sym@SymL {pos,vis,alias} <- values g.thisTab,
+                                                    vis == Public,
+                                                    not (g.our alias) ]
+        docTypes :: [Symbol] -> (Text, [Paragraph])
+        docTypes [] = undefined
+        docTypes ss = (code typ, [par $ content ss])
+            where
+                typ = dRho g (head ss).typ.rho (repeat false)
+                content = fold (:-) (text "") • intersperse (text ", ") •  map (flip fref g • Symbol.name)
+
+        -- h3 (text "Imports"), ul Nothing (map docImp (Tree.keyvalues ?S.packs Eq))]
+        -- we are producing strict HTML401
+        valide = par validtext
+        validtext = XRef "http://validator.w3.org/check?uri=referer"
+                    (E "<img src=\"http://www.w3.org/Icons/valid-html401\" alt=\"Valid HTML 4.01 Strict\" height=\"31\" width=\"88\">")
+
+    htmlDoc doc
+    liftIO $ g.printer.close
+    return ()
+

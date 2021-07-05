@@ -1,0 +1,53 @@
+(import cstdio)
+
+(import macros)
+(import vector)
+(import algorithms)
+(import concepts)
+(import concepts)
+
+; This is a float, because you can't use an int to keep count, because
+; it will recursively call osetf when you try to incv.
+(def osetf-count
+  (var intern float 0.0))
+
+(def setf-both
+  (fn intern void ((dst (p int)) (src (p int)))
+    (setf (# osetf-count) (+ osetf-count 1.0))
+    (core setf dst (core @ src))
+    (return)))
+
+(def setf-copy-assign
+  (fn intern bool ((dst (p int)) (src (p int)))
+    (setf-both dst src)
+    true))
+
+(def setf-copy-init
+  (fn intern bool ((dst (p int)) (src (p int)))
+    (setf-both dst src)
+    true))
+
+(std.concepts.instantiate Vector int)
+(std.concepts.instantiate sort (Iterator (Vector int)))
+(std.concepts.instantiate for-each (Iterator (Vector int)))
+
+(def print-num
+  (fn extern void ((n int))
+    (printf "%d, " n)
+    (return)))
+
+(def main
+  (fn extern-c int (void)
+    (let ((v (Vector int))
+          (i int 0))
+      (for (setv i 100) (> i 0) (decv i)
+        (push-back v i))
+
+      (for-each (begin v) (end v) (# print-num int))
+      (printf "\n")
+      (sort (begin v) (end v))
+      (for-each (begin v) (end v) (# print-num int))
+      (printf "\n")
+
+      (printf "Count: %f\n" osetf-count)
+    0)))

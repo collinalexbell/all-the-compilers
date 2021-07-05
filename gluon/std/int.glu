@@ -1,0 +1,71 @@
+//@NO-IMPLICIT-PRELUDE
+//! The signed 64-bit integer type.
+
+let { Semigroup } = import! std.semigroup
+let { Monoid } = import! std.monoid
+let { Group } = import! std.group
+let { Eq, Ord, Ordering } = import! std.cmp
+let { Num } = import! std.num
+let { Show } = import! std.show
+
+let additive =
+    let semigroup : Semigroup Int = {
+        append = \x y -> x #Int+ y,
+    }
+
+    let monoid : Monoid Int = {
+        semigroup = semigroup,
+        empty = 0,
+    }
+
+    let group : Group Int = {
+        monoid = monoid,
+        inverse = \x -> 0 #Int- x,
+    }
+
+    { semigroup, monoid, group }
+
+let multiplicative =
+    let semigroup : Semigroup Int = {
+        append = \x y -> x #Int* y,
+    }
+
+    let monoid : Monoid Int = {
+        semigroup = semigroup,
+        empty = 1,
+    }
+
+    { semigroup, monoid }
+
+let eq : Eq Int = {
+    (==) = \l r -> l #Int== r,
+}
+
+let ord : Ord Int = {
+    eq = eq,
+    compare = \l r -> if l #Int< r then LT else if l #Int== r then EQ else GT,
+}
+
+let num : Num Int = {
+    ord = ord,
+    (+) = additive.semigroup.append,
+    (-) = \l r -> l #Int- r,
+    (*) = multiplicative.semigroup.append,
+    (/) = \l r -> l #Int/ r,
+    negate = additive.group.inverse,
+}
+
+let show : Show Int = {
+    show = (import! std.prim).show_int,
+}
+
+{
+    additive,
+    multiplicative,
+    eq,
+    ord,
+    num,
+    show,
+    ..
+    import! std.int.prim
+}

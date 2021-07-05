@@ -1,0 +1,17 @@
+#zeta-image
+
+{
+    # Trivial function returning an integer constant
+    main: {
+        name: "main",
+        params: [],
+        num_locals: 1,
+        entry: {
+            name: "main_entry",
+            instrs: [
+                { op: "push", val: 777 },
+                { op: "ret" }
+            ]
+        }
+    }
+};

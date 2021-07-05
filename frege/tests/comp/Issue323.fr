@@ -1,0 +1,16 @@
+--- This is an undocumented module
+module tests.comp.Issue323 where
+
+import Control.Arrow
+
+-- "type class"
+class Arrow a => ArrowApply a where
+    app :: a (a b c, b) c
+
+-- "instance" for (->)
+instance ArrowApply (->) where
+    app :: (b -> c, b) -> c
+    app (f, b) = arr f b
+
+-- use it
+main = println (app ((1+), 3))

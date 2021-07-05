@@ -1,0 +1,122 @@
+--- Error messages, warnings, hints and logging
+module frege.compiler.common.Errors where 
+
+import  frege.Prelude  hiding(error, print, println, break, <+>)
+import  frege.lib.PP(fill, break, pretty, text, nest, msgdoc, <+>, <>, DOCUMENT)
+import  frege.compiler.enums.Flags
+import  frege.compiler.types.Positions
+import  Compiler.types.Global as G
+
+derive Eq Severity
+derive Show Severity
+
+{--
+    Format an error message, remember in the state and update error counter in the state.
+ -}
+private message :: Severity -> Position -> DOCUMENT -> StG ()
+private message what n s = do
+    g <- getST
+    let opt = g.options
+        ns  = if n.start == maxBound then packageEnd g else n
+        is  = substr (show what) 0 1 ++ " " ++ opt.source ++ ":" ++ show ns ++ ":"
+        msg = if isOn opt.flags IDEMODE
+                then Msg {pos=ns, level=what, text = pretty 64 s}
+                else Msg {pos=ns, level=what, 
+                    text = pretty 72 (text is <+> nest 4 s)}
+        errors = if what == ERROR then 1 else 0
+        emit = what == ERROR
+                || what == WARNING && isOn opt.flags WARNINGS
+                || what == HINT    && isOn opt.flags HINTS
+                
+    when emit do
+        changeST Global.{sub <- SubSt.{
+                                messages  <- (msg:), 
+                                numErrors <- (errors+)}}
+    
+        case (tracing opt.flags) of
+            -- yes, we do cheat a bit here ...
+            -- When tracing, it is sometimes important to see
+            -- the error message in between the log messages
+            true | traceLn msg.text = return ()
+            _ -> return ()
+
+
+warn :: Position -> DOCUMENT -> StG ()
+warn = message WARNING
+
+hint :: Position -> DOCUMENT -> StG ()
+hint = message  HINT
+
+error :: Position -> DOCUMENT -> StG ()
+error = message  ERROR
+
+
+native printStackTrace :: Throwable -> IO ()
+
+
+{--
+ * Emit a message and return 'undefined'.
+ * This indicates errors in the compiler, not in the source code compiled.
+ -}
+fatal :: Position -> DOCUMENT -> StG a
+fatal n s = do
+    g <- getST
+    let opt = g.options
+        ns  = if display n == display Int.maxBound then "EOF" else display n
+        is  = "F " ++ opt.source ++ ":" ++ ns ++ ": "
+    changeST Global.{sub <- SubSt.{numErrors <- (1+)}}
+    case (tracing opt.flags) of
+        _ | traceLn (pretty 78 (text is <+> nest 4 s)) = undefined
+          | otherwise = Prelude.error "fatal compiler error" 
+
+
+verb = logmsg VERBOSE
+
+
+explain = logmsg EXPLAIN
+
+
+{-- 
+    > logmsg flag n s
+ 
+    Print a message _s_ referring to line number _n_ if _flag_ is on
+    The error counter remains unaffected.
+    Can also be used for regular trace messages, which will appear as T:file:line:
+ -}
+logmsg :: Flag -> Position -> DOCUMENT -> StG ()
+logmsg f n s = do
+    global <- getST
+    when (isOn global.options.flags f) do
+        logit f n s
+
+
+private logit :: Flag -> Position -> DOCUMENT -> StG ()
+private logit f n s = do
+    global <- getST
+    let pos  = if n.start < maxBound then n else packageEnd global
+        
+        within :: [(Int, Int)] -> Int -> Bool
+        within [] n = false
+        within ((a,b):xs) n = a <= n && n <= b || within xs n
+        cond = (f < TRACE1                            -- warning or hint or verbose
+                   || null global.tRanges              -- no ranges specified
+                   || within global.tRanges pos.line)
+    let
+        opt   = global.options
+        logch = if f == EXPLAIN then " " else substr (show f) 0 1
+        osrc  = if f == EXPLAIN then "explain" else opt.source
+        is = logch ++ " " ++ osrc ++ ":" ++ show pos ++ ":"
+    case cond of
+        true | traceLn (pretty 78 (text is <+> nest 4 s)) = return ()
+        _ = return ()
+
+
+--- output error messages without clearing them
+printErrors = do
+    g <- getSTT
+    liftIO (forM_ (reverse g.sub.messages) (g.stderr.println . Message.text))
+
+--- output error messages and clear them afterwards
+printAndClearErrors = do
+    printErrors
+    changeSTT _.{sub <- _.{messages = []}}

@@ -1,0 +1,46 @@
+--- A zip list.
+package frege.data.wrapper.ZipList where
+
+import Data.Monoid
+import Data.Foldable as F ()
+import Data.Traversable as T ()
+
+newtype  ZipList a = ZipList { get :: [a] } where
+    empty = ZipList []
+    null (ZipList []) = true
+    null (ZipList _)  = false
+
+instance Functor ZipList where
+    fmap f (ZipList xs) = ZipList (map f xs)
+
+instance Applicative ZipList where
+    pure x = ZipList (repeat x)
+    ZipList fs <*> ZipList xs = ZipList (zipWith id fs xs)
+
+instance ListSource ZipList where
+    toList (ZipList xs) = xs    
+
+-- instance ListEmpty ZipList
+
+instance ListMonoid ZipList where 
+    ZipList xs ++ ZipList ys = ZipList (xs ++ ys)
+
+instance ListView ZipList where
+    uncons (ZipList []) = Nothing
+    uncons (ZipList (x:xs)) = Just (x, ZipList xs)  
+    
+    length (ZipList xs) = length xs
+    take n (ZipList xs) = ZipList (take n xs)
+   
+instance Semigroup (ZipList a) where
+    mappend xs ys = xs ++ ys
+
+instance Monoid (ZipList a) where
+    mempty = ZipList []
+    
+instance F.Foldable ZipList where
+    foldr f x (ZipList xs) = Prelude.foldr f x xs
+    foldl f x (ZipList xs) = Prelude.fold  f x xs
+
+instance T.Traversable ZipList where
+    traverse f (ZipList xs) = fmap ZipList $ T.traverse f xs   

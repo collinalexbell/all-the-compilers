@@ -1,0 +1,8 @@
+config-int.h
+jtypes.h
+gnu_*.h
+java_*.h
+kaffe_*.h
+org_*.h
+Makefile
+stamp-*

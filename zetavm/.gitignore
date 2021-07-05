@@ -1,0 +1,36 @@
+# Autoconf output
+autom4te.cache
+aclocal.m4
+config.log
+config.status
+config.h
+makefile
+
+# Compiled binaries
+zeta
+cplush
+*.dSYM
+*.exe
+*.dll
+*.pyc
+
+# Object files
+vm/*.o
+plush/*.o
+
+# Generated files
+benchmarks/plush_parser.zim
+packages/lang/plush/0/package
+packages/lang/plush/0/tests
+packages/std/array/0/package
+packages/std/parsing/0/package
+packages/std/math/0/package
+packages/std/string/0/package
+packages/std/map/0/package
+
+# Moronic MacOS metadata
+.DS_Store
+
+# Infantile IDE metadata
+.idea
+.vscode

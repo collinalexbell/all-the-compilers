@@ -1,0 +1,14 @@
+--- type class 'First' with 'first' operation
+package frege.control.First where
+
+import frege.control.Tensor
+
+class (Tensor f) => First f where
+  {--
+      Send the first component of the input through the argument
+      tensor, and copy the rest unchanged to the output.
+  -}
+  first :: f a b -> f (a, c) (b, c)
+
+instance First (->) where
+  first f = \(a, c) -> (f a, c)

@@ -1,0 +1,23 @@
+#!/usr/bin/zeta
+#zeta-image
+
+# Integer
+myNumber = 77;
+
+# String
+myString = 'abc';
+
+# Object
+myObject = {
+    a: 1,
+    b: $true,
+    c: 525,
+    'arbitrary string?': 777
+};
+
+# Array
+myArray = [0, 1, 2, 'a', 'b', 'c'];
+
+# The last value referenced at the end of the image is what
+# the image/package evaluates to when imported by ZetaVM
+@myObject;

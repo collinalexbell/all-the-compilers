@@ -1,0 +1,616 @@
+ELENA 4.x Specification
+by Aleksey Rakov
+(revision 1)
+
+1. Program Structure, Project Types, Program Entry Point
+
+A typical ELENA project consists of a project file (.prj) and source files (.l) located in the project root and sub folders.
+
+Root source files are declared in the project root namespace, ones in sub folders - in nested namespaces.
+
+E.g.
+
+    <project>
+        <namespace>mytest</namespace>
+    </project>
+    <files>
+        <module>
+            <include>test.l</include>
+            <include>subns\test.l</include>
+        </module>
+    </files>
+
+test.l file is declared in *mytest* namespace, subns\test.l one in *mytest'subns*.
+
+_NOTE : By default all source files are UTF8 encoded. The project file is an XML document with **configuration** root node. In the current
+implementation the project file contains no xml namespace attributes_
+
+Typically the project compilation produces a single module file (.nl). But it is possible to specify multi-library output:
+
+    <project>
+        <namespace>mytest</namespace>
+    </project>
+    <files>
+        <module>
+            <include>test.l</include>
+            <include>subns\test.l</include>
+        </module>
+        <module name="sub1">
+            <include>sub1\op.l</include>
+            <include>sub1\sub2\op2.l</include>
+        </module>
+    </files>
+
+In this case several libraries will be generated - mytest.nl and mytest\sub1.nl
+
+A project file contains the project settings, source files, forwards and so on. The project may be based on a project template. 
+In this case it inherits all the parent settings except the overloaded ones. The template may be based on another one and so on.
+
+### Project Settings
+
+ XPath | Descriptions
+------ | ------------
+configuration/project/debuginfo | -1 / 0 - turn on/off the debug information generation 
+configuration/project/executable | the project target name (a name of the generated executable file)
+configuration/project/libpath | a path to the language libraries
+configuration/project/namespace | a project root namespace
+configuration/project/output |  a path to the output directory
+configuration/project/template | a project base template
+
+### Linker Settings
+
+ XPath | Descriptions
+------ | ------------
+configuration/linker/heapcommit | specifies total heap allocation size in physical memory, the default value is 65536
+configuration/linker/heapresrv | specifies total heap allocation size in virtual memory, the default value is 1048576
+configuration/linker/imagebase | specifies the image base address, the default value is 4194304 (40000h)
+configuration/linker/mgsize | specifies the initial size of GC generation 1 in hexadecimals
+configuration/linker/stackcommit | specifies the total stack allocation size in physical memory, the default value is 4096
+configuration/linker/stackresrv | specifies the total stack allocation size in virtual memory, the default value is 1048576
+configuration/linker/ygsize | specifies the size of GC generation 0 in hexadecimals
+
+### System Settings
+
+ XPath | Descriptions
+------ | ------------
+configuration/system/maxthread | specifies the maximal number of simultaneous threads
+configuration/system/platform | specifies the target platform
+
+**maxthread** should 0 or 1 for the STA (single-thread application) and more than 1 for MTA (multi-thread application)
+
+**platform** defines the target platform
+
+ Target | Descriptions
+------- | ------------
+0 | a library
+1 | Win32 CUI (console user interface) stand-alone STA
+4097 | Win32 GUI (graphical user interface) stand-alone STA
+257 | Win32 CUI (console user interface) vm-client STA
+65537 | Win32 CUI (console user interface) stand-alone MTA
+
+### Compiler Settings
+
+ XPath | Descriptions
+------ | ------------
+configuration/compiler/l0 | -1 / 0 - turn on/off the byte-code level optimization
+
+### Manifest Info
+
+This section provides the module manifest info
+
+ XPath | Descriptions
+------ | ------------
+configuration/manifest/name | specifies the module name
+configuration/manifest/version | specifies the module version
+configuration/manifest/author | specifies the module author
+
+### Files
+
+This section contains the list of source and the target libraries. It may specifies the parsing target for the script files.
+
+In the simplest case it contains the list of source file names:
+
+    <configuration>
+      <files>
+        <module>
+          <include>controls.l</include>
+          <include>win32_controls.l</include>
+          <include>win32_forms.l</include>
+        </module>
+      </files>
+    </configuration> 
+
+The files will be compiled into the single module in the root namespace specified in **configuration/project/namespace**
+
+If files contains sub-folder the appropriate nested namespace will be used:
+
+    <configuration>
+      <files>
+        <module>
+          <include>convertors.l</include>
+          <include>console.l</include>
+          <include>win32_args.l</include>
+          <include>basic.l</include>
+          <include>random.l</include>
+          <include>math\functions.l</include>
+          <include>text\strings.l</include>
+          <include>text\words.l</include>
+        </module>
+      </files>
+    </configuration> 
+
+e.g math\functions.l will be compiled in math sub-namespace
+
+Several **configuration\files\module** can be used. Only one of them may omit the **name** attribute. As a result 
+several modules will be generated:
+
+    <configuration>
+      <project>
+        <namespace>mytest</namespace>
+      </project>
+      <files>
+        <module>
+            <include>test.l</include>
+            <include>subns\test.l</include>
+        </module>
+        <module name="sub1">
+            <include>sub1\op.l</include>
+            <include>sub1\sub2\op2.l</include>
+        </module>
+      </files>
+    </configuration> 
+ 
+here several libraries will be produced - mytest.nl and mytest\sub1.nl in mytest and mytest'sub1 namespaces.
+
+    <configuration>
+      <files>
+         <module name="rules" target="eson">
+           <include>calc.es</include>
+         </module>
+         <module>
+           <include>parser.l</include>
+           <include>control.l</include>
+         </module>
+        </files>
+    </configuration> 
+
+**configuration\files\module** may have **target** attribute which will be used to compile user-defined grammar source
+files. Appropriate targets should be declared in the **configuration\targets** section.
+
+### Forwards
+
+**configuration\forwards** section contains the list of weak references which are resolved in a link time.
+ 
+    <forwards>
+       <forward key="$program">system'startUp</forward>
+       <forward key="$system_entry">system'core_routines'sta_start</forward>
+       <forward key="program">$elena'@rootnamespace'program</forward>
+    </forwards>
+
+The system forwards start with a dollar sign ($), the program ones are normal identifiers and may contain a namespace prefix.
+
+Forwards are used for example to resolve the program entry.
+
+### Primitives
+
+**configuration\primitives** section contains the list of binary files used by the linker
+
+### References
+
+**configuration\references** section contains the list of paths to the external libraries (the ones which are not located in
+the folder specified in **configuration/project/libpath**)
+
+### Targets
+
+**configuration\targets** section contains the list of script engine setting to parse the specified files with an external
+grammar.
+
+## Project Base Templates
+
+Currently several major project templates are supported:
+* **console** - STA CUI stand-alone application (templates\win32_console.cfg)
+* **mta_console** - MTA CUI stand-alone application (templates\win32_consolex.cfg)
+* **gui** - STA GUI stand-alone application (templates\win32_gui.cfg)
+* **mta_gui** - MTA GUI stand-alone application (templates\win32_guix.cfg)
+* **vm_console** - STA CUI vm-client application (templates\vm_win32_console.cfg)
+* **lib** - ELENA library (templates\lib.cfg)
+
+_where :_ 
+* _CUI - console user interface_
+* _GUI - graphical user interface_ 
+* _STA - single-thread application_
+* _MTA - multi-thread application_
+
+## Program entry point
+
+The program entry is defined by the project forward references. The system entry is defined in **$system_entry**, the program
+one - in $program. The system entry is used to initialize the program environment (e.g. initialize a system environment record,
+allocate a program heap and so on). The system entry in its turn invoke the program entry point. In most cases the program entry
+invokes the program main symbol (for the CUI) or the program main window (for GUI).
+
+The program main symbol / window should be declared in the project root namespace. For console application the symbol name should
+be - **program**, for graphical application - **MainWindow**
+
+2. Grammar
+
+ELENA uses LL(1) grammar. It is an analytical grammar, meaning that the role of the terminal token is defined by its position in
+the statement. As a result the grammar lacks the keywords ( instead user-defined attributes are used ) and there are no reserved 
+words. For example, it is possible to write the code without attributes at all:
+
+    class
+    {
+       field;
+
+       method(param)
+       {
+       }
+    } 
+
+where a class with a name **class** is declared. It has one field with a name **field** and one method - **method[1]**
+
+But in most cases it is required to provide additional info. So the token role is defined by its position.
+
+    class class;
+    
+    singleton Tester
+    {
+        do(var class class)
+        {        
+        }
+    }
+    
+    public program()
+    {
+        var class class := new class();
+            
+        Tester.do(class);
+    }
+                                                          
+where **class** is used as an attribute to declare a new class, as a identifier type and as an identifier.
+
+## Lexical grammar
+
+    input ::=
+       { input-element* new-line }*
+
+    input-element ::=
+        whitespace | comment | token
+        
+### Line terminators
+             
+    new-line ::=
+       Carriage return character (U+000D) followed by line feed character (U+000A) 
+       | Line feed character (U+000A)
+
+### White space
+
+    whitespace ::=
+       whitespace-character+  
+
+    whitespace-character ::=
+       Horizontal tab character (U+0009)
+       | Space (U+0020)
+
+### Comments
+
+    comment ::=
+       single-line-comment
+       | delimited-comment
+
+    single-line-comment ::=
+       "//" input-character*
+
+    input-character ::=
+       Any Unicode character except a new-line-character
+
+    new-line-character ::=
+       Carriage return character (U+000D)
+       | Line feed character (U+000A)       
+  
+    delimited-comment ::=
+       "/*" delimited-comment-section* "*"+ "/"
+
+    delimited-comment-section ::=
+       not-asterisk
+       | "*"+ not-slash
+
+    not-asterisk ::=
+       Any Unicode character except *
+
+    not-slash ::=
+       Any Unicode character except /
+
+### Tokens
+
+    token ::=
+       identifier
+       | reference
+       | integer-literal
+       | real-literal
+       | character-literal
+       | string-literal
+       | operator-literal
+       | operator-or-punctuator
+       | attribute-literal
+
+### Identifiers and References
+
+    identifier ::=
+       identifier-start-character identifier-part-character* 
+
+    reference ::= 
+       identifier { "'" identifier }+
+
+    identifier-start-character ::=
+       letter-character
+       | "_"
+
+    identifier-part-character ::=
+       letter-character
+       | decimal-digit-character
+       | "_"      
+
+    letter-character ::=
+       A Unicode character of classes Lu, Ll, Lt, Lm, Lo, or Nl
+
+    decimal-digit-character ::=
+       A Unicode character of the class Nd
+
+### Literals
+
+    integer-literal ::=
+       decimal-digit+ integer-type-suffix?
+
+    real-literal ::=
+       decimal-digit+ "." decimal-digit+ exponent-part? real-type-suffix
+
+    character-literal ::=
+       "$" decimal-digit+
+
+    string-literal ::= 
+       '"' string-character* '"'
+       | quote-escape-sequence
+
+    attribute-literal ::=
+      "#" hexadecimal-digit+
+
+    decimal-digit ::=
+       "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9"
+
+    hexadecimal-digit ::=
+       "0" | "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "A" | "B" | "C" | "D" | "E" | "F"
+
+    exponent-part ::=
+       "e" sign? decimal-digit+
+
+    sign ::=
+       "+"
+       | "-"
+
+    string-character ::=
+       Any character except "
+       | quote-escape-sequence
+
+    quote-escape-sequence ::=
+       '""'
+
+    integer-type-suffix ::=
+       "h" | "l"
+
+    real-type-suffix ::=
+       "r"
+
+### Operators
+
+    operator-literal ::=
+       $shr
+       | $shl
+       | $fnl
+
+    operator-or-punctuator ::=
+       "{"
+       | "}"
+       | "["
+       | "]"
+       | "("
+       | ")"
+       | "."
+       | ","
+       | ":"
+       | ";"
+       | "+"
+       | "-"
+       | "*"
+       | "/"
+       | "|"
+       | "\"
+       | "^"
+       | "!"
+       | "="
+       | "<"
+       | ">"
+       | "?"
+       | "&&"
+       | "||"
+       | "=="
+       | "!="
+       | "<="
+       | ">="
+       | "+="
+       | "-="
+       | "*="
+       | "/="
+       | "=>"
+       | ":="
+       | "[]"       
+
+## Syntactic grammar
+
+    module ::=
+       attribute_declaration* module_member*
+
+### Attribute declaration
+
+    attribute_declaration ::=
+       attribute-literal "=" identifier ";"
+
+### Member pattern
+
+    module_member-pattern ::=
+       visibility_attribute? property_attribute? scope_prefix_attribute? scope_attribute? type? identifier scope
+       
+### Module members
+
+    module_member ::=
+       symbol_declaration
+       | class_declaration
+
+### Symbol declaration
+
+    symbol_declaration ::=
+       visibility? prefix? scope_attribute? identifier "=" expression ";"
+
+    visibility ::=
+       "public"
+       | "internal"
+
+    prefix ::=
+       "const"
+       | "preloaded"
+
+    scope_attribute ::=
+       "symbol"
+       | "static"
+
+### Class declaration
+
+    class_declaration ::=
+       visibility? attribute? prefix? scope_attribute? identifier template_parameters? class_body
+
+    class_body ::=
+       base_class? "{" class_member* "}"
+       | single_method
+
+    base_class ::=
+       ":" { identifier | reference }
+
+    class_member ::=
+       field
+       | property
+       | constructor
+       | method
+
+    field ::=
+       field_attribute? field_prefix? field_attribute? {type | primitive}? identifier assigning_body? ";"
+
+    visibility ::=
+       "public"
+       | "internal"
+
+    attribute ::=
+       "sealed"
+       | "abstract"
+       | "closed"
+
+    field_attribute ::=
+       "sealed"
+
+    prefix ::=
+       "const"
+
+    field_prefix ::=
+       "const"
+       | "embeddable"
+
+    scope_attribute ::=
+       "class"
+       | "struct"
+       | "singleton"
+       | "interface"
+       | "mixin"
+       | "nonstructural"
+
+    field_attribute ::=
+      "field"
+      | "static"
+
+    template_parameters ::=
+       "<" template_parameter { "," template_parameter }* ">"
+
+    template_parameter ::=
+       { identifier | reference } template_parameters?
+
+3. Symbols, Classes
+
+A typical module contains the list of class members : symbols and classes
+
+    module_member ::=
+       visibility? symbol_attributes? identifier symbol_declaration
+       | visibility? class_attributes? identifier class_declaration
+
+### Visibility
+
+    visibility ::=
+       "public"
+       | "internal"
+
+A declared symbol or class can be internal or public. The internal symbol cannot be accessed outside its module.
+If the visibility attribute is skipped the member is internal.
+
+## Symbols
+
+Symbols are the named expression. They are used to declare constant symbols, singletons and class symbols
+
+    symbol_declaration ::=
+       visibility? prefix? scope_attribute? identifier "=" expression ";"
+
+    visibility ::=
+       "public"
+       | "internal"
+
+    prefix ::=
+       "const"
+       | "preloaded"
+
+    scope_attribute ::=
+       "symbol"
+       | "static"
+
+
+### Simple symbols
+
+    symbol_declaration ::=
+       visibility? "symbol"? identifier "=" expression ";"
+
+A symbol can be used to reuse the expressions:
+
+    import extensions;
+    
+    public symbol InputNumber
+        = console.write("Reading a number:").readLine().toInt();
+    
+    public program()
+    {
+        var n1 := InputNumber;
+        var n2 := InputNumber;
+        
+        console.printLine("The sum of ",n1," and ",n2," is ",n1+n2);
+    }
+
+The output is:
+
+    Reading a number:2
+    Reading a number:3
+    The sum of 2 and 3 is 5
+   
+### Constant symbols
+
+Symbols can be used to implement constants:
+
+    public const int N = 2;
+    public const string Message = "MyMessage";
+
+The symbol expression should be constant one (numeric or string constant for example), otherwise the compiler 
+will generate an error.
+
+4. Identifiers, Namespaces, Forwards

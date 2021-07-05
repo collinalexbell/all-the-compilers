@@ -1,0 +1,2138 @@
+0.2.1 Self Closure / 9-25-2016
+==========================
+
+cdd5e69 Bump versions to 0.2.1
+3577458 binding adjuster. If a fn call's unresolved, dont replace it
+67f0a03 clean up some object ext comments
+67a3c4e add == impl for arrays using java.util.Arrays
+25a3472 rm some dead code, clean up formatting in places
+8350ff3 Fix TODO for DescendentFinder rm duplicated code that was commented out in the parser
+c881333 should also be able to close over super type's methods
+7141cc4 fixes for compiling mirah with an older mirah
+bbf5f3a fix const lookups within the same compilation unit
+0e3c706 ensure double colon works atleast for previously compiled artifacts
+3143364 add self closing too
+4ae4f53 get most closure types to a working state!
+e499840 better exit failure message when running mirah
+7e1bfa5 field / self closures work. :)
+d91bc5a fix release link
+0200bb3 remove unused imports for SimpleScope(r)
+aeace8a Mirah run mode should not stop the process unless compile failed
+ad9b31d minor whitespace fixes
+7414af5 Really fix by changing builder's naming
+f74bf7a Change naming scheme for macros to use the macro name
+ccb3aba Fix metacircularity of the parser.
+6c09be2 just use test-unit at whatever version
+be6c757 Merge pull request #436 from KoKumagai/fix-typo
+63a6b62 Merge pull request #440 from uujava/fix_list_assignment_macro
+9175280 fix list assignment to use set instead of add (cherry picked from commit 5bd8af1)
+7dd1219 bump to 0.2.1.dev version
+d8fdbc1 Fix a typo
+
+
+0.2.0 Back In Action / 2016-8-6
+===============================
+
+a06d030 version bump to 0.2.0
+7be0829 rm some unused ruby files
+0b9efd0 introduce new cast macro to object
+76316b2 some ws cleanup in the typer
+5cf516f fix worked around issue in call where targets don't have the correct parent
+3036f21 do some formatting in parser's call.mirah
+7e77601 rm unnecessary property setting
+3030b05 rm some unnecessary mirah-parser bits and empty Rakefile targets
+2698579 build and depend on the parser when building mirahc
+7180002 bump rakefile -year
+98ad327 fix test names in mirah parser, comment out things that still fail where I'm not sure why
+86725e5 Revert "Merge branch 'uujava-feature_cast_hint'"
+476e7df missing dep in rake graph of asm 5
+b775c12 missed adding a dep on old jar in Rakefile
+54a5735 first step towards an integrated build.
+8b430ee Clean up rakefile now that new scheme works
+ca39001 in ext provider service file, fix small typo
+754336a new build scheme works
+9039106 add mirah parser tests to travis
+7c940ef merged mirah-parser under a directory
+b78196d Merge branch 'uujava-origin_javadoc_support'
+4fb441d Merge branch 'origin_javadoc_support' of https://github.com/uujava/mirah-parser into uujava-origin_javadoc_support
+8e9fa33 Merge branch 'uujava-feature_cast_hint'
+68550ca Merge branch 'feature_cast_hint' of https://github.com/uujava/mirah-parser into uujava-feature_cast_hint
+d23e768 remove some unnecessary variables in the typer
+569f169 substitute getResolvedType in another place where it makes sense
+a07a53e Merge branch 'master' into introduce_getResolvedType
+294fdd8 add note
+8de3893 Merge pull request #32 from uujava/fix_string_key_for_colon_hash_notation
+5634d78 fixed string key for colon hash notation
+65aa71e feature_type_hint: compatibility constructors added
+9e86811 Merge pull request #434 from uujava/refix_test_for_bug_417_java8
+afabc67 fix bug 417: mark test as pending
+a24076c Merge branch 'master' of https://github.com/mirah/mirah into refix_test_for_bug_417_java8
+e881715 fix bug 471: fixture does not compile under java7
+5f89246 Merge pull request #430 from felixvf/fix_testsuite_failure
+d153a77 fix bug 471: fixture does not compile under java7
+8badcf1 support for type hints for field and local assignments (cherry picked from commit 83d97a0)
+8aaf448 latest java7 compiled versions of mmeta
+f0513c7 use latest mmeta version (cherry picked from commit 62f55cf)
+13f386c cast support for right hand side expressions (cherry picked from commit 9160eda)
+19f9788 replace getInferredType().resolve calls with getResolvedType
+504c6c7 Add Code of Conduct
+df50905 Fix test failure.
+2fbd9c4 Backed out: Fix NPE in generic inference.
+febb591 Merge branch 'felixvf-fix_bug_417'
+ec542f6 Fix NPE in generic inference
+e2f2fe1 minor fix after code review
+5e994d0 support varars for macros
+883645e fixed according to baroquebobcat code review
+8191b1f minor fixes in tests for signature read recursion fix
+aaf2bd4 avoid cycles when parsing class signature (cherry picked from commit fab3e42)
+3f484e9 minor fix after code review
+3f63395 remote == macro from numeric extensions. it's correcly handled by object == macro.
+f8faa76 fix == operator for primitives (cherry picked from commit 853b3d6)
+80ee065 minor fix after code review
+05d79eb fix boxing for explicit return (cherry picked from commit 6c10ee2)
+2b9f90a Merge branch 'fix_bug_417' of https://github.com/felixvf/mirah into felixvf-fix_bug_417
+923ec32 Merge pull request #413 from uujava/varargs_for_macro
+7b9c6b6 Merge pull request #394 from uujava/fix_read_signature_recursion
+4f06a1b Merge pull request #412 from uujava/fix_equals_for_primitives
+34169a3 Merge pull request #411 from uujava/fix_boxing_for_explicit_return
+cd85aed minor fix after code review
+6b82c5d minor fix after code review
+2d53555 minor fix after code review
+60c0b5b Merge pull request #410 from uujava/constants_from_static_imports
+9304c72 Merge pull request #425 from felixvf/feature_do_not_link_twice
+e59345f Merge pull request #392 from felixvf/fix_jvm_field_naming
+64aed2a Merge pull request #385 from felixvf/feature_show_filename_of_syntax_error
+9d57ef4 Merge pull request #366 from felixvf/feature_type_future_type_ref
+221802d Do not link if we have already linked. (This could have happened because SimpleMirrorLoader#loadMirror may obtain a BytecodeMirror from its parent which has already been linked.)
+f017956 remote == macro from numeric extensions. it's correcly handled by object == macro.
+24e1b7d Test for bug https://github.com/mirah/mirah/issues/417.
+24eedd7 Only claim files as built if compilation is actually without exceptions.
+7c9195f Fix bug https://github.com/mirah/mirah/issues/417.
+c31ccf9 support varars for macros
+8c81db6 fix == operator for primitives (cherry picked from commit 853b3d6)
+2aed71d fix boxing for explicit return (cherry picked from commit 6c10ee2)
+04a6d42 support for using constants from static imports
+e319d64 add comments to call.mirah
+7309af7 fixed according to baroquebobcat code review
+f502853 minor fixes in tests for signature read recursion fix
+9249038 avoid cycles when parsing class signature (cherry picked from commit fab3e42)
+b20dbe7 add test case for curly vs do end priority
+1c49718 Merge branch 'felixvf-fix_bug_388'
+836abdb Merge branch 'fix_bug_388' of https://github.com/felixvf/mirah into felixvf-fix_bug_388
+d9a6435 some whitespace in logger
+a7317d3 MirahCommand.main should exit with the exit code of whatever it ran
+613892b Merge branch 'felixvf-fix_ant_incompatibility'
+3a92cc0 Merge branch 'fix_ant_incompatibility' of https://github.com/felixvf/mirah into felixvf-fix_ant_incompatibility
+51d1d78 rename binding_adjuster file
+e967247 If we use JVMMethod as JVMField, then we should call it JVMField.
+559d514 Comment on desirability of an assert facility.
+462d375 Fix bug https://github.com/mirah/mirah/issues/388.
+e279146 Test for bug https://github.com/mirah/mirah/issues/388.
+f1d41da If we find that a capture has no type, then fail early.
+0e28687 Merge branch 'uujava-fix_nested_closures'
+ca167c4 Merge branch 'fix_nested_closures' of https://github.com/uujava/mirah into uujava-fix_nested_closures
+46af807 add notes to TODO
+b55c91c add some whitespace to test/mirrors/method_lookup_test.rb
+59a27a4 reimplement test for nested closures fix for master branch
+c72fe14 added test for deep closures with binding (cherry picked from commit abc75de)
+4bc2d67 fixed hierarchical closures (cherry picked from commit fdec57b)
+1cce3b8 If we encounter a SyntaxError, then we should provide the filename where that error happens.
+909ee67 Test that an exception triggered by a syntax error actually has a message containing the name of the file where the syntax error happens.
+a278535 Do not unpack Exceptions to their cause.
+47d81ce Fix whitespace.
+13bcded Merge pull request #384 from felixvf/fix_bug_383
+624f0e0 Fix code which made use of bug https://github.com/mirah/mirah/issues/383.
+37f9733 Improve tests.
+2395911 Improve readability.
+7b7f471 Fix bug https://github.com/mirah/mirah/issues/383.
+2581f69 Test for bug https://github.com/mirah/mirah/issues/383.
+0af6095 update examples w/ better formatting
+e41a821 ws and paren usage adjustments in some examples
+cfbb689 compiling each class should be logged at fine not info
+e93cca1 merge issue: fixed broken commit: 23460a5 issues/#23
+9c5f0f7 adjust copyright year
+10844a9 Merge pull request #374 from uujava/unboxing_numeric_operators
+863f3d1 Merge pull request #373 from uujava/optional_arguments_for_macro
+74568fb rm usages of imports with string arguments in examples
+fd7812a Merge pull request #378 from felixvf/fix_bug_369
+68968b5 Fix bug https://github.com/mirah/mirah/issues/369.
+5af2a7f Test for bug https://github.com/mirah/mirah/issues/369.
+8bb9632 java doc support
+c1fa175 Merge pull request #28 from uujava/unsigned_shift_operator
+f2b68da Merge pull request #376 from uujava/abstract_class_closure_test
+96255c1 added a test for blocks over abstract class accepting itself as a closure in static method
+2fb2d32 operators support for primitive wrappers
+04e03ac support for unsigned shift operator
+bf92ec2 use .each for Iterable of services
+02c66b0 move array extensions to mirror type
+a6aec7e macro resgistration using java services SPI (cherry picked from commit 8ef0438) merged with mirah master.
+7c956c0 optional macro arguments: fix tests and alignment
+12c24c3 optional arguments for macro: register separate macro for each optional argument (cherry picked from commit 19b49e6)
+5292a0f Merge pull request #370 from uujava/support_source_encoding
+4b11204 fixed minor issues. made utf8 default encoding. added test for cp1251 encoding
+02fe889 fixed minor issues. made utf8 default encoding. added test for cp1251 encoding
+f2295b9 sort imports in mirror generics test
+036ae5c add verbose option arg to test compile helper
+2e5ffbd Typer: only debug log source if the type is unknown
+85f623d whitespace in README
+94f690d Merge pull request #347 from KeenS/remove-edb
+34075a4 Merge branch 'KeenS-fix-examples'
+cebfd58 Merge branch 'fix-examples' of https://github.com/KeenS/mirah into KeenS-fix-examples
+cb95d82 clean up readme, add note about where to get the latest jar
+9141716 change deprecation notice wording
+2615ed5 mirahc support for -encoding option like javac (cherry picked from commit b4af32b)
+9cd5edd Merge pull request #368 from felixvf/fix_type_invoker_array_on_type_variable_bug
+c0d68cb Fix crash when operating on arrays of type variables.
+5818ba7 Update ASM dependency.
+e968a41 Use ASM5 API.
+21b8150 Test whether TypeInvoker can operate on arrays of type variables.
+9422f30 Merge pull request #356 from felixvf/fix_bug_355
+6e7c15e Merge from master.
+681f3a4 Merge pull request #325 from felixvf/featureset_ruby_collections
+97a85f0 Differentiate between #first, #first!, #last, #last!.
+4350f2e Merge from master.
+8040d76 Dynamically infer the type of the array generated by #mapa.
+fb7466c Test for dynamically inferring the type of the array generated by #mapa even if that type is defined later.
+a20aa42 Support for construcing ASTs refering to TypeFutures.
+b3c724f Merge pull request #362 from felixvf/fix_bug_361
+971f161 Fix bug https://github.com/mirah/mirah/issues/361.
+7cd6afd Test for bug https://github.com/mirah/mirah/issues/361.
+8b41384 Honor tabulators and other white space when underlining.
+044a4fd Merge pull request #358 from felixvf/fix_bug_357
+221174a Replace #resolve by #peekInferredType.
+d898c0b Replace #resolve by #peekInferredType.
+c260ed1 Test for another variant of bug https://github.com/mirah/mirah/issues/357.
+6bd71a6 If the supertype of a MirrorFuture is an ErrorType, then the MirrorFuture is apparently not resolved.
+8274dea Test for bug https://github.com/mirah/mirah/issues/357.
+15dfe07 Raise error early if the name of an error type is to be used.
+f06406e Merge from master.
+5f6e8bd Merge branch 'felixvf-feature_only_new_closures'
+a931dae Merge branch 'feature_only_new_closures' of https://github.com/felixvf/mirah into felixvf-feature_only_new_closures
+be60ae7 remove return respecting comment
+2fee3ba revert changes around puts
+9f93a62 Merge branch 'master' into fix-examples
+f447f1b Remove code which has become unnecessary.
+1a72ffc Specify return type.
+7aa8eca Factor-out AstChecker.maybe_check.
+03602cf Factor-out AstChecker.maybe_check.
+ec49847 Comment on the purpose of AstChecker.
+3241d7d Comment on why we infer MethodDefinitions being used as templates for abstract classes.
+f4ca8a2 Remove unnecessary statement.
+a124414 Remove unnecessary code.
+f49f38f Raise an error if the block's parent is neither a Call nor a SyntheticLambdaDefinition.
+c2919c9 Revert determining whether a binding was generated or not. We do not need to know it anymore.
+b3db68a Comment on ConstructorCleanup ignoring ClassDefinitions and ClosureDefinitions.
+8550269 Fix whitespace.
+5a073d9 Remove unnecessary imports.
+868d8da Merge pull request #27 from felixvf/feature_synthetic_lambda_definition
+0e24489 clean up mirror loader debug output a little
+60f1539 add some small improvements to the mirah -> mirah type printer
+99a8709 allow imports in rescues
+62e7175 maybe get static imports working with new closures
+13dc1e8 add static import block test
+1c8a6ba Defer temporary variable names to which-ever top-level Scope is reachable, as ScriptScope is currently not always top-level. This fixes bug https://github.com/mirah/mirah/issues/355.
+83b97d3 Defer temporary variable names to the top-level ScriptScope.
+8defb35 Test for bug https://github.com/mirah/mirah/issues/355.
+368c66e Make synthetic variables inacessible (and thus inclashable) from the user language.
+729e738 Make synthetic variables inacessible (and thus inclashable) from the user language.
+de3993a Implement SyntheticLambdaDefinition.
+b489ab8 Remove old closures implementation.
+af3c037 No need to check whether variables are captured by methods of block anymore.
+02387fd Work around compiler bug for the time being.
+e81af7e Print inferred types next to AST.
+68e8478 If a method is directly in a block, then "return" has no meaning until this method is copied into a ClosureDefinition.
+c57d512 If a method is directly in a block, then do not consider this as a full method.
+cdd40e7 Test for whether a method is directly in a block.
+5cd9bfc A local is also captured in a scope if that scope contains a block which contains a method which refers to such a local.
+f927d7e Test for lambda blocks which contain methods.
+44cab6b Simplify insert location computation of ClosureDefinition.
+dd7876e Fix case where SyntheticLambda is a call target.
+681d7c8 Test for direct invocation on result of lambda.
+fcb4224 Revert to old behavior. A variable is captured in a scope if it is a local variable in the scope and its parent scope and there is a child scope (that is, a child block scope) where this variable is aactually used.
+0879368 Test for 2 closures capturing different variables.
+e18cf23 More complex closure test.
+e8d8c16 Decide when to emit FieldAccess or LocalAccess depending on whether the name of the binding matches the parent scope's binding.
+1313bba Fix.
+8190258 Do not invoke AstChecker by default.
+50aaa29 If a binding was not generated for the current block, then any binding is from enclosing blocks.
+b918a71 But then, there are old Block instances and there are clones of these and we need to keep track of all of them.
+dfd5d14 Go back to cloning instead of reusing the body of the closure.
+47ff54d More logging.
+ba34578 Fix logging message.
+64063c5 Do not emit a FieldAccess but a LocalAccess even if the binding has not been generated for our block, but for a sibling block.
+c254b82 Calculate captured fields from the inner scope, not from the outer scope.
+2d8cbb4 Copy ClosureScope into MethodScope when converting closure into method.
+1955768 Define #get_inner_scope.
+294ecac A variable is captured in a scope if it is a local variable in the scope and its parent scope. Child scopes are not relevant here.
+2b66141 Allow to set a scope for a node.
+e03086c Copy parent as well.
+a4aab57 Ability to copy MethodScope from ClosureScope.
+bca521d Generate closure instantiation directly after binding adjustment, such that next binding adjustment can also adjust the closure instantiation code itself (which in turn has an access to a binding local variable, which may be transformed into a binding field access).
+45535de Implement #find_enclosing_method, #find_enclosing_method_body.
+0f6a89f Print AST after adjusting a closure.
+0f5d298 Perform AST checks during closure generation.
+56c7ec3 Process closures from outside to inside.
+16ad81f Perform AstChecks before and after letting typer run.
+9f2fa25 Do not clone the body of the block of the closure, move it.
+42b32bc Do not descent into classes which just happen to be defined in the scope which gets a closure, but are otherwise unrelated.
+c0f5412 Test for doubly nested lambda.
+000b1c9 Lambda closures work now.
+a6acb7c Use SyntheticLambdaDefinition.
+374e455 Test for coexistence of lambda with other closures.
+7c88ca0 More logging.
+6adefcc Try to adapt.
+dd79d57 Remove reference to old ClosureBuilder.
+669c4b0 Implement AstChecker.
+98d3686 Fix AstFormatter closing bracket location
+0b1e854 Relax requirements when to call the superclass constructor.
+f15f5cf Do not require static scope for resolving static imports.
+2d4ab2b Make ClosureScope have its own imports.
+df7719b Remove internal "new_closures" flag. Deprecate "--new-closures" command line flag.
+3a55c7a Test what happens if Super is not the first node in a constructor due to ClosureDefinitions and LocalAssignment of a Binding object.
+457cd71 Test for static import in closure.
+31939dd Move ClosureBuilderer to "better_closures.mirah".
+680e740 Unshadow shadowed test.
+816a925 Macro int#times is not available in old compiler.
+56a2bef Merge pull request #343 from felixvf/feature_protected_methods
+d66a248 Merge from master.
+08de5f2 Merge pull request #349 from felixvf/fix_missing_0_arguments_puts
+e6ec8ee Merge pull request #333 from felixvf/featureset_rubystyle_string
+4394b90 Clarify that block-argument is optional.
+a01746b Refine comments.
+ca9b0ad Use #to_array to yield a Java [] array, reserve #to_a to yield a Java List.
+65340e2 Fix documenting comments.
+a7fffbe Merge pull request #338 from felixvf/feature_efficient_equals
+7b08338 Apply suggestion from review.
+b0175b2 Make ant sources explicit.
+04c65d4 Merge pull request #308 from felixvf/feature_native_methods
+f4d1703 Test for semantics and side effects of #==().
+03a4cd0 Support 0-arguments block for String#each_codepoint.
+48b0778 Document what this macro does.
+9f8f666 Merge pull request #301 from felixvf/feature_synchronized_methods
+59f0f70 Support "protected" on a list of methods.
+e4ec494 Nicer comment.
+6ed95ba Use #isMacro if we have it available.
+4aab793 Merge pull request #311 from felixvf/feature_string_to_int
+39c9796 Small refinements.
+a086ed2 Testcase for bug https://github.com/mirah/mirah/issues/345.
+9166cfe Enable static 0-arguments puts().
+1bfbccd Refactor.
+1d0a0c4 Compile macro library with new compiler, not with old compiler.
+2e5e973 Do not implement static puts() macro with 0 arguments now, as we need a new compiler binary for this.
+e42f9e1 Implement puts() with 0 arguments.
+1aadffa Test puts() with 0 arguments.
+607c091 Make 0-arguments instance macro coexist with 0-arguments static macro with the same name.
+3984ea3 Fix bug https://github.com/mirah/mirah/issues/345.
+2e3a142 Test "examples/rosettacode/fizz-buzz.mirah".
+70316d2 Make configurable which mirahc.jar to choose.
+b145d00 remove edb examples
+ca11a0e fix examples
+efee957 Merge pull request #336 from felixvf/feature_logging_optimization
+541b691 Merge pull request #302 from felixvf/feature_static_final_fields
+4cfc2eb Merge pull request #342 from felixvf/fix_jruby9000_compatibility
+86b2b68 Merge pull request #339 from felixvf/fix_bug_335
+63116c1 Fix JRUBY9000 compatibility.
+83219e6 Merge pull request #329 from felixvf/fix_bug_328
+def29c2 Remove ugly hack.
+daa6d44 Fix indentation.
+b9b35ca Disable #verify_columns for the time being, as it is currently not usable, as the columns created by macro "quote" are currently not satisfying #verify_columns.
+2559069 Check for matching columns in "def ...; ...; end" and other blocks ended with "end".
+26edbc8 Adapt to more modern MMeta.
+b53ecbb Merge pull request #341 from felixvf/fix_initialize_warning
+c6ba2f4 Merge pull request #327 from felixvf/fix_dynamic_class_body_extension_bug
+b6e2f50 Use more modern MMeta.
+8fc3f74 Test "protected" on a nested list of methods.
+97ab9dc Fix warning that "initialize" and "self.initialize" may conflict, when they actually do not conflict.
+62fcee6 Work around too-early pick bug.
+0056879 Work around gensym clash bug.
+949aec5 Work around gensym clash bug.
+877435f Simplify.
+e7b8959 Use #isFullyResolved().
+2c92376 Use the optimized Logger implementation. This improves compilation speed by factor 1.4.
+e911c0c Optimized Logger implementation.
+7542df3 Standardize logging.
+93571df Infrastructure for #isFullyResolved().
+c6e0fe5 Fix inheritance of interfaces in any order.
+59b9fde Cache Array types instead of regenerating them repeatedly.
+5c293e2 Do not perform superfluous extra-notify.
+f7bcfc2 If an interface is resolved, but it is resolved to an error, then it is not (yet) resolved.
+f4302df Use #peekInferredType instead of #resolve.
+36154f0 Return the same object, regardless of whether we cache or not.
+18df522 Use #peekInferredType instead of #inferredType.
+de98b0d Instead of triggering resolve, just peek inferred type.
+6845ef6 Do not resolve to nil. Better resolve not at all.
+a2c57f6 Implement MirrorFuture#peekInferredType.
+efeac3c Adjust tests to new naming of TopLevel class.
+5927691 Fix bug where the name of the enclosing class of a closure was separately (and wrongly) synthesized.
+2200dc2 Work around bug where class name defined in source code is already used by the enclosing top level scope.
+fb76b12 Test for bug where class name defined in source code is already used by the enclosing top level scope.
+261fc7b Do not generate ErrorType instance until actually needed.
+1ad72d9 Initial draft to fix bug https://github.com/mirah/mirah/issues/335.
+f57d236 Test whether compilation works when we define a superinterface late.
+63a7f37 Test for bug https://github.com/mirah/mirah/issues/335.
+f7736c9 Fix MirahClassLoader bug, where the binary name of the class (as of the Java Language Specification) was not properly deduced.
+dc8c01d Reimplement Object.==(). The previous implementation evaluated each operand more than once, resulting in inefficient bytecode.
+375db86 Merge branch 'felixvf-feature_testcase_bug_320'
+21fbc3c Merge branch 'feature_testcase_bug_320' of https://github.com/felixvf/mirah into felixvf-feature_testcase_bug_320
+fba48ac whitespace in string_compiler
+6719c7f Merge branch 'felixvf-fix_bug_322'
+14f5ce8 Merge branch 'fix_bug_322' of https://github.com/felixvf/mirah into felixvf-fix_bug_322
+2b7e30a bump copyright year for matcher_extensions
+a5b548d Merge branch 'felixvf-feature_string_match'
+dc269b5 Merge branch 'feature_string_match' of https://github.com/felixvf/mirah into felixvf-feature_string_match
+037c95c bump copyright year for object_extensions_test
+5f3dd89 Merge branch 'felixvf-feature_object_tap'
+9638ea0 Merge branch 'feature_object_tap' of https://github.com/felixvf/mirah into felixvf-feature_object_tap
+08085a6 Merge branch 'felixvf-feature_inner_interfaces'
+5bdc681 Merge branch 'feature_inner_interfaces' of https://github.com/felixvf/mirah into felixvf-feature_inner_interfaces
+3fef460 Merge branch 'felixvf-master'
+1e79011 Merge branch 'master' of https://github.com/felixvf/mirah into felixvf-master
+589062d Merge branch 'felixvf-feature_array_map'
+6c22c76 Merge branch 'feature_array_map' of https://github.com/felixvf/mirah into felixvf-feature_array_map
+d7592ca add join(separator) to Collections extensions
+605d38a Merge branch 'felixvf-feature_collection_join'
+ac458ec Implement String#each_codepoint.
+da6ce70 If we support inner classes, then we should also support inner interfaces.
+83fac43 Test Collection.<<().
+6fbb826 Implement Collection.<<().
+7ee1db1 Do not copy the grandchildren in Unquote#nodes, as the child may actually be a ProxyNode, and the currently selected grandchild may not be the correct final grandchild, resulting in subtle compilation errors. This fixes https://github.com/mirah/mirah/issues/330.
+1e0db3a Define Hash#each.
+be94373 Fix bug https://github.com/mirah/mirah/issues/328 .
+bdb6d9d Test for closure on interface which is not defined at the time the closure is encountered. This tests for bug https://github.com/mirah/mirah/issues/328 .
+a05ed3c Fix bug where changes to a class body during execution of a macro were not reflected if the macro was the last element of the body of the class.
+13e6933 Test for possibility to add a method to a class during execution of a macro within that class, even if the macro is the last element of the body of the class.
+1f53dd3 Test for possibility to add a method to a class during execution of a macro within that class.
+ad5eae1 Implement [].new(size.block) for Java-arrays.
+722ab47 Test []#size.
+b325b25 Test Collection#mapa.
+7264894 Test #join(separator).
+8f2443d Test []#join().
+dce3517 Test Collection#join().
+b812438 Move #first, #last from List to Collection.
+ac4b0b1 No fix currently available.
+fb82d7c Define Collection#to_a(basetype).
+01639af Define Iterable#each_with_index.
+54ac8af Move []#mapa to CollectionExtensions#mapa.
+0f56a6a Define []#size.
+bf54440 Define []#isEmpty.
+a0f30f5 Remove []#map, as this is now handled by CollectionExtensions.
+a84a7b1 Move []#join(separator) to CollectionExtensions#join(separator).
+7f01e6a Remove no-arg []#join, as this is now handled by CollectionExtensions.
+a5599bd A Java-native array is a special type of collection, at least for purposes of which macros we want to apply on it.
+2dd9365 Implement []#mapa.
+84a8f30 A StringEval should be evaluated once, not possibly multiple times if it has more than 1 children. This fixes https://github.com/mirah/mirah/issues/322 .
+541f92b Test for bug https://github.com/mirah/mirah/issues/322 .
+6f68fa5 Implement []#as_list.
+af000e3 Implement []#each_with_index.
+8683eca Make ListExtensions#sort!(comparator), ListExtensions#sort(comparator) able to process java.util.Comparators.
+d8ffbf7 Choose more precise test names.
+5df99c6 Make ListExtensions#sort!(comparator), ListExtensions#sort(comparator) able to process block-form comparators.
+2a7d128 Make test more specific.
+3bf01bc Implement []#join().
+04b8255 Implement []#join(separator).
+3d092d7 Implement []#sort, []#sort!, []#dup.
+bd4db83 Support String#match.
+d7a3049 Test for bug mirah/mirah#320.
+ba626b4 Support Object#tap.
+01504c8 Prevent calling System.exit in Mirah.run().
+de04b79 Implement support for native methods.
+edacd65 whitespace and formatting
+9ad36c0 Merge branch 'uujava-fix_boxing_for_casts'
+f331656 Merge branch 'fix_boxing_for_casts' of https://github.com/uujava/mirah into uujava-fix_boxing_for_casts
+5c88493 Merge branch 'felixvf-feature_list_sort'
+d03b037 Merge branch 'feature_list_sort' of https://github.com/felixvf/mirah into felixvf-feature_list_sort
+03f17da use env helpers for classpath encoding in arguments test
+61b9949 Merge branch 'uujava-fix_rake_for_windows'
+722a1dc Merge branch 'fix_rake_for_windows' of https://github.com/uujava/mirah into uujava-fix_rake_for_windows
+5b65c51 fix unboxing issues (cherry picked from commit d348ada)
+55e6cfb fix rake tests to run under windows (cherry picked from commit 37edb12)
+11bed6e Merge branch 'felixvf-feature_collection_select'
+9f1741a Merge branch 'feature_collection_select' of https://github.com/felixvf/mirah into felixvf-feature_collection_select
+321f6fe move class literal filter into getAllDeclaredMethods so innerclasses are not listed as declared methods
+48465b7 Merge branch 'felixvf-feature_testcase_bug_297'
+9845310 Merge branch 'feature_testcase_bug_297' of https://github.com/felixvf/mirah into felixvf-feature_testcase_bug_297
+c88f34a skip unresolved imports when generating macro templates
+9b56eb2 Merge branch 'felixvf-feature_testcase_bug_293'
+0c8e899 Merge branch 'feature_testcase_bug_293' of https://github.com/felixvf/mirah into felixvf-feature_testcase_bug_293
+f9d18b1 rm logging comments in block tests
+7695e36 add test for field signature; refactor a little.
+6bc530f Merge branch 'shannah-field_signature_fix'
+c134ff4 Merge branch 'field_signature_fix' of https://github.com/shannah/mirah into shannah-field_signature_fix
+29e2787 add license comment block & switch to string interpolation in simple character math example
+cb6b853 Merge branch 'aspleenic-master'
+98c9144 Merge branch 'master' of https://github.com/aspleenic/mirah into aspleenic-master
+f811632 add cast checking to closures; fix nested bindings
+253fbee When emitting native methods, do not emit an implementation.
+9ad1ccb Implement List#first, List#last.
+61025ec put a bit more work into TypePrinter2
+751c692 Implement []#map.
+d68b5ee Fix typo.
+e56c061 Use more modern JRuby version.
+56487a2 Bump version.
+0c25ae2 Implement java.lang.String#to_int.
+c17fbd0 Use 'test-unit' gem version 3.0.
+33492a5 add type checks in blocks that have casts
+cc985f8 better error to stdout on parse failures
+cdab381 missed a == check
+ec89ff4 generate bridge methods for closures if they include type declarations in their args
+645eaa9 add block tests for binding names
+cf10112 Fix mirah/mirah#297.
+5c8085b Implement java.util.List#sort().
+a657d3c Implement java.util.List#sort(comparator).
+6ad60a9 Support transient fields.
+bae1b0d Make static_final a standard macro.
+33ee744 Support multiple FieldAnnotationRequests per field.
+c0a54d0 Honor FieldAnnotationRequests.
+97907d7 Support static final long fields.
+acf8423 Deprecate poor-man's splat-operator.
+e4baf96 Add FieldAnnotationRequest.
+5913f64 Add FieldDeclaration#value.
+95dfce8 Merge pull request #26 from felixvf/fix_bug_mirah-parser_25
+7a1fd3a Merge pull request #24 from felixvf/fix_bug_mirah-parser_23
+a900c10 Fix bug https://github.com/mirah/mirah-parser/issues/25 for DStrings.
+a13ebdf Fix bug https://github.com/mirah/mirah-parser/issues/25 for SStrings.
+42af39e Testcase for bug https://github.com/mirah/mirah-parser/issues/25.
+23460a5 Fix bug https://github.com/mirah/mirah-parser/issues/23.
+87dbc31 Test for bug https://github.com/mirah/mirah-parser/issues/23.
+c0285f6 Adjust FieldDeclaration uses.
+329d076 Remove dependencies on MMeta version whose source code is missing.
+8e1dc92 Update "mirah-parser.jar".
+b06fbfe Test for bug https://github.com/mirah/mirah/issues/330.
+54c6708 Test for bug https://github.com/mirah/mirah-parser/issues/25.
+37479b1 Create MirahError#diagnostic.
+9699ad5 Test for bug https://github.com/mirah/mirah-parser/issues/23.
+62c8cf7 Add Collection#join macro.
+1f506d8 Implement synchronized methods. This closes mirah/mirah#221.
+db3832f Add Collection#select macro.
+0c67175 Return proper status code when being called using bin/mirahc.
+2d1af0d remove forced finest logging in better_closures
+a9fa8e2 comment out finest logging
+b5d7b62 add testcase for uujava's changes
+286ae85 Test whether block syntax works when applied to inner interfaces.
+ae651ae Merge branch 'master' of https://github.com/uujava/mirah into uujava-master
+d251904 Test whether compiling 2 files which reference each other and have macros works. One time when importing the other file implicitly, one time when importing the other file explicitly.
+30e8055 Support test-compiling multiple code files in one go.
+f97cd43 Prevent calling System.exit when being embedded into a JVM (e.g. being embedded into ant).
+39163b2 fix null package for new-closures binging
+fb76eaf update maven release instructions slightly.
+d493e40 add a couple tests for method accessibility modifier
+c93df5b Merge branch 'shannah-fix_access_control_flags_for_methods'
+d7c8506 Merge branch 'fix_access_control_flags_for_methods' of https://github.com/shannah/mirah into shannah-fix_access_control_flags_for_methods
+0ba26cb rm completed todo
+7aa407e Added guard in method signature reader so that it skips the signature in field members.  This is just a temporary measure to defer this part of the implementation whilst still retaining the string signature for a field in case other code wants to process it.
+3658cc9 Set signatures in field members of ByteCodeMirrors
+1b15c39 move extension tests into own directory
+3e2cb67 Merge branch 'include_comment_whitespace_in_lexer'
+257f921 minor whitespace change
+bf0a4cc skip java 8 dependent test on earlier javas
+150f50f add test / refactor for default method support
+b9842f9 [mirah] support for java 8 interface virtual extension methods (#279)
+b334669 initial impl of case statement parsing
+c92edd5 test refactor: extract assert_run_output
+d53f6c7 maven.org requires https
+8574e01 missed a file in the == / === change
+7a4bbde bump todos
+54b6fe0 change == / === meaning
+2ccb2d1 add !== support
+1980e6d use an array to get mirahc in the gem closes #278
+cd96cda rm last duby file in src/. It's unused.
+00799c8 replace == nil with nil? in some examples
+1fa9cf7 explicitly rm the pkg directory during clean
+11038a8 add option to compile macros to separate destination
+de51072 separate build dirs for different jar run outputs, add ws
+1c029fd add comment in tests to handle poor syntax highlighting issues
+a3148a2 rm unused test helper file
+9e0277e add comment / rm unused method from Scope interface
+b562663 refactor calculateFlagsFromAnnotations to make it a bit less arrow-y
+122d77c TODO for adding each to Map
+0bffd26 add empty? to collection extensions
+a250ee4 add public/private/etc to TODOs
+ffe16d1 add j.u.concurrent.Lock extension -- synchronize
+65e98fd use new closures as default test compiler, fix pending blocks test wrt null arguments AST
+5173228 bump todos
+21631db rm completed TODO from Rakefile
+a32267a add more todos
+9e2cd42 rm / rm references to src/mirah/impl/builtins.mirah since it's now unused
+67d8898 update classpath chosing to look at env
+2f4934a Removed .DS_Store file.
+fe7d9f4 Added support for including comment and whitespace tokens in lexer. https://github.com/mirah/mirah-parser/issues/14
+3f4c7e9 Added support for private, protected, and package_private keywords on method definitions.  Should probably add them for classes as well, but haven't done that yet. https://github.com/mirah/mirah/issues/220
+4b7178f Adding an example of simple character math.  It asks for name input then counts the characters in the name.
+1d9b144 - Use new AttrAssign and ElemAssign nodes. - Fix bug using treating plain assignment like op_assignment. - Fix [return if x]. - Add a test for parent being set.
+
+
+=== 0.1.4 November Chill / 2014-11-13
+
+d73e6d4 ignore ruby version management / test temp files
+4090b8d add a number of new block tests
+b29a845 some work in progress wrt new closure impl.
+aa92d0f add some whitespace to scopes.mirah
+010e16a add a few things to TODO, rm return error message todo
+140cd96 catch another explicit cast that could be implicit in a block
+78122d6 change type incompat error on returns to use be clearer
+71d9ea3 add declared_binding_type= definitions to BetterScope
+5fad461 update TODO w/ some more issue numbers
+c6bbd73 reformat method_lookup_test
+266889f add add_import to Scope interface for java interop
+2e0b0de rm old scope impl
+8e15cd0 pass new closure flag through to typers
+6067583 mark differing type sig test as pending
+2ecbea4 add flag for enabling new closures, default to off
+a6d6e54 add a couple TODOs, make issues for most warnings related todos
+c68c5a1 rm local return in mirror_type_system.mirah
+c2cdd2d clean should rm generated test files
+0f9b6ce bytecode generation should blow up if it encounters a call with a block
+bc4f351 reenable better closures, now that some bugs are fixed
+2e7118b attempt to fix test fixtures
+8ee1764 reformat long line in typer
+0fc0cb2 add some things to better closures
+c33f4f8 fix build by moving back to old closure impl + fixing ProxyNode clone
+56c528f if a node doesn't have a position, still have a good error
+2c23611 rm usage of import sorter
+f40f2e5 update java bits to 1.6 from 1.5 in Rakefile, to get rid of warnings
+2d983ff only compile test fixtures if needed
+7946057 rm unused file from previous closure rewrite attempt
+1f8590f rm unused assert method
+5210e2f clean up better closures a bit
+54fe717 rm finest logging call in test
+d94068e only drop stacktraces when fine logging enabled
+25efb58 fix interface problem. It was a problem w/ a closure w/o a binding having its class def inserted incorrectly
+508fb5a rm puts in test
+4d9363d do a proxy cleanup before adjusting bindings
+f054ae6 WIP I
+f91eec0 better asm download link in Rakefile
+104082e fix import sorter so that nested packages don't cause it to blow up
+bdf29f9 use https for maven
+dbc36ea fix import sorter by using NodeScanner
+7eecc9d add new closure impl, but off
+006622e bump copyright
+6b9439e rm nlr from old closure builder
+73f9866 add call to finish closures to mirah_compiler.mirah
+6e8ce48 if we're about to create a loop in scope, just continue
+4cc0841 dump stack trace on internal typer errors when running in verbose mode
+1249e63 do something slightly more reasonable when a lambda's type arg is no good
+80a7151 add expln at top of better_scope.mirah
+2f3606d add new args tests
+9fe02d0 update maven instructions w/ dist/mirahc.jar
+993135c roughly sort asts before performing type inference.
+32e2189 add building mirah w/ mirah to ci
+8adf80b adding some fine logging to closure building / commentary
+69ffe75 complain in a better way if generic inference has a problem
+5ef8965 add some tests for lambdas in the blocks test
+245badf clean up block test for param to not use threads
+16c4071 rm commented puts from async_type_builder
+7717d61 fix up better scope to act like JVMScope
+9c4cf81 fix blocks in rescues
+6d5e408 add interface for closure building to make it easier to defer it later
+8e538e7 format org/mirah/macros/builder.mirah / move inference of annotation to after ast attachment
+b4876e4 bump copyright on mirah_compiler.mirah
+5d41f16 format src/org/mirah/typer/assignable_type_future.mirah
+eae844d flesh out remaining better scope bits, use better scope
+0526803 break up import test a bit
+bfbeaae rm unneeded semi colon in test
+b7079fd add more information to default error message
+aa84912 start putting together a MirrorScope interface
+28a6a15 update ant task, update ant example
+c8b4930 make tmp script names for tests shorter
+b367886 move binding creation to class building
+e0344c4 formatting jvm_scope + base_type_future, w/ better logging in base_type_future
+a373f3b format array_compiler.mirah
+829e85a move scope related typer methods together
+676394d name closure inner classes w/ good names
+6ffe551 add ant classes to mirahc.jar
+52f0acd add pending test for bad nested closure binding generation
+fd3d1cb update versions in readme
+7a47048 start converting to implicit casting in block arg defs
+6a814e6 add whitespace, rm unneeded manual boxing
+ba7ef3e rm unneeded ruby files
+aec965b add constant support
+0fcf899 rm unnecessary test logging
+4a080d4 Merge branch 'shannah-parser_issue_14_fix2'
+89b56fc Merge branch 'parser_issue_14_fix2' of git://github.com/shannah/mirah into shannah-parser_issue_14_fix2
+b377e66 fix version test
+40cd50f bump version
+839416d use released mirah for builds
+60aa9be Updated parser to include support for including whitespace and comment tokens in the lexer.  https://github.com/mirah/mirah-parser/issues/14
+
+=== 0.1.3 Metacircularity: Achieved / 2014-08-08
+
+0a17b30 doh, java 7 parser
+607f9ae update to fixed parser
+4f78f2b reverting mirah-parser while trying to fix things
+394fd95 add history for 0.1.3
+5b1454c bump parser w/ java 7 jar
+8c0be9d de-SNAPSHOT/dev ify versions
+0bb1553 update parser
+1c90452 update NOTICE
+2ade81b if the type params are unconstrained wildcards, consider them resolved
+347c633 allow jruby-head build to fail
+a6bb171 add 1.8 - 1.8 to travis
+9019478 fix failing generics test
+d2c8ba2 fix test workaround for asm version
+e5133d5 formatting + while -> each in mirah_arguments
+7f37cd4 add another guard for a bundler require
+0d5cdd8 add COPYING to zip dist
+48298cf add place to put artifact tests, w/ happy path examples
+44955db bump copyright year in Rakefile
+447a878 begin rescue load error hack
+10dfe71 maybe a well placed rescue'll fix jruby-head build
+02b0fcd skip tests that will NPE on JRuby 1.7.13
+3f0114c forgot java.lang in last change. Oops
+2364325 always compile mirahc for 1.7 or lower
+9d482e5 rm 1.8 -> 1.7 bytecode since 1.8 is available in new asm dep
+0691433 try moving bundler/setup require
+9c53cda always get latest SNAPSHOT
+52d850c bump snapshot to download
+c0a7c57 ignore downloaded asm lib jar
+e454796 add asm license to a file that's included in the compiler jar
+e7d6153 update asm to 5.0.3 for java 8 support & awesomeness
+c1537a7 oops. Fix missed escape in gemspec
+27567c6 rm some refs to old jars + depend only on mirahc.jar in gem
+d934870 clean up typer a little
+ba8acf7 missed a place where there should be a require test_helper
+d88d880 ensure -V overrides the default silent for run
+71e6fa8 silence logger for run commands
+a2abfb7 update parser to one that can parse the parser
+6480725 add consistent sorting to tool sources
+e02ca0b depend on a good snapshot in sonatype
+fe339bf more Rakefile cruft. Now dist task shouldn't error out
+f96626b add some whitespace
+442519b remove using confusing space char literal that doesn't parse
+b3bd746 merge unquotes in block args before constructing the block future.
+3ff0d0a Revert "use latest snapshot as the compiler to bootstrap with"
+85bdbd3 add note about pushing snapshots to maven instructions
+6f9e336 rm apparently unused jar
+7036f6b ignore the downloaded bootstrap compiler
+96c563a use latest snapshot as the compiler to bootstrap with
+d7d14ec add Nick to the author list in the gemspec
+638c47f rm mirahp from gemspec as it's gone
+46f622b clean up unused / needed portions of rakefile
+3c4cc9a refer to jruby exception w/ string instead of class obj
+be3fc9f remove commented requires
+7aa9091 remove references to bitescript
+5cd2e93 add tests for JvmVersion
+a8d3f2d have gem depend on dist/mirahc.jar
+1b51fe7 Merge pull request #252 from KeenS/master
+16f7623 more literals
+15ca101 remove dependency on bitescript, rm CompilationState, set max bytecode version to 1.7
+aa282e5 Squashed commit of the following:
+fe7bd6c add literal examples
+487d737 Merge branch 'shannah-master'
+f9100a2 Added wrapper around JVMScope.import method so that it can be called from java.  import is a reserved word in java.
+9ae690f Fixed stack overflow error because of two static compile and object compile method implemented in Mirahc. https://github.com/mirah/mirah/issues/250
+b981113 use 1.7 target when running on 1.8 for now
+6013668 1.8 isn't supported in the asm version we're currently using. duh
+222f5ed exclude jdk7 targeting 8 from build matrix
+b334a0a update travis w/ java target version builds+jruby head vs 19 mode
+0b4cdbd make test target JVM version configable by MIRAH_TEST_JVM_VERSION env var
+f1f859d add some whitespace to Rakefile
+2b319e8 update test_local_field_conflict to test_local_method_conflict
+f02d9b1 rm unused local in ProxyNode
+3677f5e Merge branch 'new_bootstrap' of git://github.com/ribrdb/mirah into ribrdb-new_bootstrap
+5dbd5b9 Merge branch 'master' into bootstrap_with_new_compiler
+89d4447 allow unquoted block args, both with and without pipes
+39d7946 whitespace in examples/macros/string_each_char.mirah
+fe16b3f add unary negation test
+b283dd8 add position based content lookup to typer for debugging
+b2cb3f0 add some more logging around redeclaring types
+dc9f253 fix nested error descriptions popping up in test runs
+17165f6 fix map collection extension method
+b2aef50 rename Typer scope creation for methods to be more consistent
+70a95a7 fix BlocksTest#test_block_with_method_def
+22efc0c fix system reference in test helper
+30955f6 blocks_test whitespace
+df57318 log source of AST to be typed, where available
+d15e37f fix up logging. typo, multi install, rm ruby impl
+9cd7f6e allow variable shadowing, fix rescue shadowing test failure
+c2bb20b raise a better error in bytecode generation on missing local
+93f4de2 rename handle_args back to applyArgs
+30cf680 rm factory_test since it's subject is gone
+c59d04b deprecate -c for classpath in favor of -cp / --classpath
+9ef9329 delay exiting to the main methods of commands so they're testable. Also more JRuby friendly
+e569bf2 delete all the things! rm JRuby Compiler bits
+b045cde use File::PATH_SEPARATOR for classpath when constructing classpaths in Rakefile
+486d634 clean up some lost changes removing the old test helper code
+2dff436 rm require of removed file
+bb7d224 rm mirahp
+f9761b2 rm old generator test
+cfa7c39 rm bytecode test helper as it's not needed anymore
+80d02da oops. fix typo in args code
+554860a rm old backend rake tasks
+78596fa only do new_ci and not bytecode_ci
+b45d158 move logger setup to MirahArguments
+68bef4a pull out arg object into its own file
+04a3b08 convert class loader tests to point directly at Mirah classes
+d884d90 extract an object to hold onto MirahTool cfg
+3a58e94 fix c&p'd test case name
+4f86094 add color toggle to self hosted jar
+3b3713a use CLASS as default retention for annotations
+ddf6782 fix annotation value test
+3422c00 rm accidentally checked fix for editor that doesn't understand 'EOF'
+8208a27 rm test that identified broken behavior that's fixed wrt interfaces
+32c2f1e replace System.out.println w/ puts in tests
+7ae7d17 change field setter test so it doesn't depend on ast
+3c7a417 improve compile, parse_and_type new backend test helpers
+71536e6 extract diagnostic construction in error collector into helper method
+9df5e48 fix compilation helper s.t. separate compilation test passes
+b0bfa37 use the pend w/ block form so that when ClassPath is added, it'll fail
+1b870c6 change mirror assertion from equality to same type check
+2581267 Revert "fix mirror lub equality assertion"
+87e47ae Merge branch 'master' into new_bootstrap
+f84664a Add targets for bootstrapping mirahc.jar from itself.
+3eca2d3 Fix for generic types inside a binding.
+72ba91c Implement equality for ResolvedCall to prevent extra type updates.
+2bf331c Proxy node fixes.
+dc23f9c Fix AssignmentFuture.
+366825f Revert "fix mirror lub equality assertion"
+4e9cbe4 Fix for MethodLookup debugging.
+40452c9 Fix error propagation with AssignableTypeFuture
+1b68b2f ProxyNode fixes.
+03b2238 Add debugging info to MethodLookup.
+7371f11 Improve CallFuture error propagation.
+da701e2 Update parser again
+bcce07e Merge branch 'bootstrap_with_new_compiler' of https://github.com/mirah/mirah into new_bootstrap
+2fc8bef Introduce a proxy node, so we can properly clone method calls.
+7b9408e Update parser
+2e7b404 Explicitly specify the package of AST types in case there's a conflicting type in the macro's package.
+8037711 Merge branch 'new_bootstrap' of git://github.com/ribrdb/mirah into ribrdb-new_bootstrap
+64fee4d Test fixes.
+29d335a try fixing travis by fixing file sorting
+67966e0 change rake deps to dist/mirahc for now + add clean for downloaded deps
+53123e1 fix superclass mirror type updates
+99350b3 move local var def in mirrors base_type closer to usage
+f12196b add toString to NarrowingTypeFuture
+a0053ba break out failing superclass type update mirror test
+d69f90d move debugging help to the test helper
+673d9e4 add tmp dir to ignored files
+3007c6c add pend to test depending on undefined constant
+d306a89 fix mirror lub equality assertion
+0099f67 move debugging module into test_helper
+ea9d8ea typer formatting
+61bea51 Update test targets.
+e0fff81 Merge branch 'jvm_version' into new_bootstrap
+e645fbf Merge branch 'master' of https://github.com/mirah/mirah
+010280e Fix for static imports that are updated after use.
+13c055a Update tests to use new compiler.
+d4231c6 Importing an undefined class should be an error
+a4a72d2 Fix for loading compiler annotations.
+ecff9e6 Fix MethodFuture error propagation
+492b08c Fix CallFuture error propagation
+d62bdb0 External debugger support
+b38a592 add helper for expanding and replacing macros
+d4626eb extract isMacro helper in typer
+be72bb5 Pause on inference errors when using type debugger.
+1431331 bump version to 0.1.3
+fe53788 fix up maven release notes
+a1f776e fix bug due to rm'd optional arg on typer.infer
+336d0ec Merge branch 'master' of git://github.com/ribrdb/mirah into ribrdb-master
+6ef42e7 fix invalid bytecode.
+944abf9 Fix maven build.
+d9f9e9e Print a warning instead of raising an exception when building a closure with no methods.
+4706809 Update classpath for macro classloader.
+4ade702 Update the bootstrap compiler
+6335479 Fix comparison of MirrorProxies in LubFinder.
+da24688 Fixes for generics.
+db0c49e Fix rakefile syntax
+8cda99e Test fixes
+cf46341 MirrorProxy.erasure should return a MirrorProxy.
+0709b89 Debugger improvements
+3311a0d Implement interactive type debugger.
+90f44dd Start implementing type debugger.
+dd3f3bf Merge branch 'master' into jvm_version
+fe037d1 Fix comparison of meta types after incompatible changes.
+b045672 Fix supertypes of main class.
+e088086 Fix debug formatting for LocalFuture
+4c0588b More classpath fixes.
+40ef885 Fix loading of macro types.
+6a5b61e Better support for extending SimpleDiagnostics
+93b0650 Implement MirahCommand.
+cbb2630 Merge branch 'fb2' into jvm_version
+6c393f1 Add dependency on jruby-complete.jar
+56df34f Fix a couple bugs in conflicting method/macro detection.
+2622fa5 Fix typo in bootstrap mirahc.jar version.
+9dd9287 Fix classfile version of java classes.
+e91515e Fix for test_method_def_after_macro_def_with_same_name_raises_error.
+0d6f12d Fix jvm version flag.
+3858e40 Add dependency on mirahc-1.1.2-dev.jar
+5a44329 Add --jvm option to mirahc.jar
+b858825 Download bootstrap mirahc from mirah.googlecode.com.
+aaa033e Fix constructors test.
+d3b3697 Fix lub test.
+e916083 Change test_findMethod failure to pending.
+0460f68 Fix negated comparisons with NaN.
+066fa56 Fix 'raise ex' where 'ex' is an exception object.
+21ce0df Fix classloader used for loading macros.
+3fec7e0 Fix inference for rescue body.
+6b47ed4 Implement unary minus operator.
+ea578b3 Add intrinsics to NullType
+f3837aa Improve debug output for type futures.
+41e6233 Test for nil methods.
+01cefa7 Fix vmofule -- loggers get garbage collected if no one retains them.
+e4ea7d7 Methods shouldn't return NullType
+9b468e7 Support Noops inside ClassDefinition
+0d6675e Patch bad bytecode in mirah.lang.ast.Unquote
+c35bb64 Add cast helper method for macros to use.
+a0c92d5 Fix block arguments in macros.
+ab3569f Support compiling a directory,
+aa97f2f Fix macro classpath.
+fc30632 Make sure UnreachableType doesn't leak out of method return values.
+de4bbe7 Fix subtyping for NullType.
+dac8dc1 Fix lub of raw and generic type.
+58d8305 Add todo to download compiler.
+be3324f Clean up compilation using the new compiler.
+ee560c4 Use real macros in org.mirah.macros.*
+
+=== 0.1.2 New Year, New Release / 2014-01-05
+
+8421140 add desc'd rake task for building mirahc.jar
+325ec54 replace deprecated import usage w/ java_import in test helper
+f3c7911 move classpath-> Java URLs helper to Env module
+7e738c3 add passed classpath to run classpath when running with mirah
+1766599 split out test class file destinations for fixtures vs test classes
+e4e6f49 don't use platform dependent path separator literals in jvm type factory classpath munging
+223042f clean up run command
+66f8b24 rm puts in jvm base compiler
+0bb156e fix gem task definition ordering
+c2e59b4 add apache 2 license to gemspec
+3480594 move a few local variable assignments in the typer closer to their usage
+68d883e clean up Rakefile & fix gem task so that it depends on bootstrap
+e46edc7 add tests for type future classes, fix a couple associated bugs
+860f87f do some c&p to maybe get CallCompiler reliably building on CI
+8cf13b1 reorder call_compiler initializers to see if that'll fix it (annoyingly)
+331005e reformat initialize args for CallCompiler
+8e86d54 comment out non local return support so that this branch can be merged into master
+cedd8c2 break out multi arg block tests into typed and untyped
+9e19a49 have CallFuture log resolved target as well as args
+c9321ae add custom inspect for MirahError
+044f7ef improve scope inspect st it includes capture info
+8ab9e91 try removing unused var / move replace self down
+b8aac8a replace manually created lists with literals
+89c71f7 refactor node replacement into an extracted method
+ce7817a pull out more common code from macro expansion
+ca1a4e0 begin cleaning up macro expansion in typer
+8ced4e7 consolidate field type inference
+bbf8356 extract common target type lookup for fields
+81ec8ad extract helper for defaultExceptionTypeName
+3dffc61 extract inferring annotations
+d011167 extract inferring params
+5dbd367 consolidate call method type future creation
+71b731e consolidate workaround methods via widened type
+39a66ee extract creating scopes w/ selfType
+52723e9 extract adding nested scopes in typer
+f2410e6 collapse a couple more getTypeOfs
+88fe75a add widened getLocalType helper that works for any Named node
+062b55a refactor typer method def: reorg declaration to usage
+a38ae97 extract common call target inference
+21b7307 remove unnecessary temp vars from Typer.getLocalType
+5af117d pull out helper for adding new scope to typer
+71616c9 use type helper in a couple non-obvious places
+80cc787 wrap getting types from the typesystem in a helper
+150b91c typer: rm unneeded temp vars named outer_scope
+d2eff01 wrap scope getting w/ a helper method in typer
+f4f25f2 extract helper for argument types that works for all but rest args
+4f83d90 pushing more helper code around in typer
+e301bab oops. types for getLocalType helper were wrong. Fixed them, and added scope back
+114421a more reformatting of MethodDefinition typing
+b4ebaa6 add helper for constructing local type for args
+a632bae extract some helper methods for methoddefinition typing
+951c7a3 add some newline formatting in the typer
+e9e6b5e replace todos w/ methods noted w/ todos
+a5f7e63 Merge branch 'master' into closure_changes
+41640bc add cli help for new options
+c0d557b Merge branch 'string_ext' of git://github.com/altamic/mirah
+59fc3a8 closure work continues
+ea86178 Minor patches + Merge branch 'master' into closure_changes :/
+8e0f9b8 Fix jruby jar path
+c7e537e Fix double expansion of macros in FunctionalCall
+b61f5bf Fix return types.
+b30d7eb Fix for field assignment as a method call.
+084366d Add a pass to fix unitialized locals.
+35abdad merge
+b534cb6 Add a target to bootstrap using javalib/mirahc.jar.
+c2f8bb9 Expose the correct type system to macros.
+b783d57 Fix ambiguity for nil method parameters.
+e7b7f2b More fixes to compile with the selfhosted mirahc.jar
+3fe8e4b Fix vararg generic methods.
+0429eb6 Typo
+9b4655e Better error reporting.
+8efd6b2 Bug fixes
+e472901 ScriptCleanup is not reusable.
+c9ce542 Fixes to get code compiling with mirahc.jar
+1584448 Fix for macro compilation.
+343ac03 Fix for overrides with optional arguments.
+1c4dbde Fix calls to protected methods using super.
+a6bac61 Fix for recompiling a class that is also on the classpath.
+21fdfd9 add method def internal support, get a few more tests passing
+fed5aa6 use bundled mirahc instead of just built mirahc
+5ad5b1a added << operator to StringBuilder (somewhat fixes #40)
+079ded9 Added include? method to String (closes #133)
+41de27f added =~ operator to String (closes #160)
+ab10d98 use the jruby jar in javalib instead of the in-use one
+8dc1bd6 beginnings of a better way to build closures -- still has problems
+068b248 rm the compiler jar on clean
+ac45fa0 add more nlr tests
+9c9eaa7 wrap rescue around parent node list
+2cc0cd5 first pass at non local return
+5bdeca4 download jruby jar instead of keeping it in git
+02cee59 bump version to 0.1.2.dev
+1b74e54 Hack to support covariant return types.
+4f0ba15 Try to make debug info a little more sane
+f356201 Optional arguments don't need a declaration.
+a5cd63c Mirah methods should not return generic types
+0c1feee Another missing import
+1b326e2 Print the number of errors.
+d863176 Fix some override bugs.
+162848b Guard against concurrent modification in BaseType.notifyOfIncompatibleChange
+36a0635 Fix test_method_requiring_subclass_of_abstract_class_finds_abstract_method
+60dcf76 Add missing file
+d895ad2 Better support for overridden methods.
+82b089f Fix expansion order for macros.
+4eabcc5 Ensure method changes from supertypes get propagated
+5388d85 Don't consider macros when inferring overridden method types.
+9036f24 More debug logging to track down unhelpful error messages during inference.
+31c9cee bump history again
+33afd17 bump bitescript dependency
+98f57da bump 0.1.1 history
+af66397 bump bitescript version to 0.1.3
+776b74f when bundled in a jar, add the jar to the classpath
+71d3b82 rm dynalink from zip/jar dist
+383c615 bump version to 0.1.1; update history
+97d46fc add tests to nail down super behavior
+4ef8b3b add inherited lookup to static fields
+dabe54d fix missing conversion for implicit returns in new backend
+754cc38 fix primitive conversion errors in code generation for implicit return in methods
+d565657 update maven release instructions
+9d7529f the gem now relies on mirrors and the new backend
+8a781fc Merge branch 'master' of https://github.com/mirah/mirah
+0ef465c More missing imports
+ac60613 bump history again
+00e481f Missing import
+ff8c5b3 Show inference error messages from multiple classes.
+ea7a434 Support inferring overridden types when the same override is contained in multiple supertypes.
+ba84b9c Better error handling in generic method processing
+fc831a8 Guard against concurrent modification
+b214f8f Typo
+bdba3fc Support missing selfType in MethodLookup.
+aeaa4bc Fix compilation of extensions inside a package.
+
+=== 0.1.1 Summer Summit / 2013-08-05
+
+e94e5be bump bitescript dependency
+a8c7863 bump 0.1.1 history
+963c81c bump bitescript version to 0.1.3
+5e457f9 when bundled in a jar, add the jar to the classpath
+4834157 rm dynalink from zip/jar dist
+7313495 bump version to 0.1.1; update history
+accd0ea add tests to nail down super behavior
+1f97de5 add inherited lookup to static fields
+937e766 fix missing conversion for implicit returns in new backend
+881907e fix primitive conversion errors in code generation for implicit return in methods
+ce85b11 Implement macro compilation in mirahc.jar
+e09e9fb Really fix puts(reduce) macro expansion bug.
+99eab9a Merge branch 'master' of https://github.com/mirah/mirah
+3673800 Fix for test_raise
+9b23973 Fix typer tests.
+bf1cabe Fix reduce test
+3826fe1 break up big blocks of test in enumerable_test into single assert tests
+cc0d34a rm merge detritus
+3a8f7aa Add more commandline options. Decrease default verbosity.
+13fd769 Error handling and other cleanup for mirahc.jar
+6a79ddd Merge
+8810226 Make array and hash literals generic.
+517561c Fix generic inference for ArrayList.new(int)
+bdcb595 First pass at doing multi-call generic inference.
+896fbe8 Use leastUpperBound for BaseType.widen.
+53e300e Pass the Context to BaseType
+b47c315 More test fixes
+4929dbe Fix some test breakage.
+0cc666b Basic generic method lookup
+4cb2620 scripts should have a void return type
+72cb1f4 replace if _.nil? with unless _ in factory.rb
+c48bcba closure builder: pass klass to new_closure_call instead of type future
+f07811b closure builder: set parent scope on method after method creation
+a1e6df8 closure builder: extract helper for setting parent scope
+e7feee6 closure builder: move body insertion around
+a76b8fe add a couple helper methods to closure builder
+50b5aee more whitespace in closure builder
+4d0799f push around some indentation in closures
+7154ea7 add test for closures with multiple args
+7eb317a add test helper to block_test
+3d198e9 pull ClosureBuilder#add_methods into two methods, for clarity
+626c46f reformat signatures of closure builder
+6da2556 rm unused var in jvm/types/methods.rb
+76a8b49 remove dynamic type
+ec76ac0 update help text to be accurate for -d option
+f14a047 Make class literals generic
+8f68e3d Generic type loading
+17c8b51 Use a Context for type system initialization.
+4a0f1ad Loop detection and protection in BaseTypeFuture and AssignableTypeFuture
+922b6cd Clean up Wildcard creation.
+a41aef5 Implement lub()
+dd0f645 Type refactoring
+752cd13 Fix supertypes of generic arrays.
+9c519ee format AstFormatter w/ new style formatting
+6250606 fix inference of begin;rescue with raise in rescue
+3b90bd2 bump copyright, clean up errors.rb
+bd1bf44 add toString to BaseTypeFuture
+4a41229 Implement subtyping rules for parameterized types.
+7767324 pull out some helper methods for visitRaise in mirah typer
+13f3812 fix gemspec -- README.txt sub md
+295e9d9 Move subtype logic from MethodLookup into the Type classes.
+4c07089 Remove a bunch of isX methods from JVMType.
+beda1d4 Remove class_id and internal_name methods from JVMType
+8855368 Implement erasure
+2aab102 Fix rescue and zip codegen
+dddbaeb Move map macro from List to Collection.
+08dcb96 Add zip, map, and reduce macros.
+a4bb8b9 add new backend as a failable travis build
+74aa5d8 run travis builds for java 6 and 7
+d2fa22f fix up README code formatting
+d3fb725 More work on implementing generics
+6994a18 Start implementing generic inference
+b92ddc6 Add lambda macro.
+b16f7b3 use string as pending switch as const is only defined when new backend is compiled
+18c9d5d add some tests around assignment types, 1 working 2 pending
+ab3b9c2 skip invoke dynamic test for new backend until support added
+b0e1e1f fix small typo
+780f350 pull super class valid check into helper method
+80ca8ec Fix method_lookup_test
+c225fb1 Fix test_assign_int_to_double_in_closure
+3e1c718 Fix test_lowercase_inner_class
+757403d Fix for test_main_generation_for_file_with_class_of_same_name
+53d79a7 Fix test_imported_constants_available_in_macros
+62f36d2 Fix simple_class example
+7962d91 Fix field initialization in the new backend.
+6059a00 Implement static imports
+467ba5a fix test_method_requiring_subclass_of_abstract_class_finds_abstract_method
+20ddd4c Fix test_constructor_chaining
+8b5aa47 Fix test_mirah_iterable
+7101176 Fix test_array_cast_primitive
+0ad9ba7 Array extensions and casts
+6019d98 Infer argument types from superclass.
+28eeed2 Interface fixes.
+575c86f MirrorProxy needs to support declareField.
+c8cfaec Fix scope caching.
+ee7b654 Always search interfaces for methods - we don't need the methods for non-abstract classes, but we do need the macros.
+23eaa7a Fix loading macros from source.
+5672029 Implement annotation retention
+8b52cbd Fix selfType in child scopes.
+e6f20bf Varargs method lookup.
+ff14996 Implement boxing.
+6772a38 Support closures.
+961c301 Fix widen.
+ee11868 Constructor lookup shouldn't search parent classes.
+823c143 Fix constructor definitions
+0ed0ed8 Assignment should infer to the right side, not the left
+869ea11 Fix ambiguous methods in test_nil_assign
+0457072 Implement field setters.
+003ac5e Fix for setter methods.
+e50da24 Implement implicit nil
+a6046ea Support loading inner classes.
+ed4cb18 Verify the classname when loading bytecode mirrors.
+7597f49 Object intrinsics
+0cf05c3 Implement getCharType
+192e541 Try again fixing InlineCode strangeness.
+83cfc8f Merge branch 'master' of https://github.com/mirah/mirah
+0ea3766 Use full method lookup for compiling string concat.
+7bbecc9 Implement a basic pure-mirah compiler.
+16d0f8c Builtin support
+67220f6 Start implementing macro lookup
+98eeb0a pull finding interfaces into collect_up_interface_tree
+51a85aa rm temp inteface vars
+badda24 add helper for collecting things off of interfaces
+db03d9c make method collecting methods do one thing
+cf90d34 add method for walking inheritance tree to method type
+1457ed5 add new find_callable_static_methods method to extension delegate
+93aeaaa Look up static methods on super classes too closes #134
+455e8b4 remove vestigal ant build.xml
+30d7650 rm test.sh as its no longer necessary
+2a87fdf add build status to README
+2682fd4 convert README to markdown
+44574be ignore more generated files
+4316070 fix test task that points at non-existent task
+e423465 Merge pull request #217 from ralph-moeritz/master
+a1d8b24 Add boolean operators.
+417bc1f Fix for constructors
+5fc5fe3 Fix search packages.
+de190e6 Implement narrowing.
+b936303 Add a BlockType
+1710ba2 Support fields.
+d4d957b Redefining a MirahMirror should yield the same type.
+98bddff Change fixnum -> int.
+e3514fe Fix method listeners on static methods.
+0b6f12c Include "this" argument in debug info.
+257ad85 Main type should be meta.
+913b7fc Add more debug logging.
+4b18c0b Fix typo
+a6e3d83 Fix meta method lookup
+6aa873a Add missing methods to MirrorProxy
+a64d97a Fix static fields.
+bd5cc3f Pass methods found by the Mirror type system to the compiler.
+3985c1d Issue #216
+deb729a test empty rescue body with else
+1aa0ff2 extract  rescue_node.else_clause.size comparisons to make it easier to figure out what visitRescue does
+b57841c add test ensuring rescue behavior w/ else is right on raise
+2aaa612 split test_empty_rescues in rescue_test.rb
+7218b3d add test for return from else clause in rescue
+49eae91 add test for returning from a rescue clause
+c117bbd break out tests in rescue_test
+6e1d491 s/sout.println/puts/ in rescue_test
+8dfccaf make array literals modifiable closes #126
+5e2f62c move privateish methods under private in jvmbytecode compiler
+1fb54ef replace nesting with guard clause in LocalFuture#assignedValues
+ba43b46 so apparently !a.b && c breaks the parser
+5bade0e add with_finest_logging helper to tests
+b557eb3 add some whitespace
+bbc9be3 LocalAssignFuture add my assigns after parent, but before children.
+9c03d69 add core tests to default test run
+f265faf override compile_widen for chars, so we will not try to convert them to ints/treat them as ints
+e3e8a42 actually, widening should happen when the value type is primitive
+b45f9c4 turns out, if you wanna dup a wide value, you need to use dup2
+420f49e enforce some ordering on assignments' type lookup through LinkedHash*
+622a2b0 use same conversion logic on varargs array conversions
+80c035a convert primitives before assigning them to locals
+14fd7b5 get rid of some Foos
+1e3e328 move box_type to PrimitiveType
+b9da885 move box method to PrimitiveType
+c0a3bc6 bump copyright dates on jvm_compiler_test
+448c698 move string concat tests into their own file
+db7d753 use self type as argument type for boxing primitives
+94dab66 update / add copyright notices to primitive types
+59a42a9 use the wrapper name, instead of hard coding strings for primitive types
+f0fe88a remove last references to Mirah::AST.type_factory
+82ce051 bump copyright version on base command
+8359686 move common test helper dependencies to test_helper
+e1212f6 bump copyright on a couple test files
+4f0791e move some imports of new typer into Mirah::Typer
+96a1d60 remove unused JVM typer file
+c18d497 bump copyright jvm/methods.rb
+ec7fd43 fix typo in typesystem comment, bump copyright
+6fbde2f bump copyright on rakefile
+1fecacf run mirror tests on 'rake test:jvm:new', consolidate setup
+058f0f5 bump copyright year for number.rb
+d3820d8 add travis IRC notifications
+764ab6f remove import of unused class - GeneratorAdapter jvm/types/number.rb
+955531d add travis-ci
+1099e8d pull out TypeDefinition common method lookup by type bits
+cf2aa60 dry up declared_method common structures in TypeDefinition jvm/methods.rb
+1d6e1c0 use an alias instead of a separate method definition jvm/methods.rb
+15c10b4 extract type wrapping in jvm/methods.rb
+c5c8f16 jvm methods.rb: inline some descriptors where they are only used in one place
+bd77cdf extract bitescript signature generation in methods.rb into it's own method
+c65ec80 consolidate jvm field getter / setter common structure
+ac0775c pull out common structure from jvm declared method lookup
+538052f add test for interface override type inference error
+9af44c5 fix boolean boxing method, so it doesn't use undefined method
+fc0e913 remove mirah task rule for source backend
+d585d67 Add no-arg constructor for tests.
+bc1a5a0 Make scopes inherit package and imports.
+a627114 Add field accesses to method lookup.
+2f9ba45 Implement real local scoping.
+fcd7669 Implement math operators.
+e785935 Support arrays in the mirror loaders.
+238c936 Create DerivedFuture, and use it where appropriate.
+2211cfb Array support
+930434d Set main class name from filename.
+089a08e Implement widen, assignableFrom, super in constructor
+b5e95fd Implement imports
+4927619 Implement packages
+f360f8b Add more of the basic types.
+d3efcee Support deferred inference of superclass.
+8be82f7 Fix closures in a constructor.
+4202277 Delete obsolete code
+6c8f40c Support infering argument types after the method def.
+2e15048 Support error types during method lookup.
+29e53a1 Support infering method return type after visiting the declaration.
+08aafe1 Start using MethodLookup in MirrorTypeSystem.
+f995c3d Merge branch 'master' of https://github.com/mirah/mirah
+534e789 Fix visibility checks for protected methods.
+4012357 Merge pull request #203 from ribrdb/master
+8ed8d52 Don't return a MethodFuture from MethodLookup.findMethod
+6b7559d Finish implementing Java 1.4 method lookup.
+98fc5a1 Start using BytecodeMirrorLoader in MirrorTypeSystem
+6101757 Start support for reading type info from .class files.
+258bc7e Remove unused method.
+9534aef Introduce MirrorLoaders, and delegate to them from MirrorTypeSystem.
+6b822f4 Implement missing method
+fb15ff0 Add missing cast
+bf5bb71 Don't call varargs? on macros
+36b3804 Start support for changing supertypes.
+1de88e1 Merge pull request #211 from jstepien/remove-dash-j-flag
+e5f1c7d compile closure in closure test and run it
+3277c1c add java 8 bytecode support. fixes #210
+28f7737 add license to a couple test files
+ce6e48f bump version to 0.1.1.dev
+4781fc8 use bundle exec when running maven exec jruby tasks
+b2250a4 Disable the -j/--java flag
+b4fa599 Merge
+bb2ea2e Merge
+f6d68c4 Merge
+ae623c0 Merge
+61f42b4 Merge 57835f12aac7b92d62656029a7128592a83f8114
+b444722 Start implementing method lookup.
+6c10c14 Fix missing value conversion on local variable assignment.
+4906797 Start implementing method lookup.
+fd95b06 Implement abstract
+e04f739 Really update the parser jar this time
+1a0f4ef Fix merge error
+3e7e4d3 Merge
+5160899 Start re-implementing the TypeFactory in Mirah.
+ea95efe Make sure arguements to Map.[]= are passed correctly
+eee5f5d Only remove each tempfile once.
+eee4a87 Emit variable names in class files.
+c769e05 Build the new compiler by default.
+3ed0a5b Merge
+266d9d1 Support building the new backend from the rakefile.
+aec81a7 Fix interface compilation.
+2f4c5a5 Implement varargs in the new backend.
+92bdc39 Fix bad merge.
+7a5b9f1 Fix varargs method called with array.
+fe666f4 Merge
+2631d07 Implement optional args
+a88589b Fix declaration for array instance variables
+a55dde8 Support captured arguments.
+3be7f16 Implement captured locals
+0d643a5 Support field annotations
+080686d Fix void chaining.
+76096a6 Skip enclosed classes during constructor cleanup.
+31d3052 Fix constructor chaining.
+ea4d07e Generate casts for the return value from generic methods.
+a45dc9f Fix closures inside toplevel methods.
+beac16a Fix 2 rescue bugs.
+cb47b9c Fix for empty method body.
+1b72ed0 Basic closure support (no captures yet).
+6d494a5 Add an invokeSpecial method to Bytecode.
+15359a3 Start supporting inner classes.
+077fc92 Fix loop bug.
+1fe9063 Hash literals
+90380b4 Implement CharLiteral and Noop
+c3cd759 Implement ensure.
+ae8bd23 Work around ast bug.
+2e1c9d9 Rescue
+01a6af9 Implement raise
+781447e Fix test_interface
+b55c5c7 Implement remaining Object intrinsics.
+e14ae07 Implement array literals
+531e7de Implement loops.
+1cf29dc Fix implementing multiple interfaces
+990a45a Implement kind_of? and class literals.
+5e230fe Implement Self and ImplicitSelf
+c975ae6 Report mismatch between method return type and declared method type.
+b9868b3 Implement pattern literals
+880bf51 Fix test_string_concat
+44bd8ec String concat
+ea905f4 AttrAssign
+53005a4 Array intrinsics.
+2a08b2b Generate classes in the same order as the current backend.
+df4db6a Fix calling parent constructor when the parent class is being compiled at the same time.
+f14b357 Support calling other overloads using super
+c68aebe Fix constructor cleanup to make sure super constructor gets called.
+0b0848b Fix for static void method as an expression.
+1f16299 Fix for FieldAssign
+c2c96c8 Fix for void chaining
+b883fe5 Compile field declarations
+20c9de8 Fix for compiling vcall
+76dbe85 Fix extra dupX1 for FieldAssign nodes.
+136d3c7 Implement basic comparison operators.
+beb81dd Fix for empy branches in an if statement returning a primitive.
+93c7638 Implement more nodes
+40f3de0 Basic "if" support.
+1612b20 Implement more literals.
+4f17b7c Implement constructors.
+6328e63 Implement fields and method calls.
+8d29438 Basic support for integer math.
+eb65791 Basic local support
+f3304d7 Basic super support.
+f159a15 Support compiling int literals
+5dd601e Fixes for script cleanup
+093a8cb Run tests with the new backend.
+7d3c704 Move constructor mangling to separate file.
+41207a8 Fix compilation of superclass.
+6b64470 Fix some tests.
+ae8b9cc Add some char literal tests.
+0e94de1 Add an example of what ScriptCleanup does.
+30b7b31 Cleanup the error message for unsupported nodes.
+ac30c03 Try to get rid of a warning about ambiguos methods
+57db944 Start generating methods.
+d1e4e9d Merge branch 'master' into compiler
+8ee08bc Fix macro loading in 1.7.0
+9d8a11d Merge commit 'a224598'
+a224598 Fix bootstrap under jruby 1.7.0
+a41951b Fix widening for stack frames.
+9398b40 Move classpath manipulation.
+a871638 Fix merge problem.
+8f5808e Merge branch 'master' of https://github.com/mirah/mirah
+ddaf645 Merge in the new backend, a JVM backend written in Mirah.
+ec01ace More jruby 1.7.0 fixes (but these break 1.6.x)
+e0eb90d Fix for JRuby 1.7.0
+71a99ca Generate 1.6 bytecode by default, since we still don't generate stack frames correctly sometimes.
+8bf3fb7 Fixes for annotation support in new backend
+84e2161 Fix interface ambiguity
+b8e0df2 Update the parser to report errors like the rest of the compiler.
+2f7ef43 Annotation support
+8882d59 Get the new backend generating classes.
+b2b9a48 Fix for classes which change package.
+d0afc09 Fix compilation
+65b1efd Support declaring a method before the parameter types are resolved.
+196ee6a Lookup return type for overrides with no declared return type
+4695843 Fix infinite recursion in AssignableTypeFuture
+99cff6a Start wiring up the new backend.
+e45fc11 Better error message when method args are missing the type declaration.
+57643d5 Fix compilation issues in the jvm backend port.
+44ba77d Merge branch 'master' of https://github.com/mirah/mirah
+33cc7b3 Better error message when method args are missing the type declaration.
+f6fab05 Merge branch 'mirrors'
+9086970 More fixes for better error messages.
+ad3167f Fix typo
+cd417a5 Merge branch 'mirrors'
+37f031f Fix error propagation to better show the source of errors.
+cfb2786 Support char literals ( ?x )
+35f7753 Fix bug where a local variable foo loads class Foo
+6dff9cc Merge branch 'master' of https://github.com/mirah/mirah
+72c0a22 Remove reference to AST.type_factory
+5f24055 rm_f so we can clean even if the file is already missing.
+55cdcfa update history for 0.1.0.pre
+ad4a5e8 change version to 0.1.0.pre
+91d88dd merge
+22332b7 Start porting the JVM backend to mirah.
+a4315d1 Add quote macro to Compiler
+9934c7a add toString to EnumValue
+ed6ae27 Remove reference to AST.type_factory
+f5d3289 Start porting bitescript mirrors to mirah
+
+=== 0.1.0 Steamboating / 2013-02-24
+
+db38a8d make tests 1.6.8 compatible
+57835f1 raise an error attempting to compile mirah using jruby before 1.7
+ea04a51 stop using turn gem
+46f603e when the source mirror doesn't work (1.6.8 on java 7), continue
+9bb9f29 bump version to 0.1.0 from 0.1.0.pre / 0.1.0-SNAPSHOT
+06dff98 bump bitescript version required to 0.1.2 or higher
+e74bc53 reenable dynamic, raise nice errors when on jvm < 1.7
+8bb7728 rename generator's extension compiler to @extension_compiler
+4936c8c remove dynamic type assignment test
+c44c78e use the test name as part of the class name of anon Mirah classes in tests
+56a10ef fix some whitespace in test/jvm/bytecode_test_helper.rb
+0471e49 clean tmp directory as it's used in building distribution artifacts
+3824dcc add mirah-util.jar to bootstrap task
+c78cd1b also rm the mirah-util jar on clean
+76bc6ef don't blow up if the source mirror can't work. (Java 7-15 appears to have removed an internal class)
+5ee433f fix java version of class files compiled for 7 instead of 6
+400b718 Recompile mmeta.BaseParser for Java 6
+91f4974 Add missing file
+76facfc Fix DynamicType.superclass. This fixes the tests, but I still think dynamic is generally broken.
+9057240 Closes #206
+79c400c Merge https://github.com/mirah/mirah into fix
+586bfc3 Fix abstract Closes #207
+d90563f merge
+9164bf2 Implement static imports with new syntax.
+09c4a4b Rebuild lexer for Java 6
+91d3a6a Really update the parser jar this time
+53fccff Update the parser.
+1595e89 start a test suite for the examples
+6d61273 fix string_each_char to work with new ast
+cec675b clean up import related tests
+cd17b50 add tests for static macros
+c9f8bcd fix lower case inner class lookup.
+69085e8 add lowercase inner class test that fails, add java test fixture for it
+400d549 don't use Ruby string interpolation on test that uses Mirah interpolation
+36a5a84 add whitespace to ErrorType
+d62cfda bump cast_test copyright year to 2013
+dd9048a fix raise assertion in rescue tests
+7135761 fix java exception assertion method
+cacd537 move interface tests into own test case
+7247dde ensure we don't try cleaning up a class file twice it tests
+2dc065e move casting tests to their own file
+23712cb add toString to LocalFuture
+652179b add to string to CallFuture
+f968291 primitives shouldn't be convertible to arrays of that primitive
+5e55644 fix whitespace in factory/ note possibly dead code
+84262c2 remove array_type if statement that had both sides commented out
+1fcd805 clean up method_lookup.rb a little, fix printing bitescript mirrors on ambiguity errors
+f0765f4 move jvm ensure tests to rescue_test
+884645e add check to make sure gem build fails when generated jars not present
+6241541 Access RubyGems via SSL so it'll stop whining.
+9541f01 Bundler uses `vendor` for gems. Ignore it.
+1a1a68d Fix class_loader_test
+5414ac3 Fix typer_test.
+332f4a9 pick primitives last in typer to avoid assuming things are meta as much
+fe73423 Revert "make typer vcall test pass again." Turns out the test is pointing out a real bug
+ea265ee make typer vcall test pass again.
+6fe3c28 add toString to MethodType
+28e184b Merge pull request #204 from tychobrailleur/maven-fix
+dd0cba1 Clean up Maven poms.
+fbbcdb8 Ignore backup files.
+b11dcfe give super test class better name
+2fe9b84 don't include minitest, as we don't use it, clean up .class file cleanup
+0d5691f first pass at doing autoboxing
+c1a070e rename some block test classes to ensure they don't conflict
+8479db5 fix dash e, add regression test
+cb33c59 if a varargs method is passed a matching array, use that as the varargs array
+9e35eac test cleanup: remove unnecessary clear, add/remove whitespace
+dcbb4fb missed a varargs method definition
+c1886fc add varargs support
+f56c38d add support for referring to macros that have already been compiled.
+0d866a4 clean up byte code test helper a bit
+01b6c3b Merge remote-tracking branch 'tychobrailleur/fix_compile'
+4ad6a4d Ensure resolve return type is ResolvedType.
+f0fd6b0 Really fix the parser jar this time.
+f856785 Merge from master
+3182a90 Recompile some parser classes for java 6.
+931f041 note that you need jruby 1.7.0 to compile mirah
+d7bd6a1 Fix bootstrap under jruby 1.7.0
+9967d48 Fix some tests.
+af0a9ee Try to get rid of a warning about ambiguos methods
+aedab51 Fix bootstrap under jruby 1.7.0
+fadf3c8 Fix widening for stack frames.
+1b16915 Fix macro loading in 1.7.0
+5d5ce53 More jruby 1.7.0 fixes (but these break 1.6.x)
+83a5ce9 Fix interface ambiguity
+a7283f3 Merge in better parser error handling
+3a2bbfa Fix for classes which change package.
+1bd8200 Support declaring a method before the parameter types are resolved.
+636fe73 Lookup return type for overrides with no declared return type
+c5a02e1 Fix infinite recursion in AssignableTypeFuture
+c9e8433 Better error message when method args are missing the type declaration.
+9438dfc More fixes for better error messages.
+2631f2c Fix typo
+c7c8559 Fix error propagation to better show the source of errors.
+765e50a Fix bug where a local variable foo loads class Foo
+e4fb346 Remove reference to AST.type_factory
+978611b don't remove the build dir after finishing the build.
+02da6ed remove unused constant
+2c50acb remove references in README to java source generation as it is no longer supported
+bebcfa4 fix class path for generating ant task
+1a54f0c add util jar containing ant task, add it to classpath for gem
+645253b consolidate classpath munging into mirah.rb
+15483bf some 1.9 fixes: each_with_index => each.with_index / each_line.with_index / zip
+6a2bd1b Merge pull request #193 from SaberUK/patch-1
+0a9d165 Merge branch 'master' of https://github.com/mirah/mirah
+d7f39b8 Compile the ant task.
+fd25564 rm_f so we can clean even if the file is already missing.
+90ac5b9 Fix small typo in help message.
+
+=== 0.1.0.pre RubyConf newast preview release / 2012-11-02
+
+a104440 change version to 0.1.0.pre
+afe5384 Add attr_{reader,writer,accessor} builtins.
+8e31256 Generify array literals and reimplement hash literals the same way as arrays.
+8976381 Fix hygene for all? and any? builtins.
+a8c5d60 Fix test_void_chain
+f9ba709 Fix test_implements
+9f55cbb Support references to primitive types
+3aaac97 Support for static macros and casts to array types.
+179ea1f Fix test_super_constructor
+cf3e040 Fix test_optional_args
+6de0a1c Fix test_block_with_method_def
+dcbb840 Fix a couple macro tests
+f4102d6 Fixes for trying to compile the typer.
+fcfc448 Allow widening to the other type, not just its ancestors.
+939a155 Fixes for mirah-complete.jar
+e2228bf Bug fixes and better error handling.
+a6e9cc8 Fix assignable_from?(NullType)
+fe75374 Remove mirah-builtins.jar in the 'clean' task.
+4e67815 Merge pull request #192 from nuclearsandwich/whitespace
+64da41e Strip trailing whitespace from test directory.
+d61a535 Strip trailing whitespace from examples.
+a48641b Strip trailing whitespace from lib directory.
+ce169d2 Strip trailing whitespace from src directory.
+f9c1910 clean up some debugging code
+f12db8a Merge branch 'master' of https://github.com/mirah/mirah
+9e03b1a Fix test_constructor_chaining
+2b86e38 fix typer rescue test
+32e1658 add [], []= support to List
+1dc2d5c rake clean should rm the bootstrap jar
+7879e20 fix class name of NumericExtensionTest
+6536e0b add some documentation to the macro builder
+d72cbe0 Generate missing arguments for blocks
+f0792db Revert "Remove obsolete test_block_with_no_params_on_interface_with"
+6fa6472 Fix test_void_chain
+33dc95a Remove obsolete test_block_with_no_params_on_interface_with
+0cb1f6a Fix test_parameter_used_in_block
+1150c0a Implement closures.
+2875d54 add license/ whitespace to transformer
+4538141 actually lib/mirah/transform/error.rb isn't used anymore, so deleting it
+cbf7b6c add license to lib/mirah/transform/error.rb
+3b66952 add license header to errors file
+29e8edb clean up underlining
+8a492b2 unwind some nested logic in jvm method lookup
+e45e21b put the 0.0.12 history back in
+26224db Merge branch 'master' into newast
+93cb158 bump to 0.1.0.dev, because 0.0.x is oldast
+9e10f98 bump versions to 0.0.13.dev
+83a021c remove win JAVA_HOME lookup because it has problems with spaces in the PATH
+b97b567 Add file headers
+81e94e0 Split up types.mirah
+9439368 Split up simple.mirah
+a5384f9 Split up futures.mirah and add some documentation
+c1ebe5c More quick test fixes
+c8c28b9 Fix test_interface_declaration
+b13b84a Fix "Cannot assign #<IntegerType int> to #<VoidType void>" error from void methods
+ca875de More test fixes
+1c5542f Fix test_block_with_mirah_interface
+2e13c9f Fix scope for block args (test_block_with_abstract_from_object)
+6fe2e59 Fix test_block_impling_interface_w_multiple_methods
+65dd342 Infer arg types from superclasses or interfaces
+2329074 Constant narrowing for AttrAssign and ElemAssign nodes
+1d225d9 Fix test_argument_widening
+d62ad67 Fix macro inheritance on generic types
+de79c6f Implement ZSuper
+e84f525 Delete test_arg_bootclasspath_sets_bootclasspath_on_type_factory_ugh
+257eb93 Merge
+c7fdf60 Mostly fix typer tests.
+ddc1498 Remove the broken java source backend
+03cbb4b fix #186 on newast, ignore implemented methods in getAbstractMethods on factory
+65520ec actually use bootclasspath in the generator
+16647d4 ignore generated/ downloaded jar files
+4301fc5 actually use the bootclasspath in the bootstrap_loader
+2ece709 convert IsolatedResouceLoader to Java, put MirahClassLoader's mirah src in a comment, test class loaders.
+e54d183 add tests for MirahClassLoader
+8a7f943 add some comments on class loaders
+39cf42b test that bootclasspath arg sets the bootclasspath
+b5afc07 add tab to cli help for bootclasspath
+34af825 Support specifying --bootclasspath
+e31ed58 fixes #185 ScopedBody's generated by macros outside methods should work
+b32a286 Merge pull request #184 from pepijndevos/newast
+cae497b add power macro test
+9178182 Merge branch 'newast' of https://github.com/mirah/mirah into newast
+e9da596 Delete dead code
+81d7b58 basic power macro
+05615cf Duplicate DelegateClass logic from Ruby 1.8, for consistency.
+11ec687 update version to 0.0.12.dev
+2f5ac6c missed the SNAPSHOT in a couple pom.xmls
+862c760 update history for 0.0.11
+17814eb set version to 0.0.11
+e00ab4b comment out bootclasspath test--there is no bootclasspath yet
+1e46765 add needed breaks in to args processor
+79c6c66 clean up arg processor interface a bit
+040d276 rename test classes to match their filenames
+59a0ccb clean up build_string in java_source
+b9550e7 fixes #175. wrap string interp prior to calling method on it.
+54526f5 Merge pull request #174 from nighthacker/master
+f396297 add test for nested closures, touch struct method where changes were added in master
+fe53909 previous change was insufficiently argy.
+0f1cd70 complain if blocks don't have the right number of arguments
+9b88275 add zip install instructions
+167c9c2 Update README.txt. Fixes #163
+f5fdb07 Array.each
+57faaca add missing files
+b33ae42 Merge branch 'newast' of github.com:mirah/mirah into newast
+0291c24 Iterable builtins
+65c726d Don't run javac backend tests by default -- they're completely broken
+9541d76 Test fixes
+bc6b158 Loops
+6ebe8da Merge branch 'newast' of github.com:mirah/mirah into newast
+6223111 Re-enable hash_test.rb
+c43ce7a Hash support
+1ff787d Clean up trailing newlines.
+bbc8e4d Handle one level of nesting on return types, and arbitrary nesting on parameters. Also handle wildcards in parameters. Support single 'extends' or 'implements' bounds, but not 'implements' with multiple interfaces.
+b3cf443 Start implementing hashes
+8803dd7 Fix test_instance_macro_call
+41fcca0 Fix test_block_parameter_uses_outer_scope
+9eca828 Fix test_add_args_in_macro
+a6f8a07 Some macro fixes
+d83daa8 Merge branch 'newast' of https://github.com/mirah/mirah into newast
+63c2101 Basic generics support. Handles only the case where the method parameter or return type are simple type variables.
+82cf35c puts. Sweet. Except JRuby can't find it most of the time. Cry.
+8d0df92 Fix package for main type
+f0499f5 Don't auto-generate a class or a main method unless needed
+632a453 Add missing file logging.rb
+5f31337 Add gensym and disable test for hygenic macros
+34a15a9 Fix macros with arguments
+ea73382 Write macro annotations
+ce77a0e Use java logging everywhere
+7dc94c8 Fix the quote macro
+fff3962 Fix Call and FunctionalCall macros
+77cd6f2 fix printing of unqutoes in TypePrinter
+808b52d Fix vcall macros; one macro test passing.
+191062e Macro lookup. So close...
+bced9fa Re-enable macro tests
+330bfbb Start implementing macro loading
+b5a61ad Quote macro implementation
+ec1b520 Add missing file MirahClassLoader.java
+f0cba97 Macro compilation
+0ffaa55 Fix compilation of mirah-bootstrap.jar
+8c594e5 Start implementing macro compilation
+64dce74 Add missing file
+4703e7b Fix test_block_with_abstract_from_object
+c8d613d Move block tests to block_test.rb and split them up
+6bd8de3 Basic block support
+18c6d26 Fix mirahp and error processing
+f3bd920 Start typer support for blocks and macros
+a272f7b Update parser
+6d0821f Add Rakefile support for building typer.jar
+87f1ce5 Merge branch 'newast' of github.com:mirah/mirah into newast
+4622581 jmeta is mmeta.
+f0672e1 Fix compiling implicit nil
+a6b59f6 Disable hash tests
+a3497cb Fix return type for methods that always raise an exception
+8238ee7 Fix array return types
+d1e6f05 Fix loops
+0f646f7 Fix loops
+506fb9c test fix
+fec18f0 Fix long constants
+a1129c8 fix static method listeners
+9213d89 Disable enumerable tests for now
+45a3c43 Fix default constructors
+a37e0b9 Fix test_inexact_constructor
+04d02ef Fix constructor chaining
+6f08cf4 Fix blocks_test
+eb5e74c Fix annotations
+1d0062c Cleanup merge issues
+9b4733f Merge pull request #171 from baroquebobcat/masterful_newast
+46422d3 merge master into new ast. It's crazy awesome.
+7c76dd9 Test fixes part 2
+b6d511f Test fixes
+4cc953e fix test_not
+e33454b Fix test_nil_assign
+af78bd2 Fix test_literal_array
+cfa426d Fix test_interface_declaration
+1f942fc Fix test_import, test_import_package
+16e550c fix test_implements
+053b89a Fix test_ensure
+30e6517 Fix test_rescue_scope
+b33c4dc Fix test_rescue
+a123bd4 Work on fixing exceptions
+0f0cbc0 Fix type in rescue support
+b3bc74e Fix test_class_append_self
+5a02c90 Fix test_array_with_dynamic_size
+fc469af Fix test_array_return_type
+264bd9a Fix test_literal_regexp
+4e62d93 Fix test_annotations
+5611920 Fix test_colon2
+bb12fb0 Fix test_string_concat and test_string_interpolation
+408fae2 Fix test_super_constructor
+7a1000e Fix test_super
+50fb396 Fix test_constructor
+f1d8eb3 Partial fix for test_return_type
+5e0c9b3 Update mirah-parser
+de71d88 Work on fixing test_cast
+9d19812 Support the AttrAssign node
+bfda51d Fix 2nd testcase in test_and
+f786982 Fix first testcase in test_and
+118697f Fix some bad method calls
+a93ca0b Use imports when resolving type names
+a5770f3 disable filename tagging
+478b921 Work on fixing method lookup
+d411915 Add the typer .jar
+bd4cdef Work on getting super to work
+3bca242 Use System.out.println instead of puts
+28b2015 Fix more tests
+4c4dd4b Fix superclass tracking and no-arg block calls
+cc687c8 Fix arrays
+7dc7ab4 Get addition working
+959b435 Start working on test_jvm_compiler
+5108278 Fix some more compilation errors
+8b33dab Work around bug in RubyArray.hashCode
+92db094 Add some more logging during type inference
+61d3f2f Get hello world compiling
+df1f9db Start getting jvm compiler to work
+bbb3423 Mostly fix test_java_typer
+ada7948 Fix test_typer
+570efac Work on getting test_typer to pass
+7203e19 Start using the new typer
+88a047d Get the typer to compile
+e246b53 Unquote fixes
+6f170d8 Fix typo
+486f70f Implement UnquoteAssign
+e822c5f Fix some compilation errors
+0fafe68 Start new inference engine
+dafc7ca Fix custom scopes on locals
+b24f54e Fix test_add_args_in_macro
+bcdef19 Fix test_self_call_preserves_scope
+428c493 Fix hash literals
+1f2f4a4 Fix generator
+2f46511 Fix merge error
+5eb7bde Merge
+79a5cc6 Rebuild bootrap jar
+b08d2bb Fix scope for self_call macros
+3dfb2f4 Fix some more tests
+5edb785 Fix some tests
+ef1f7f6 Serialize AST as text instead of using Marshal.  This seems a bit fragile, but it should be enough to bootstrap the new AST.
+c28a393 Get rid of ScopedBody nodes
+
+=== 0.0.12 Working Jars / 2012-07-22
+
+c06e1df bump versions to 0.0.12
+827434c remove win JAVA_HOME lookup because it has problems with spaces in the PATH
+cb10541 update maven instructions to use deploy instead of release.
+1e57c10 If we're in a jar, look in the jar for our classes.
+3b49e48 drop maven versions back to 0.0.12-SNAPSHOT
+c0b15d5 [maven-release-plugin] prepare for next development iteration
+fed593b [maven-release-plugin] prepare release shared-0.0.12
+5b1c8b1 fix #186 improving abstract class based closure support
+40a0c94 remove some more debugging puts
+6ec7338 fixes #185 ScopedBody's generated by macros outside methods should work
+a86c365 use logging instead of puts on giving up in typer
+b267200 Merge parser-support w/o puts'
+42830b9 Duplicate DelegateClass logic from Ruby 1.8, for consistency.
+fa3b2a3 Duplicate Ruby 1.8 DelegateClass logic to get back to tests passing.
+9ca8517 Remove logging I left in.
+02b5c48 Fixes to get Mirah working with JRuby master in 1.8 and 1.9 modes.
+9e0c2d1 update version to 0.0.12.dev
+8a9a644 missed the SNAPSHOT in a couple pom.xmls
+
+=== 0.0.11 Pre-Hackathon Edition / 2012-04-09
+
+235e887 set version to 0.0.11
+d11f694 actually use the bootclasspath in the bootstrap_loader
+6f293d8 fix and test(barely) IsolatedResourceLoader
+cff273c add tests for MirahClassLoader
+98adac4 add some comments on class loaders
+e1ddf6a reorg run a little, ensure fail has non-zero exit
+6a7f2c4 add needed breaks in to args processor
+72c0031 clean up arg processor interface a bit
+886bc5f test that bootclasspath arg sets the bootclasspath
+141aceb add small test for args processor
+b981088 removing an accidental X from annotations test
+4361a10 rename test classes to match their filenames
+7312718 use git bitescript by default
+2642a28 add tab to cli help for bootclasspath
+97cee78 Support specifying --bootclasspath
+6b05845 clean up build_string in java_source
+ab5c6ac fixes #175. wrap string interp prior to calling method on it.
+b5148ed Merge pull request #174 from nighthacker/master
+5bb1d2a fixed mistaken command line flags in synopsis
+96a9074 closures in closures fixes: 155
+77f110f move block tests into block_test
+6e6bfaf previous change was insufficiently argy.
+98acfef complain if blocks don't have the right number of arguments
+7076279 add zip install instructions
+2930ff3 Update README.txt. Fixes #163
+9a06b83 Merge pull request #166 from keithcelt/master
+737c01c Silence ant runtime errors on systems building with ant 1.8
+f8e3edf Fixes 162 by requiring java.lang.System as a string
+f7c5bee rename tests so test is suffix instead of prefix
+0caf3d0 pull bitescript exts out into their own file
+d680a33 fixes #13. adding == & != on bools
+1a3da9f if no args & -v specified, exit with status 0
+a044d7b Remove conflicting "Exception" import and move "System" import to class body. Fixes #159.
+0d0b350 move constructor tests into their own file
+b351c13 don't raise errors on empty files
+84c2a83 have Mirah::Parser use the same code path as tests do
+56bee53 Tests. Fixes #157
+2fddffe Treat the expression as resolved if the primary_type is nil, as in `return`. #157
+1a5c40e Don't treat Ensure as an expression; it can never have a return type. #157
+e04c70f bump versions to 0.0.11.dev
+
+
+=== 0.0.10 / 2011-11-20
+
+f6035d0 set version to 0.0.10
+3b06353 use test_helper in gwt test
+4d29eeb turns out a number of things rely on MirahCommands being truthy on success
+46e6719 fixes 156 for real, also do the ant lowercase thing
+9e40121 don't exit on successful compile
+1155765 move comment about class loader to line it refers to
+985c70f add jvm_version option to Compile ant task w/ 1.6 default
+e5a60b2 replace duby with mirah in lib/mirah/ast/flow.rb
+5690e6f split rescue error tests to deal w/ caching expression value
+1f77ed8 add some white space, use #empty? instead of size==0
+677e4aa fixes #52 by raising an inference error when types arent compat
+81be877 add assert_raise_java to get around the NativeException thing
+d744f44 use assert_raise instead of begin;fail/rescue
+05afc6e pull out rescue tests for jvm into separate file
+7a933f3 raise an inference error when method has same name as macro. fixes #123
+6517a90 clean up the Block#add_methods method a bit
+0a826dd ensure that a block body is created even when the block is empty
+d8b0641 change duby to mirah in Binding#binding_type
+47883e9 change duby to mirah in StaticScope#binding_type
+8f3fddf Fix whitespace.
+74b6195 use turn for prettying up test output
+23d0693 add license header to test_macros
+143ac6c add a test_helper to put global test config in
+6fe3241 fix #149 exit 1 when there are errors
+31074c6 fix #146 by not reassigning self to Builtin
+8fb471e s/duby/mirah/ in jvm types intrinsics
+ff06791 s/qote/quote/
+972a9f9 refactor void checking on method return into method
+605c377 fix #148 in the simplest way possible
+f1b5c19 fix inspect_children typo
+4140fa7 use case statements instead of === & if elses in UnquotedValueAssign#node
+b82bbeb in Node#inspect_children, replace if elses w/ a case statement
+049a4cf clean up body inference a little
+d9e92b4 Merge remote branch 'thomaslee/master' into thomaslee
+0c72195 fix name of compilation test
+cfbf4c5 bump versions to 0.0.10{.dev,-SNAPSHOT}
+8c0ecec Fix test_empty_array.
+
+=== 0.0.9 / 2011-09-12
+
+a5963ef use self hosted classloader fixes #144
+a858a2f fix for #114
+989fd1b fix #119, add transform for empty array literal
+a474b84 fix #120, java source now prints out longs as <n>L
+0e25733 bump version to 0.0.9{dev, -SNAPSHOT}
+fb34f03 fix #138, underscores and dashes both act the same
+cffd819 Merge pull request #143 from hackergarten/master
+0f3af83 sorting lists and arrays examples
+59662e2 string 'character' length example
+9e541df string case example
+f8174ac sleep example
+04399d3 secure temporary file example
+d77902c host instrospection example
+c0433a5 hostname example
+ab134aa hamming numbers example
+d468081 arrays examples
+e8425f3 random number example
+e974827 Merge pull request #142 from consiliens/master
+084aa65 Update NOTICE.
+735983f Merge pull request #140 from abscondment/140-ant-compile
+d2a4010 Allow for false case too. #140
+a7925ed Fixes #140 by  * Raising an Exception in MirahCommand.compile if Mirah.compile fails (i.e. it returns nil)  * Allowing that exception to pass through the two layers of scope in the ant task so Ant will actually see it and fail accordingly.
+7244e11 Merge pull request #139 from hackergarten/master
+f0ef0d5 added apache license to all samples files.
+a4f8cf0 added multiline comments example
+
+=== 0.0.8 / 2011-08-31
+
+af43b77 Merge pull request #132 from hackergarten/master
+416e130 readme file
+fbf6ddc fix #129 call next anyway if there is no block arg
+18cef56 s/duby/mirah/ in a test
+945558b pull enumerable/loop tests into separate file
+585856e s/duby/mirah/ in transformer
+f0cc410  adding a couple method docs
+11dac9a push some code around and do a few s/duby/mirah/ s
+17b0031 wrap the bodies of blocks passed to macros as well
+02e5cbe clean up tests some
+794d61d pull macro tests into separate file
+ae1b942 flatten a list example
+98ccad9 create a file example
+9dc8981 file size example
+fddd3e2 count occurrences of a substring examples
+2297cd7 is string numeric example
+6ccaf02 empty string
+4c58e5a fizz buzz example
+e1e107a empty string example
+643e80a added copy a string sample
+b3c35a5 fibonacci example
+abdf45c factorial example
+cd3eb03 how to do  comments
+9af53ee boolean value examples
+973ef14 some macro examples
+121b654 square with strings
+095773d hahahah guess what
+c8c4465 reading user input
+ddf8eda Palindrome
+df01492 reverse a string
+186c333 rot 13 example
+13f4a10 initial version of the 100 doors
+da29d35 removed unneeded parameter
+09ded03 99 bottles of beer
+f1b490c added repeating a string sample
+ba99754 update issues link on readme
+785c6c7 further tets helper factorization
+051854b make javac helper's compile almost the same as bytecode's
+1d9648b refactor javac tests parsing and infering steps
+ba44c0d default args are evaled on call
+3ebe9f3 use some of the helper methods defined in bytecode's helper in javac's
+5c2b47c fix main in files w/ classes of same name contained in them
+3b69287 file name should also be configurable for javac compilation
+e3d2dc7 pulling out a couple assertion definitions into a helper file
+c0112a4 overall task should fail if any tests failed
+2da4ca2 annotate new rake tasks
+5ae27b7 making all tests run even if some fail
+ae6d8e6 fixing up helpers for jvm tests a bit
+66e87d9 tease apart test #compile method for bytecode
+dbbcf8e split bytecode and javac tests
+aa21dc9 split tests into multiple dirs and tasks
+feb8028 Remove unnecessary, broken 'super' call in BlockArgument.
+02101c3 Update the bootstrap JAR to incorporate the new loop macro in builtins.mirah
+de68299 test fallout from top level changes, loop test still fails
+2786cfd sometimes children can be nil
+1b9b018 Merge in loop macro from techomancy.
+fa13c03 Merge pull request #53 from ashee/master
+be84d53 Merge pull request #82 from baroquebobcat/use_bundler
+2ba1932 Merge pull request #85 from rdp/mergeable2
+b4e3106 Merge pull request #88 from baroquebobcat/fix_up_env_tests_and_a_typo
+7212065 Merge pull request #89 from jabr/master
+71c7c3f Merge pull request #90 from baroquebobcat/test_reorg
+50d37d5 Merge pull request #91 from baroquebobcat/fix_syntax_error_not_providing_messages
+e206d90 Merge pull request #92 from baroquebobcat/update_compile_ant_class_from_duby
+4a9d8e2 Merge pull request #93 from szegedi/dynalang-0.2
+688fe7d Update to use dynalink-0.2.
+9f96ab0 mirah-ify ant compile task
+b6b92d6 wrap jmeta syntax errors w/ mirah ones
+2d48ca2 unshift of lib unnecessary as it is put on the path by the test task
+fbae14b modularize assert_include
+b0c05c8 move compile methods out of respective classes and into helper
+a563f4a added test helper for jvm tests
+d4070fe moved jvm tests into subdirectory
+688c18d Call original create_method_builder in default case when patching the JVM compiler in the GWT plugin.
+f3c7a7d Only generate a main function when we really need it (i.e. not when the source only has imports, class definitions, and interface declarations).
+c001130 Add require 'rubygems' to scripts so bitescript gem can be found.
+34c19d3 typo s/seperator/separator/
+0886a72 fix the env tests I broke in ac92625bf76dc00d
+922d5eb Merge pull request #84 from baroquebobcat/use_1_6_bytecode
+57dc505 Merge pull request #78 from sd/master
+10709cd Merge pull request #86 from baroquebobcat/use_file_path_separator_instead_of_rbconfig
+ac92625 use File::PATH_SEPARATOR instead of RbConfig
+23d77ef use java 1.6 bytecode. the recompiled jar didn't work for me with 1.5
+10b2b18 warn users instead of outputting "...done" when nothing actually occurs
+4033268 partial fix for issue #23 don't ICE when parsing after a node verify error
+6ea2da8 remove rescue around dev bitescript require
+d105b97 use bundler to manage dev dependencies
+7a3127e use right date formatting
+7cb39eb try to help them know what is happening better
+0f5287a make it more explicit what compile mode means
+8cb8e41 Fix bootstrapping
+14559d3 Fix method lookup for java.lang.Class objects
+bde76f8 Merge branch 'newast'
+16db63e Fix bugs with interfaces and error types
+778ec51 Fix strange transform error
+7c76776 Merge pull request #80 from baroquebobcat/closure_fix_2
+7f83fb0 fix closure scope issue, javac issue
+0c4ea99 Macro enhancement
+705a907 Macro enhancement
+e395169 Add a class mirror to the NullType
+4cff3f8 nodes
+00d223d Fix block return values
+2fed449 Merge commit '6b3ce537'
+6b3ce53 test for creating anonymous class method that uses no args and returns a value
+489d4aa Updates to current invokedynamic logic.
+af717c6 Add an Unreachable JVM type
+46a1bea Merge branch 'master' of github.com:mirah/mirah
+c4c8afb Fix begin...rescue with no body
+73172c8 Try to ignore assignments to nil during type inference
+e2e5c56 Fix rescue block inference
+a073480 Fix link to issue tracker.
+681c274 Add support for rescue - else. Fix bug with rescue when the body always raises an exception but the rescue clauses return a result.
+d486090 More efficient new_hash macro
+b78e3a8 Macro bugfixes.
+fa40e47 Add missing .java parser
+237f16c Fix line numbers in debug info
+9b163c0 Add support for circular references between java and mirah files
+726ad63 Merge branch 'master' of github.com:mirah/mirah
+d974e04 Fix typo
+8c2bffa Fix #31: mirahc -h regression
+fac6bd5 Fix #44: Failure on 'rake gem'
+ac79807 corrected reference for "jar:bootstrap" in Rakefile
+1d07018 Present an error when using -j/--java with non-compile commands. Fixes #62.
+9dc3345 Ensure the JVM type has been initialized before calling methods on it in JVM::Types::Type. Fixes #65.
+551deac Use catch/throw to terminate the compiler early, since SystemExit bubbles out MirahCommand and makes noise. Fixes #66.
+fb401fa Fix bad call to compile_asts (does not need transformer now).
+961551d Add missing cast to Integer.
+d43cfc7 Fix -V and error processing
+4b67a11 Merge
+cf4f2de Small changes to README feature list.
+1d003c5 clean the pom file
+521bbd9 Add a trivial example Maven project that uses the Maven plugin.
+88838bc add maven release process readme
+8f37529 update pom descriptors to pass maven release requirements
+5c7a690 Fix a couple vars I missed in mirah.bat and mirahc.bat.
+59409a1 Add missing .bat files to dist.
+bb39a69 Put .zip contents into a mirah-VERSION directory (d'oh!).
+e12fbe8 Fix references to duby scripts in gemspec and trim out wiki from examples (for size).
+a395dbf Make zip task depend on jar:complete again.
+4e89a03 Add examples dir to zip distribution.
+7c06633 Oops. Add missing distbin dir with bin scripts for the zip distribution.
+690f82b Add zip, gem, and dist targets to Rakefile, to build a zip'ed distribution, gem file, and everything.
+53d8e16 Restore lost destination when writing compiled output.
+3b181f5 Back off on overzealous trimming of @state; it's still used a few places I can't eliminate.
+b0c6ce8 Remove out-of-date duby and jrubyp-related commands.
+963140c Remove duby.gemspec. We're done with this, yes?
+5b923e5 Move mirah/jvm/base to mirah/jvm/compiler/base
+c89ed22 Move JVMCompilerBase to Base.
+cd1ae11 Move JVM bytecode compiler to appropriate file structure.
+b27a57a Move JVMBytecode and JVMCompilerBase to Mirah::JVM::Compiler namespace.
+ffc2d18 Move Mirah::Compiler::JVM to Mirah::Compiler::JVMBytecode
+3d510fb Move jvm/source_compiler.rb into jvm/compiler/java_source.rb
+a28852a Move Mirah::Compiler::JavaSource to Mirah::JVM::Compiler::JavaSource
+8ff25a5 Move Mirah::Typer::JVM to Mirah::JVM::Typer
+0809140 Refactor jvm/types.rb into jvm/types subdir files.
+898cb63 Refactor transform and transform2 into transform/{ast_ext,error,helper,transformer}.
+e68eb22 Refactor typer.rb into typer/base and typer/simple.
+a05e503 Forcibly nuke randomly-named xform classes generated during test_javac_compiler.
+0da5b73 Missed a few ClassLoader and CompilationState references.
+e357957 Move a few more classes under util and clean up some requires.
+fd2f0bf More OO decomposition of Mirah command-line logic and compiler/generator/parser workflow.
+5762c5d Restructure commands into their own classes and files.
+3075d8e Reorg main three entry points into Mirah command a bit.
+c129e57 Add .DS_Store to .gitignore
+db7aa1e Restructure compiler.rb into mirah/compiler subdir, mirroring mirah/ast subdir.
+330a1c2 Add a simple example of declaring an interface.
+723416f Add covariance for one-dimensional arrays (see #55). Multi-dimensional arrays still need work.
+356d896 Roll versions to 0.0.8{.dev,-SNAPSHOT).
+3b6bb81 Fixed an issue with mirah_task
+ebd0ab2 Add casting support to the Call node.
+
+=== 0.0.7 / 2011-03-20
+
+248368c Fix assignability of dynamic type; only target of Object should be allowed.
+9734853 Allow abstract interface methods also on Object to use Object impl. Fixes #54.
+13b84d2 Add some simple logging of compiler phases (not for run mode).
+7dad0eb Fix recursive examples, since we now do try to infer both branches of an If.
+27409a0 Reorg mirah.rb into a few additional files under lib/mirah.
+
+=== 0.0.6 / 2011-03-20
+
+ce9b740 Update dynalink stuff, add JSR292 mock to enable compiling/including invokedynamic logic.
+2898b87 Remove unused JRubyParser jar.
+b1cb2e0 Clean up --help output for normal and MirahCommand-based command lines.
+94000eb Add .redcar dir to .gitignore
+c450943 Get Maven artifacts building again and add an "else" case to MirahCommand for running from jar.
+92f723c Move more files out that are specific to the NB plugin.
+48777a6 Move NetBeans plugin to mirah-netbeans-plugin project.
+b3979b7 Fix poms to reference parent.
+d23ec2c Add support for using Colon2Const as a fully-qualified type name
+f1fe06b Save method arguments into the binding if necessary
+929fbdf Merge branch 'master' of git@github.com:mirah/mirah
+b230d94 Fix parsing of long constants
+935031b Body of void methods is not an expression
+372e1a4 Don't require compatible types for an if statement unless the statement is an expression.
+cc861f4 Fix java.lang.VerifyError: Attempt to split long or double on the stack
+789ec6e Get rid of .class files left behind by test_javac_compiler.rb
+e1a5828 Body of void methods is not an expression
+7fa9c62 Don't require compatible types for an if statement unless the statement is an expression.
+2346c9e Fix java.lang.VerifyError: Attempt to split long or double on the stack
+a0b1de4 fix typo in errors.rb
+638f326 Replace the ruby portion of the datastore plugin with mirah code
+35f3936 Hygenic macros
+b455e90  - Try to differentiate between errors from compiler bugs and errors in user code.  - Fix a bunch of ma
+6032830 Try to clean up error handling, and avoid having compiler bugs show up as InferenceErrors
+2dc85ad Fix scoping unquotes
+f35eb86 Fix duplicate extracted values with -V
+8911a66 Fix parent on Unquotes used as a name
+4d75d84 Add --no-save-extensions flag, and use it in tests.
+97a705a Merge branch 'master' of git@github.com:mirah/mirah
+3298ff0 Merge branch 'my' of https://github.com/markokocic/mirah into markokocic-my
+
+=== 0.0.5 / 2010-12-22
+
+8e00222 Update mirah-parser.jar to one built from mirah-parser project.
+466a21c Update mirah-bootstrap.jar for re-namespaced Mirah classes and modules.
+b62603f Fix a bug in __ruby_eval caused by a fix for JRUBY-5163.
+d17af25 NullType is assignable from any non-primitive type.
+805586f add rake gem task
+3be367b update readme install instructions
+6ac3fb1 add descriptions to rake tasks
+0ca5b96 use the JRuby classloader as parent for the Mirah class loader. Otherwise it doesn't load th
+e6c95c3 add license to the pom and parent to release artifacts into the sonatype repository
+c767233 mirah-complete already includes jruby-complete, so it's not a dependency
+f7d36af variable versions mess the pom descriptor
+137e859 fix distribution directory and allow maven to complete the package lifecycle
+52ff7d1 add maven descriptor files to publish mirah into a maven repository
+
+=== 0.0.4 / 2010-11-17
+
+* Lots of cleanup, bugs fixed
+* New parser written in Mirah
+* Improved annotation support
+* New macro syntax
+
+=== 0.0.3 / 2010-06-09
+
+* Even more language features!
+* invokedynamic support (sort of)
+* Using mirror types to avoid class initialization
+* Other stuff
+
+=== 0.0.2 / 2010-02-15
+
+* More language features added
+
+=== 0.0.1 / 2009-10-27
+
+* First gem release
+  * Most things necessary for simple apps, scripts, servlets are working

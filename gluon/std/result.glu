@@ -1,0 +1,137 @@
+//@NO-IMPLICIT-PRELUDEJ
+//! Error handling type.
+
+let { Eq, Ord, Ordering, (==) } = import! std.cmp
+let { Show } = import! std.show
+let { Functor } = import! std.functor
+let { Applicative } = import! std.applicative
+let { Monad } = import! std.monad
+let { Result, Option } = import! std.types
+let { Foldable } = import! std.foldable
+let { Traversable } = import! std.traversable
+let { Bool } = import! std.bool
+let { compare } = import! std.cmp
+let string @ { ? } = import! std.string
+let { (<>) } = import! std.semigroup
+let { error } = import! std.prim
+
+let unwrap_ok res : Result e a -> a =
+    match res with
+    | Ok x -> x
+    | Err _ -> error "Result was an Err"
+
+let unwrap_ok_or default res : a -> Result e a -> a =
+    match res with
+    | Ok x -> x
+    | Err _ -> default
+
+let unwrap_err res : Result e a -> e =
+    match res with
+    | Ok _ -> error "Result was an Ok"
+    | Err x -> x
+
+let unwrap_err_or default res : e -> Result e a -> e =
+    match res with
+    | Ok _ -> default
+    | Err x -> x
+
+let map_err f res : (e -> f) -> Result e a -> Result f a =
+    match res with
+    | Ok a -> Ok a
+    | Err e -> Err (f e)
+
+let to_option res : Result e a -> Option a =
+    match res with
+    | Ok x -> Some x
+    | Err _ -> None
+
+let eq : [Eq e] -> [Eq a] -> Eq (Result e a) = {
+    (==) = \l r ->
+        match (l, r) with
+        | (Ok l_val, Ok r_val) -> l_val == r_val
+        | (Err l_val, Err r_val) -> l_val == r_val
+        | _ -> False,
+}
+
+let ord : [Ord e] -> [Ord a] -> Ord (Result e a) = {
+    eq,
+    compare = \l r ->
+        match (l, r) with
+        | (Ok l_val, Ok r_val) -> compare l_val r_val
+        | (Err l_val, Err r_val) -> compare l_val r_val
+        | (Ok _, Err _) -> LT
+        | (Err _, Ok _) -> GT,
+}
+
+let functor : Functor (Result e) = {
+    map = \f x ->
+        match x with
+        | Ok y -> Ok (f y)
+        | Err e -> Err e,
+}
+
+let applicative : Applicative (Result e) = {
+    functor,
+    apply = \f x ->
+        match (f, x) with
+        | (Ok g, Ok y) -> Ok (g y)
+        | (Ok _, Err e) -> Err e
+        | (Err x, _) -> Err x,
+    wrap = \x -> Ok x,
+}
+
+let monad : Monad (Result e) = {
+    applicative = applicative,
+    flat_map = \f m ->
+        match m with
+        | Ok x -> f x
+        | Err err -> Err err,
+}
+
+let foldable : Foldable (Result e) = {
+    foldr = \f z r ->
+        match r with
+        | Err _ -> z
+        | Ok x -> f x z,
+    foldl = \f z r ->
+        match r with
+        | Err _ -> z
+        | Ok x -> f z x,
+}
+
+let traversable : Traversable (Result e) = {
+    functor,
+    foldable,
+    traverse = \app f r ->
+        match r with
+        | Err e -> app.wrap (Err e)
+        | Ok x -> app.functor.map Ok (f x),
+}
+
+let show ?e ?t : [Show e] -> [Show t] -> Show (Result e t) =
+    let show o =
+        match o with
+        | Ok x -> "Ok (" <> t.show x <> ")"
+        | Err x -> "Err (" <> e.show x <> ")"
+
+    { show }
+
+{
+    Result,
+
+    unwrap_ok,
+    unwrap_ok_or,
+    unwrap_err,
+    unwrap_err_or,
+    map_err,
+    to_option,
+
+    eq,
+    ord,
+    functor,
+    applicative,
+    monad,
+    foldable,
+    traversable,
+    show,
+}

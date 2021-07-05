@@ -1,0 +1,17 @@
+--- Test case for Issue #69
+module tests.comp.Issue69 where
+
+
+class A a where
+    aop :: a e -> e
+
+class B b where
+    bop :: b e -> e
+
+class (A c, B c) => C c
+
+instance C [] where 
+    aop = head
+    bop = head
+
+main = println (aop ["Yes"], bop ["Ok"])

@@ -1,0 +1,993 @@
+{-
+    Copyright © 2011 - 2021, Ingo Wechsung
+ 
+    All rights reserved.
+ 
+    Redistribution and use in source and binary forms, with or
+    without modification, are permitted provided that the following
+    conditions are met:
+
+    -   Redistributions of source code must retain the above copyright
+        notice, this list of conditions and the following disclaimer.
+
+    -   Redistributions in binary form must reproduce the above
+        copyright notice, this list of conditions and the following
+        disclaimer in the documentation and/or other materials provided
+        with the distribution. 
+    
+    -   Neither the name of the copyright holder
+        nor the names of its contributors may be used to endorse or
+        promote products derived from this software without specific
+        prior written permission.
+ 
+    *THIS SOFTWARE IS PROVIDED BY THE
+    COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR
+    IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+    WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+    PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER
+    OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+    SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+    LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+    USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
+    AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+    LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+    IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+    THE POSSIBILITY OF SUCH DAMAGE.*
+-}
+
+--- The compiler driver & builder
+package frege.compiler.Main
+
+    where
+
+import  frege.Prelude hiding(<+>)
+import  Lib.PP(msgdoc, text, <+>, <>)
+import  Control.monad.State
+import  Data.TreeMap as TM(TreeMap, each, values, keys, insert, delete)
+import  Data.List (sort, uniq)
+
+import  frege.Version(version)
+
+import  Compiler.enums.Flags
+import  Compiler.enums.Visibility
+import  Compiler.types.Global
+import  Compiler.common.Desugar
+import  Compiler.common.CompilerOptions (thisTarget, standardGlobal, getOpts, theClassLoader, pathSep, ourPath)
+import  Compiler.common.Errors as E(printErrors, printAndClearErrors)
+import  Compiler.common.SymbolTable(enter)
+import  Compiler.types.Tokens
+import  Compiler.enums.TokenID
+import  Compiler.types.Packs
+import  Compiler.types.Positions
+
+import  Compiler.grammar.Lexer as L()
+import  Compiler.grammar.Frege as F()
+import  Compiler.passes.Fix()
+import  Compiler.passes.Imp()
+import  Compiler.passes.Enter()
+import  Compiler.passes.Fields()
+import  Compiler.passes.TypeAlias()
+import  Compiler.passes.Instances()
+import  Compiler.passes.Transdef()
+import  Compiler.Classes()
+import  Compiler.Typecheck as TC()
+import  Compiler.passes.LetUnroll as LU()
+import  Compiler.passes.GlobalLam as GL()
+import  Compiler.passes.Easy as EA()
+import  Compiler.passes.Strict    as SC()
+import  Compiler.GenMeta   as GM()
+import  Compiler.passes.GenCode()
+import  Compiler.passes.Final as FI()
+import  Control.Concurrent as C()
+-- import  Compiler.Utilities as U()
+
+
+main :: [String] -> IO Bool
+main args = do
+    stdg    <- standardGlobal
+    scanned <- getOpts args
+    case scanned  of
+        Just (opts, fs) = do
+                    loader ← theClassLoader opts
+                    let g = stdg.{options = opts, sub ← _.{loader}}
+                    (result, g) <- StateT.run (compiler fs) g
+                    return result
+        Nothing -> pure false
+
+instance Cloneable (JArray String)
+
+-- do we need this anymore?
+{-
+{--
+    warning: this is not a pure function! Don't use it in Frege code.
+
+    Provide an entry point whose name is *not* 'main' and that takes
+    a 'String' array, for convenience of tools written in languages that know
+    nothing of laziness, monads, etc.
+
+    It indicates success or failure through the returned 'Bool'.
+
+    The Java signature should be like
+    > static boolean runCompiler(String[]  args)
+
+    Despite its type, this is not a pure function, we are cheating here with
+    'IO.performUnsafe'. 
+    -}
+runCompiler :: ArrayOf RealWorld String -> Bool
+runCompiler args = IO.performUnsafe (Mutable.freeze args >>=  main . _.toList)
+-}
+
+compiler fs = do
+    changeSTT Global.{options <- _.{source = "-"}}
+    files <- processDirs fs
+    g <- getSTT
+    if (g.errors > 0) 
+    then do
+        printErrors
+        return false
+    else do
+        
+        if isOn g.options.flags MAKE
+        then do
+            let todo = createTodo files
+            mvar ← liftIO C.MVar.newEmpty
+            todo ← parseAll mvar todo 
+            make mvar todo
+        else liftIO $
+            mapM (compileFile g.options) files
+            >>= mapM C.MVar.take
+            >>= return . and 
+
+
+--- Compile a single file with given options 
+compileFile opts ef = do
+    newg    ← standardGlobal
+    loader  ← theClassLoader opts
+    let f = either snd id ef
+    let g = newg.{options = opts.{source = f}, sub <- _.{loader}}
+
+    mvar <- C.MVar.newEmpty
+    let exceptions :: Throwable -> IO ()
+        exceptions ex = do
+            ex.printStackTrace
+            mvar.put false
+    C.forkIO (do
+            (_, g) <- StateT.run (forsome passes runpass) g
+            mvar.put (g.errors == 0)
+        `catch` exceptions)
+    return mvar
+
+--- All the passes that must normally be run
+passes = [ (lexPass, "lexer"),
+           (liftStG parsePass, "parser"),
+           (liftStG Fix.pass, "join definitions"),
+           (Imp.pass, "import packages"),
+           (liftStG (Classes.passI true), "verify imported instances"),
+           (liftStG Enter.pass, "enter definitions"),
+           (liftStG Fields.pass, "field definitions"),
+           (liftStG TypeAlias.pass, "process type aliases"), 
+           (liftStG derivePass, "derive and enter instances"),
+           (Transdef.pass, "resolve names"),
+            (liftStG Classes.passC,          "verify class definitions"),        -- TRACE6
+            (liftStG $ Classes.passI false,  "verify own instances"),            -- TRACE6
+            (liftStG LU.pass,           "simplify lets"),                   -- TRACE7
+            (TC.pass,                   "type check"),                      -- TRACET, TRACEO
+            (liftStG EA.pass,          "simplify expressions"),            -- TRACE9
+            (liftStG GL.pass,          "globalize anonymous lambdas"),     -- TRACE8
+            (liftStG SC.pass,           "strictness analysis"),             -- TRACES
+            (openPrinter,     "open file"),
+            (GM.genmeta,      "generate meta data"),   -- none
+            (GenCode.pass,    "generate java code"),  -- TRACEG
+            (closePrinter,    "close java file"),
+            (javac,           "run java compiler"),
+            (liftStG FI.cleanSymtab,  "clean up"),
+        ]
+
+derivePass = Instances.pass ()
+
+
+
+{-- 
+    We don't need the lexer and parser pass, because parsing is done
+    separately in 'lexparse' 
+    -}
+makepasses = {- filter (("run java compiler" !=) . snd) . -} drop 2 $ passes
+
+lexPass = do
+    g <- getSTT
+    result <- L.pass
+    -- changeSTT Global.{sub <- _.{toks = arrayFromList result}}
+    return ("tokens", length result)
+ 
+
+parsePass = do
+        g       <- getST
+        result <- F.pass (filter Token.noComment g.sub.toks.toList)
+        case result of
+            Just (Program.Module (packname, defs, doc)) -> do
+                changeST Global.{sub <-  SubSt.{thisPack = Pack.new packname}}
+                changeST Global.{sub <- (SubSt.{sourcedefs = defs}
+                                         • SubSt.{packageDoc = doc})}
+                when (isOn g.options.flags Flags.IDETOKENS) do
+                    changeST Global.{sub <- SubSt.{toks <- arrayFromList . ideClean . toList}}
+                stio ("tokens",  g.sub.toks.length)
+            nothing -> stio ("tokens", g.sub.toks.length)
+    where
+        -- prepare token list for IDE: no inserted semicolons and braces, operator qualifiers
+        ideClean :: [Token] -> [Token]
+        ideClean (t:ts)
+            | t.tokid == COMMENT, t.value=="}" = ideClean ts
+            | t.col == 0 = ideClean ts      -- inserted semicolon or brace
+            | otherwise  = t : ideClean ts
+        ideClean [] = []
+
+
+{--
+    Lex & Parse given source file and return the resulting state.
+    The 'StIO' state is kept, except for the number of errors,
+    which gets updated from the parser state
+    -} 
+lexparse p = do
+    g <- getSTT -- save current state
+    changeSTT _.{options <- _.{source = p}}
+    when (isOn g.options.flags VERBOSE) do
+        liftIO $ stderr.println ("parsing " ++ p)
+    L.pass
+    liftStG parsePass
+    printErrors
+    gc <- switchState g
+    mergeErrors gc
+    return gc
+
+--- Run the passes on an already parsed global
+makeFile :: Global → [Symtab] → StIO Global 
+makeFile glob sts = do
+        g <- switchState glob
+        liftStG $ foreach sts mergeSymtab
+        changeSTT _.{options ← _.{flags ← flagClr VERBOSE}}
+        glob <- getSTT
+        --liftIO do
+        --    stderr.println ("thisPack: " ++ glob.unpack glob.thisPack)
+        --    stderr.println ("unique:   " ++ show glob.unique)
+        --    stderr.println ("locals:   " ++ show (_.keys glob.locals))
+        --    stderr.println ("tySubst:  " ++ show (_.keys glob.tySubst))
+        forsome makepasses runpass
+        switchState g
+    where
+        mergeSymtab st = do
+            foreach (values st) mergeSym
+        mergeSym sym = do
+            g ← getST
+            when (sym.vis != Private || sym.name.{tynm?}) do
+                case g.find sym.name of
+                    Just _  → return ()
+                    none    → do
+                        u ← uniqid
+                        if sym.{env?} then enter sym.{sid=u, env=empty} else enter sym.{sid=u}
+                        E.logmsg TRACEZ Position.null (
+                            text "makeFile: entered" 
+                            <+>  (text (sym.nice g))
+                            <+>  (text (show u))
+                            )
+                        when sym.{env?} (mergeSymtab sym.env)
+
+---  make filename from package name  @x.y.z.Packet@ =>  @dest/x/y/z/Packet.java@
+targetPath :: Global -> String -> String
+targetPath g suffix = 
+                g.options.dir ++ "/"
+                    ++ (g.unpack g.thisPack).replaceAll ´\.´ "/"
+                    ++ suffix
+
+--- give name of class file for a package
+--- Whether the class file actually exists must be determined separately.
+classForPack :: Global → Pack → String
+classForPack g p =
+                g.options.dir ++ "/"
+                    ++ (g.unpack p).replaceAll ´\.´ "/"
+                    ++ ".class"
+
+
+openPrinter = do
+    g <- getSTT
+    case g.options.source of
+        "-" -> do
+            GM.banner version
+            return ("standard output", 1)
+        _   -> do
+            openFilePrinter ".java"
+            GM.banner version
+            return ("file", 1)
+
+
+openFilePrinter suffix = do
+    g <- getSTT
+    let target = targetPath g suffix
+    pw <- liftIO do
+        let file = File.new target
+            parentFile = file.getParentFile
+        case parentFile of
+            Just dir ->  dir.mkdirs    -- make sure all directories are there
+            Nothing -> return false
+        PrintWriter.new file "UTF-8"
+    changeSTT Global.{gen <- GenSt.{printer=pw}}
+
+--- close the current file printer and continue to print to 'stdout' 
+closePrinter = do
+    g <- getSTT
+    liftIO g.printer.close
+    changeSTT _.{gen <- _.{printer = stdout}}
+    return ("file", 1) 
+
+--- utility function to run a command.
+--- takes a command line and produces an exit code
+native runJavac frege.runtime.Javac.runJavac :: MutableIO (JArray String) -> IO Int
+
+
+--- run the java compiler for the current file
+javac :: StIO (String, Int)
+javac = do
+    g <- getSTT
+    let target = targetPath g ".java"
+    javacs [target]
+
+--- run the java compiler for some files
+javacs :: [String] → StIO(String, Int)
+javacs files = do
+    g <- getSTT
+    let command   = maybe ["javac"] ´\s+´.splitted  (System.getProperty "frege.javac")
+        target | g.options.target != thisTarget
+                    = ["-nowarn", "-source", (show g.options.target),
+                                  "-target", (show g.options.target)]
+               | otherwise = []
+        arguments = target ++ ["-cp", joined pathSep (ourPath g.options),
+                    "-d",  g.options.dir,
+                    "-sourcepath", joined pathSep g.options.sourcePath,
+                    "-encoding", "UTF-8",
+                    ] ++ files
+    when (isOn g.options.flags RUNJAVAC) do
+        rc <- liftIO (JArray.genericFromList (command ++ arguments) >>= runJavac)
+        when (rc != 0) do
+            liftStG $ E.error (packageEnd g) 
+                        (msgdoc "java compiler errors are most likely caused by erroneous native definitions")
+    return ("source file", length files)
+
+--- compile a java file
+javacJava single = do
+    g <- getSTT
+    let command   = maybe ["javac"] ´\s+´.splitted  (System.getProperty "frege.javac")
+        target | g.options.target != thisTarget
+                    = ["-nowarn", "-source", (show g.options.target),
+                                  "-target", (show g.options.target)]
+               | otherwise = []
+        arguments = target ++ ["-cp", joined pathSep (ourPath g.options),
+                    "-d",  g.options.dir,
+                    "-sourcepath", joined pathSep g.options.sourcePath,
+                    "-encoding", "UTF-8",
+                    ] ++ [single]
+    
+    rc <- liftIO (JArray.genericFromList (command ++ arguments) >>= runJavac)
+    when (rc != 0) do
+        liftStG $ E.error (packageEnd g) 
+                (msgdoc "java compiler errors are most likely caused by erroneous native definitions")
+    pure rc
+
+runpass :: (StIO (String, Int), String) -> StIO  ()
+runpass (pass,description) = do
+    state <- getSTT
+    when (state.errors == 0) do
+        now   <- liftIO $ System.currentTimeMillis()
+        (itemnm, items) <- pass
+        state <- getSTT
+        later <- liftIO $ System.currentTimeMillis()
+        when (isOff state.options.flags IDEMODE) printAndClearErrors
+        when (state.errors > 0) (liftIO $ state.printer.close)
+        when (length description > 0 && isOn state.options.flags VERBOSE) do
+            liftIO $ do  
+                state.stderr.printf
+                    "%-40.40s  took %7.3fs, %d %s (%d %s/s)"
+                    description
+                    ((later-now+1).float / 1e3f)
+                    items
+                    itemnm
+                    ((Int.long (max 1 items)*1000L) `quot` max 1L (later-now))
+                    itemnm
+                state.stderr.println
+
+--- Process the list of file arguments
+--- Regular files are taken over
+--- Directories are walked and found source files returned
+--- Module names are translated to file names through the source path
+processDirs :: [String] -> StIO [Either (Pack, String) String] 
+processDirs fs = concat <$> mapM process fs
+    where
+        process :: String -> StIO [Either (Pack, String) String]
+        process f = do
+            let file = File.new f
+            regular <- liftIO $ file.isFile
+            dir     <- liftIO $ file.isDirectory
+            let absolute = file.isAbsolute
+            if regular then return [Right f]
+            else if dir then liftIO $ fmap Right <$> walk file
+            else do
+                g <- getSTT
+                -- f could be a path relative to a source directory
+                -- or a package name
+                if f ~ ´\.fr$´
+                then do
+                    -- it looks like a file name
+                    -- if it is an absolute one, then it doesn't exist
+                    -- otherwise 'regular' would be true
+                    if absolute then liftStG do
+                        changeST Global.{options <- _.{source = "-"}}
+                        E.error Position.null (msgdoc (
+                            "could not read `" ++ f ++ "`")) 
+                        return [] 
+                    else do
+                        -- resolve the path against the source path
+                        rslvd <- liftIO $ resolveSP g f
+                        case rslvd of 
+                            Nothing -> liftStG do
+                                changeST Global.{options <- _.{source = "-"}}
+                                E.error Position.null (msgdoc (
+                                    "could not find `" ++ f ++ "` in source path."))
+                                return []
+                            Just p -> return [Right p] 
+                else do
+                    -- take it as a path name
+                    let pack = Pack.new (magicPack f)
+                    rslvd <- liftIO $ resolvePackSP g pack.raw
+                    case rslvd of 
+                        Nothing -> liftStG do
+                            changeST Global.{options <- _.{source = "-"}}
+                            E.error Position.null (msgdoc (
+                                "could not find a file corresponding to module `" ++ f ++ "` in source path."))
+                            return []
+                        Just p -> return [Left (pack, p)]
+
+                                        
+--- check if argument is a file
+packfile :: String -> IO Bool
+packfile f = File.isFile $ File.new f
+
+--- walk a directory and return all Frege source files found.
+walk :: File -> IO [String]
+walk file = do
+    isd      <- file.isDirectory
+    if isd
+    then do
+        subfiles <- file.list
+        case subfiles of
+            Just files -> do
+                ls <- readonly toList files
+                let subwalk f = walk $ File.new file f
+                concat <$> mapM subwalk ls
+            Nothing    -> return []
+    else do
+        regular  <- file.isFile
+        readable <- file.canRead
+        let name = file.getPath
+        if regular && readable && name ~ ´\.fr$´
+        then return [name]
+        else return [] 
+
+--- look up an external package name in source path, check frege and java files
+resolvePackSP :: Global -> String -> IO (Maybe String)
+resolvePackSP g pack = do
+    let frpath = (magicPack pack).replaceAll ´\.´  "/" ++ ".fr"
+        jpath  = frpath.replaceFirst 'fr$' "java"
+    s ← resolveSP g frpath
+    case s of
+        Just _ → pure s
+        Nothing → resolveSP g jpath 
+
+--- Look up a (relative) file name in source path
+resolveSP :: Global -> String -> IO (Maybe String)
+resolveSP g path = do
+    paths <- pure . (map File.getPath)
+         <=< filterM File.isFile
+           $ map (flip File.new path . File.new) g.options.sourcePath
+    return (listToMaybe paths)
+
+ 
+--- to do item
+data Todo = 
+    --- We have a source file but do not know the package yet.
+    ParseMe {
+        source      :: String       --- path name to parse
+    }
+    | --- source has been parsed without syntax errors
+    Parsed {
+        global      :: Global       --- state after parsing
+    }
+    | {-- 
+        Source has been parsed and dependencies added to tree.
+        Will be compiled after dependencies have been checked and one of the 
+        following is true:
+        - Any dependency was rebuilt
+        - Any dependency target is newer than our target
+        - The source is newer than our target 
+      -}
+    CompileAfterDeps {
+        global      :: Global       --- global state for this package
+        reason      :: Maybe Pack   --- 'Nothing' means command line
+    }
+    | {-- 
+        Module was found as dependency of some other, or was asked for on command line.
+        If there is a source, it will be parsed and the state changed to 'CompileAfterDeps'. 
+        -}
+    CheckUpdate {
+        pack        :: Pack         --- build the package if needed
+        reason      :: Maybe Pack   --- 'Nothing' means command line
+    }
+    | {--
+        Module can't make progress until some package has a failed or success state.
+        -}
+    Waiting {
+        for  :: Pack                --- package we are waiting for
+        status :: Todo -> Bool      --- predicate to fulfill ('failed' always included)
+        todo :: Todo                --- what to do once package fails or succeeds
+    }
+    | --- submitted to do some work
+    Running { 
+        todo        :: Todo         --- what is it doing
+    }
+    | --- aborted for some reason like exceptions, ...
+    Aborted {
+        because     :: String       --- reason for abort, if known
+    }
+    | --- failed for some reason like syntax, compiler errors or file not found
+    Failed {
+        because     :: String       --- reason for abort, if known
+    }
+    | --- no rebuild needed
+    NoRebuild {
+        because     :: String       --- reason why we don't need it
+        compiletime :: Long         --- when has this been compiled?
+    }
+    | --- successfully compiled
+    Compiled { 
+        global      :: Global       --- state after compiling
+    }
+    | --- needs recompilation
+    CompileMe {
+        global      :: Global       --- state
+        reason      :: Maybe Pack   --- required by or commandline
+        because     :: String       --- specific cause
+    }
+    | --- possible dependency needs java compilation
+    JavacMe {
+        pack        ∷ Pack          --- what to compile
+        reason      ∷ Maybe Pack    --- required from package (or commandline)
+    }
+    | --- javac was successful (for 'JavacMe')
+    JavaCompiled
+
+instance Show Todo where
+    show x = case x  of
+        CompileAfterDeps{global, reason} → "compile after dependencies"
+                                ++ maybe "" (const " if needed") reason
+                                ++ ", required by "
+                                ++ maybe "user" (unmagicPack . Pack.raw) reason
+        CheckUpdate{pack, reason} → "check if build is necessary, required by "
+                                ++ maybe "user" (unmagicPack . Pack.raw) reason
+        Running{todo}       → "running " ++ show todo
+        Aborted{because}    → "aborted " ++ because
+        Failed{because}     → "build failed because " ++ because
+        NoRebuild{because}  → "no rebuild needed because " ++ because
+        Waiting{for, todo}  → "waiting for `" ++ unmagicPack for.raw
+        ParseMe{source}     → "parse " ++ source 
+        Parsed{}            → "parsed"
+        Compiled{global}    → "compiled"
+        JavaCompiled        → "compiled"
+        CompileMe{global, reason, because} -> "compilation needed because " ++ because
+                                ++ ", required by "
+                                ++ maybe "user" (unmagicPack . Pack.raw) reason
+        JavacMe{pack, reason} → "java compilation, required by " 
+                                ++ maybe "user" (unmagicPack . Pack.raw) reason 
+
+--- build tree
+type TodoList = TreeMap Pack Todo 
+
+--- Take over number of errors of another state
+mergeErrors :: Global -> StIO ()
+mergeErrors gc = changeSTT _.{sub <- _.{numErrors <- (gc.errors+)}}
+
+--- Replace the state with the argument, return the old state
+switchState :: Global -> StIO Global
+switchState new = do
+    old <- getSTT
+    StateT.put new
+    return old
+    
+{-- 
+    Create the To Do list.
+-}
+createTodo :: [Either (Pack, String) String] -> TodoList
+createTodo xs = fold todoItem empty xs
+    where
+        todoItem tree (Left (p, '\.java$')) 
+                                    = TreeMap.insert tree p JavacMe{pack=p, reason=Nothing}
+        todoItem tree (Left (p, _)) = TreeMap.insert tree p CheckUpdate{pack=p, reason=Nothing}
+        todoItem tree (Right s)     = TreeMap.insert tree (Pack.new s) ParseMe{source=s}
+
+
+--- Predicate to tell if the argument represents a running state
+running Running{} = true
+running _         = false
+
+--- Predicate to tell if the argument represents a successful state
+successful NoRebuild{because} = true
+successful Compiled{global}   = true
+successful JavaCompiled       = true
+successful _                  = false
+
+--- Predicate to tell whether the state means something was indeed compiled 
+compiled  JavaCompiled       = true
+compiled  Compiled{global}   = true
+compiled  _                  = false
+
+complete NoRebuild{} = true
+complete Compiled{}  = true
+complete x           = failed x
+
+--- Predicate to tell if a 'Todo' item failed
+failed Failed{}  = true
+failed Aborted{} = true
+failed _         = false
+ 
+{--
+    Add dependencies of a parsed module to a 'TodoList' 
+-}
+addDepsOf :: Global -> TodoList -> TodoList
+addDepsOf gc tree = fold javacme (fold checkUpdate tree deps) jdeps
+    where
+        deps = Imp.dependsOn gc
+        jdeps = Imp.dependsOnNative gc
+        checkUpdate t p = case t.lookup p of
+            Just _ -> t 
+            _      -> t.insert p CheckUpdate{pack=p, reason=Just gc.thisPack}
+        javacme t p = case t.lookup p of
+            Just _ → t
+            _      → t.insert p JavacMe{pack=p, reason=Just gc.thisPack}   
+
+--- parse all files in parallel first
+parseAll :: C.MVar (Pack, Todo) → TodoList → StIO TodoList
+parseAll mvar tree = do
+        parsing <- foldM (makeone mvar) empty (filter (toparse . snd) (each tree))
+        let other = TM.fromList (filter (not . toparse . snd) (each tree))
+        foldM parseResult other (each parsing)
+    where
+        toparse ParseMe{} = true
+        toparse _         = false
+        parseResult tree _ = liftIO do
+            (p, todo) ← mvar.take
+            case todo of
+                Parsed{global} -> return (tree.insert global.thisPack todo)
+                _ -> do
+                    stderr.println (p.raw ++ ": " ++ show todo)
+                    return (tree.insert p todo)
+ 
+{--
+    Make a bunch of source files and/or packages.
+-}
+make :: C.MVar (Pack, Todo) -> TodoList -> StIO Bool
+make mvar tree = do
+    -- go through the todo list and submit any tasks that can do some work
+    tree <- foldM (makeone mvar) tree (each tree)
+    -- if something was running before or just submitted, wait for an answer
+    if any running (values tree)
+    then do
+        g       ←   getSTT
+        tree    ←   liftIO do
+            -- result <-  mvar.poll
+            (p, todo)   ←   mvar.take
+            --case result of
+            --    Just x -> return x  -- no time for status
+            --    _      -> do 
+            --        status tree
+            --        mvar.take
+            --      where
+            --        status tree = do
+            --            let list = each tree
+            --                rstate = filter (running    . snd) list
+            --                fstate = filter (failed     . snd) list
+            --                gstate = filter (successful . snd) list
+            --            stderr.printf "%d running, %d failed, %d successful, %d queued/waiting%s"
+            --                    (length rstate)
+            --                    (length fstate)
+            --                    (length gstate)
+            --                    (length list - length rstate - length fstate - length gstate)
+            --                    lineSeparator
+            --            return () 
+            -- let oldstate = maybe "WHAT THE FUCK???" show (tree.lookup p)
+
+            when (isOn g.options.flags VERBOSE && successful todo || failed todo) do
+                stderr.println (unmagicPack p.raw ++ ": " ++ show todo)
+
+            case todo of
+                CompileAfterDeps{global} -> do
+                                -- need to add the new dependencies to the todo list
+                                -- also, the package name may have changed
+                                return ((     insert global.thisPack todo
+                                            . delete p 
+                                            . addDepsOf global) 
+                                        tree)
+                Waiting{for, status, todo=prev} -> do
+                    -- module waited for may already have changed state,
+                    -- in that case just resubmit
+                    case tree.lookup for of
+                        Just x | failed x || status x
+                              = return (tree.insert p prev)
+                        sonst = return (tree.insert p todo)
+                _ | failed todo || successful todo
+                              -- awake tasks waiting for this one 
+                              = return (fmap unwait (tree.insert p todo))
+                  | otherwise = return (tree.insert p todo)
+                  where 
+                        unwait Waiting{for, todo} | for == p = todo
+                        unwait x = x
+        make mvar tree
+    else do                 -- no running tasks found
+        liftIO C.shutdown
+
+        -- -- javac the compiled stuff in case -j was given
+        -- let javafs = [ targetPath global ".java" | Compiled{global} <- values tree,
+        --                                             isOff global.options.flags RUNJAVAC ]
+        -- g       ← getSTT
+        -- changeSTT _.{options <- _.{flags <- flagSet RUNJAVAC}}
+        -- unless (null javafs) do 
+        --     start   ← liftIO $ System.currentTimeMillis ()
+        --     javacs javafs
+        --     ende    ← liftIO $ System.currentTimeMillis ()
+        --     when (isOn g.options.flags VERBOSE) do 
+        --         liftIO $ stderr.printf "java compilation of %d files took %5.3fs%s"
+        --             (length javafs)
+        --             ((ende.double - start.double) / 1000)
+        --             (System.lineSeparator())
+  
+        if all successful (values tree)
+        then do
+            g <- getSTT 
+            return (g.errors == 0)
+        else do
+            -- there should be no tasks that are not either successful or failed
+            -- whenever this outputs something, it is time to reconsider the code
+            let hanging = filter (not . successful . snd)
+                        . filter (not . failed     . snd)
+                        . each $ tree
+            liftIO $ mapM_ (\(p,todo) -> stderr.println ("hanging: `" 
+                            ++ unmagicPack p.raw ++ "`  "
+                            ++ show todo)) hanging
+            liftIO $ stderr.println "Build failed."
+            return false
+
+{--
+    See what can be done for a single 'Todo' item
+-}
+makeone :: C.MVar (Pack, Todo) -> TodoList -> (Pack, Todo) -> StIO TodoList
+makeone mvar tree (p, todo) = do
+        g <- getSTT 
+        case todo  of
+            CompileAfterDeps{global, reason} -> do
+                async (compileAfterDeps tree global reason)
+            CheckUpdate{pack, reason} -> do
+                async (checkUpdate pack reason)
+            ParseMe{source} -> do 
+                async (parseMe source)
+            Parsed{global} -> do
+                async (return CompileAfterDeps{global, reason=Nothing})
+            CompileMe{global, reason, because} → do
+                async (compileMe tree global because)
+            -- JavacMe{global} -> do
+            --    async (javacMe tree global)
+            Running{}   → return tree
+            Aborted{}   → return tree
+            Failed{}    → return tree
+            NoRebuild{} → return tree
+            Waiting{}   → return tree
+            Compiled{}  → return tree
+            JavaCompiled  → pure tree
+            JavacMe{pack, reason} → async (javacMe g pack reason)
+    where
+        async :: StIO Todo -> StIO TodoList
+        async method = do
+                -- let msg = show todo
+                g <- getSTT 
+                liftIO do
+                    C.forkIO $ do
+                            newstate <- fst <$> method.run g
+                            mvar.put (p, newstate)
+                        `catch` exceptions
+                    -- stderr.println("starting task " ++ unmagicPack p.raw ++ ": " ++ msg) 
+                return  (tree.insert p Running{todo})
+
+        exceptions :: Throwable -> IO ()
+        exceptions ex = do
+            ex.printStackTrace
+            mvar.put (p, Aborted{because = ex.show}) 
+
+--- Interpret the argument as path name and return the last modification time of the corresponding 'File'
+--- Should be 0 if the file doesn't exist.
+lastMod s = liftIO $ File.lastModified $ File.new s
+
+--- The action that re-builds a source if needed 
+compileAfterDeps :: TodoList -> Global -> Maybe Pack -> StIO Todo
+compileAfterDeps tree global reason = do
+    let deps    = Imp.dependsOn global ++ Imp.dependsOnNative global
+        results = mapMaybe tree.lookup deps
+        dr      = zip deps results
+    if length results != length deps
+    then error "packages missing"       -- must not happen
+    else do
+        case filter (failed . snd) dr of
+            (p,_):_ -> return Failed{because="module `" ++ unmagicPack p.raw ++ "` not built."}
+            [] -> case filter (not . successful . snd) dr of
+                -- not successful, but not failed, i.e. waiting or running
+                -- tell the scheduler that we wait until p's state changes
+                (p, _):_ ->  return Waiting{for=p, status=successful, todo=CompileAfterDeps{global, reason}}
+                []  -> do
+                    -- the list of failed prereq's is empty and the list of
+                    -- not successful prereq's is also empty, this means we
+                    -- can go on!
+                    let me = global.unpack global.thisPack
+                    smod    ← lastMod global.options.source
+                    xmod    ← lastMod (targetPath global ".class")
+                    xp      ← Imp.getFP me
+                    let cmod = case xp of 
+                            Left _ → xmod
+                            Right Nothing -> xmod
+                            Right (Just fp) -> fp.time
+                    -- jmod    ← lastMod (targetPath global ".java")
+                    if  cmod <= smod 
+                    then return CompileMe{global, reason, 
+                            because=if cmod > 0 then "class file outdated with respect to source file" 
+                                                else "class file doesn't exist"}
+                    else do
+                        let compiledPacks = [ p | (p, s) <- dr, compiled s ]
+                        if not (null compiledPacks)
+                        then do
+                            return CompileMe{global, reason, 
+                                because = unmagicPack (global.unpack (head compiledPacks))
+                                    ++ " was compiled."}
+                        else do
+                            let outdt = [ p | (p, NoRebuild{compiletime}) ← dr,
+                                            compiletime > cmod ]
+                            if not (null outdt)
+                            then return CompileMe{global, reason, 
+                                because = "outdated with respect to "
+                                    ++ unmagicPack (global.unpack (head outdt))}
+                            else
+                                return NoRebuild{because="class file is up to date", compiletime=cmod}
+
+
+
+javacMe g pack reason = do
+    src  ← liftIO $ resolvePackSP g (Pack.raw pack)
+    case src of
+        Just s | s ~ '\.java$' → do
+            smod ← lastMod s
+            cmod ← lastMod (classForPack g.{options ← _.{prefix=""}} pack)
+            if smod >= cmod then do
+                rc ← javacJava s
+                if rc > 0 
+                    then pure Failed{because="of bad java code"}
+                    else pure JavaCompiled
+            else pure NoRebuild{because="target class file is up to date", compiletime=0}
+        Just wat → do
+            liftStG $ E.warn Position.null (
+                text "expected java source file, found '" 
+                    <> text wat 
+                    <> text "' in source path.")
+            pure NoRebuild{because="no java source found", compiletime=0}
+        Nothing → pure NoRebuild{because="no java source found", compiletime=0}
+
+{-
+javacMe :: TodoList → Global → StIO Todo
+--- If -j was given, this transitions immediatly to 'Compiled'
+javacMe tree global | isOff global.options.flags RUNJAVAC = return Compiled{global}
+--- Otherwise, we need to wait until dependencies have finished javac-ing
+javacMe tree global = do
+    let deps    = Imp.dependsOn global
+        results = mapMaybe tree.lookup deps
+        dr      = zip deps results
+    if length results != length deps
+    then error "packages missing"       -- must not happen
+    else do
+        case filter (failed . snd) dr of
+            (p,_):_ -> return Failed{because="module `" ++ unmagicPack p.raw ++ "` not built."}
+            [] -> case filter (not . complete . snd) dr of
+                -- not complete, but not failed, i.e. waiting or running or javac-ing
+                -- tell the scheduler that we wait until p's state changes
+                (p, _):_ ->  return Waiting{for=p, status=complete, todo=JavacMe{global}}
+                []  -> do
+                    -- the list of failed prereq's is empty and the list of
+                    -- not completed prereq's is also empty, this means we
+                    -- can go on!
+                    old <- switchState global
+                    javac
+                    global <- switchState old
+                    if global.errors > 0 then
+                         return Failed{because="javac errors"}
+                    else return Compiled{global}
+-}
+
+--- The action that checks if we need to rebuild a package
+checkUpdate :: Pack -> Maybe Pack -> StIO Todo
+checkUpdate pack reason = do
+    g <- getSTT  
+    rslvd <- liftIO $ resolvePackSP g pack.raw
+    case rslvd of 
+        Nothing -> 
+            -- There is no such file that corresponds to the wanted package
+            -- If this package name comes from the command line, this counts as error.
+            case reason of
+                Nothing -> return Failed{because = "couldn't find source file"}
+                just    -> do
+                    -- otherwise we could have a library function
+                    -- Note that we can safely load the class file, as there
+                    -- is no way a fresher one could be made.
+                    res <- Imp.getFP (g.unpack pack)
+                    case res  of
+                        Left _ -> return Failed {
+                                because = "module is not on class path"
+                            }
+                        Right Nothing -> return Failed {
+                                because = "class is not a frege module."
+                            }
+                        Right (Just fp) -> return NoRebuild {
+                                because = "module exists on class path and no source available.",
+                                compiletime = fp.time 
+                            }
+        Just path  -> do
+            gc <- lexparse path
+            if gc.errors > 0 then return Failed{because = "of syntax errors."}
+            else if pack == gc.thisPack 
+                then return CompileAfterDeps{global=gc, reason}
+                else return Failed{because="`" 
+                                ++ gc.options.source 
+                                ++ "` defines unexpected module `" ++ gc.unpack gc.thisPack
+                                ++ "`"}
+
+parseMe path = do
+    gc <- lexparse path
+    if gc.errors > 0 
+    then return Failed{because = "of syntax errors."}
+    else return Parsed{global = gc}
+
+compileMe :: TodoList → Global → String → StIO Todo
+compileMe tree g reason = do
+    when (isOn g.options.flags VERBOSE) do
+        liftIO $ stderr.println (unmagicPack g.thisPack.raw 
+                ++ ": compiling because " ++ reason)
+
+    -- add the packages our dependencies have imported to the package list
+    let deps = Imp.dependsOn g
+        unrun Running{todo} = todo
+        unrun x             = x
+        gs   = map _.global . filter _.{global?} . map unrun . mapMaybe (tree.lookup) $ deps
+        pks  = concatMap (keys   . _.packages) gs         -- package names
+        sts  = concatMap (values . _.packages) gs         -- symbol tables
+        jts  = concatMap (each   . _.javaEnv)  gs         -- java envs
+        jt   = condense <$> fold junion empty jts
+        ps   = fold (\t\p -> t.insert p empty) g.packages pks
+        junion tree (nm, (as, bs)) = case TreeMap.lookupS tree nm of
+            Just (cs,ds) → tree.insertS nm (as++cs, bs++ds)
+            Nothing      → tree.insertS nm (as, bs)
+        condense (as, bs) = (uniq (sort as), uniq (sort bs))
+
+    gc <- makeFile g.{packages = ps, javaEnv = jt} sts
+    if gc.errors > 0
+    then return Failed{because = "of compilation errors."}
+    else return Compiled{global=gc}
+            {- do
+                -- We have a source file in 'path', let's see if it is newer than
+                -- the corresponding class file
+                let modified s = liftIO $ File.new s >>= _.lastModified
+                    target  = targetPath g (g.unpack pack)
+                msource <- modified path
+                mtarget <- modified target
+                if msource >= mtarget   -- source is newer 
+                then return undefined
+                else return undefined
+                return Aborted{because="not complete yet"}
+            -}

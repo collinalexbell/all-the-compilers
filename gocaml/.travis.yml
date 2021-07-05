@@ -1,0 +1,31 @@
+language: go
+go: 1.x
+dist: trusty
+os:
+  - linux
+  - osx
+install:
+  - bash ./scripts/travis_install.sh
+script:
+  - make test VERBOSE=true
+after_success:
+  - make cover.out
+  - go tool cover -func cover.out
+  - mv cover.out coverage.txt
+  - bash <(curl -s https://codecov.io/bash)
+addons:
+  apt:
+    sources:
+      - llvm-toolchain-trusty-5.0
+    packages:
+      - libllvm5.0
+      - llvm-5.0-dev
+      - clang-5.0
+      - libgc-dev
+      - cmake
+      - time
+cache:
+  apt: true
+  directories:
+    - $GOPATH/src/llvm.org/llvm
+    - $GOPATH/pkg/linux_amd64/llvm.org/llvm

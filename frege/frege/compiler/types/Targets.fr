@@ -1,0 +1,36 @@
+--- Model the compilation target, conversion between "1.8" and 'Target'
+module frege.compiler.types.Targets where
+
+--- Compilation target
+data Target = Target {!major, !minor :: Int } where
+    --- decode a target specification
+    --- Old form: 1.5, 1.6, 1.7, 1.8
+    --- New form: 9, ...
+    decode ∷ String → Maybe Target
+    decode (m~´^(1)\.([5678])$´) = do
+        maj ← m.group 1
+        min ← m.group 2
+        pure (Target maj.atoi min.atoi)
+    decode (m~´^(\d+)$´) = do
+        maj ← m.group 1
+        pure (Target maj.atoi (-1))
+    decode _ = Nothing
+
+instance Show Target where
+    show t
+        | t.minor >= 0 = "%d.%d".format t.major t.minor
+        | otherwise    = "%d".format    t.major
+
+derive Eq Target
+derive Ord Target
+
+--- The 'Target' corresponding to our running VM
+--- This is based on the system property *java.specification.version*
+thisTarget = fromMaybe bad do
+        jsv ← System.getProperty "java.specification.version"
+        Target.decode jsv
+    where
+        bad = error ("strange java.specification.version: " 
+                        ++ show (System.getProperty "java.specification.version")) 
+
+java7 = Target{major=1, minor=7}

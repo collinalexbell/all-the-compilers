@@ -1,0 +1,25 @@
+--- Blur the difference between 'QName' and 'Sname' as far as display of items is concerned.
+module frege.compiler.classes.QNameMatcher where 
+        
+import  Compiler.types.Tokens
+import  Compiler.types.SNames
+import  Compiler.types.Packs
+import  Compiler.types.QNames
+import  Compiler.types.Global as G
+
+
+--- helper type class to make 'unAlias' type-wise work on all 'TauT'
+protected class QNameMatcher n where
+    private match :: Global -> n -> QName -> Bool
+    private fakeQName :: n -> QName
+
+
+instance QNameMatcher SName where
+    match _ _ _ = false
+    fakeQName s = TName (Pack.new "fake.Pack") s.id.value
+
+
+instance QNameMatcher QName where
+    match g q1 q2 = g.findit q1 == g.findit q2
+    fakeQName q = q
+

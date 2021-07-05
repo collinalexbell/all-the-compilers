@@ -1,0 +1,82 @@
+CXXFLAGS:= ${CXXFLAGS} @CXXFLAGS@
+LDFLAGS=@LDFLAGS@
+
+# TODO: change this when doing make install? Move to configure script?
+# Directory in which packages are found
+PKGS_DIR=\"$(CURDIR)/packages/\"
+
+# Add a preprocessor definition for the packages directory
+CXXFLAGS:=${CXXFLAGS} -DPKGS_DIR="${PKGS_DIR}"
+
+all: zeta cplush math-pkg string-pkg array-pkg map-pkg parsing-pkg plush-pkg plush-bench
+
+test: all
+	./run_tests.sh
+
+clean:
+	rm -rf *.dSYM $(ZETA_BIN) $(CPLUSH_BIN) config.status config.log *.0 plush/*.o vm/*.o
+
+# Tells make which targets are not files
+.PHONY: all test clean math-pkg parsing-pkg array-pkg map-pkg plush-pkg plush-bench
+
+##############################################################################
+# ZetaVM
+##############################################################################
+
+ZETA_BIN=zeta
+
+ZETA_SRCS=  		\
+vm/runtime.cpp 		\
+vm/parser.cpp   	\
+vm/serialize.cpp	\
+vm/interp.cpp   	\
+vm/packages.cpp 	\
+vm/main.cpp     	\
+
+ZETA_OBJECTS= $(ZETA_SRCS:vm/%.cpp=vm/%.o)
+
+vm/%.o: vm/%.cpp vm/*.h
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+$(ZETA_BIN): $(ZETA_OBJECTS)
+	$(CXX) $(CXXFLAGS) -o $(ZETA_BIN) $(ZETA_OBJECTS) $(LDFLAGS)
+
+##############################################################################
+# Plush compiler
+##############################################################################
+
+CPLUSH_BIN=cplush
+
+CPLUSH_SRCS= 		\
+plush/parser.cpp  	\
+plush/codegen.cpp 	\
+plush/main.cpp    	\
+
+CPLUSH_OBJECTS= $(CPLUSH_SRCS:plush/%.cpp=plush/%.o)
+
+plush/%.o: plush/%.cpp plush/*.h
+	$(CXX) $(CXXFLAGS) -c $< -o $@
+
+$(CPLUSH_BIN): $(CPLUSH_OBJECTS)
+	$(CXX) $(CXXFLAGS) -o $(CPLUSH_BIN) $(CPLUSH_OBJECTS)
+
+# Rule to build packages from source
+packages/%/package :: packages/%/source cplush
+	./$(CPLUSH_BIN) $< > $@
+
+# Packages included with ZetaVM
+string-pkg: packages/std/string/0/package
+array-pkg: packages/std/array/0/package
+map-pkg: packages/std/map/0/package
+math-pkg: packages/std/math/0/package
+parsing-pkg: packages/std/parsing/0/package
+
+# Plush language package (lang/plush)
+plush-pkg: $(CPLUSH_BIN) plush/plush_pkg.pls parsing-pkg
+	mkdir -p packages/lang/plush/0
+	./$(CPLUSH_BIN) plush/plush_pkg.pls > packages/lang/plush/0/package
+	./$(CPLUSH_BIN) tests/plush/plush_pkg.pls > packages/lang/plush/0/tests
+
+# Plush parser benchmark
+plush-bench: $(CPLUSH_BIN)
+	./$(CPLUSH_BIN) benchmarks/plush_parser.pls > benchmarks/plush_parser.zim

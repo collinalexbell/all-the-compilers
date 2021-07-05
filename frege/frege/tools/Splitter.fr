@@ -1,0 +1,630 @@
+--- This is an undocumented module
+module frege.tools.Splitter where
+
+import frege.Prelude hiding(comparing)
+
+import Data.List
+import Data.TreeMap as L(values, keys, each, TreeMap)
+-- import Data.Monoid
+import Data.Bits
+import Data.Graph (stronglyConnectedComponents tsort)
+
+import Compiler.enums.Flags as Compilerflags(IDETOKENS, NOUNLET)
+import Compiler.enums.TokenID
+
+import  Compiler.types.Positions
+import  Compiler.types.Tokens
+import  Compiler.types.ImportDetails
+import  Compiler.types.QNames
+import  Compiler.types.Types
+import  Compiler.types.Patterns
+import  Compiler.types.Expression
+import  Compiler.types.SourceDefinitions(DefinitionS)
+import  Compiler.types.Symbols
+import  Compiler.types.Global as G
+
+import  Compiler.common.Errors as E()
+import  Compiler.common.SymbolTable
+import  Compiler.common.CompilerOptions (standardGlobal, getOpts)
+
+import  Compiler.classes.Nice
+
+import frege.compiler.Main as Main()
+import frege.lib.PP(text)
+-- import frege.compiler.Typecheck as T()
+-- import frege.compiler.Utilities as U()
+
+import Java.lang.Processes
+
+usage = mapM_ stderr.println [
+        "usage: java [-Dbrowser=command] frege.tools.Splitter [-flags] source.fr [item,... [module [helpermodule]]]",
+        "",
+        "    Flags:",
+        "        -v             be verbose",
+        "        -d dir         target directory for new modules",
+        "        -fp classpath  (additional) classpath for imports",
+        "        -nocp          use only -fp, not the java class path",
+        "",
+        "   When only a source file is given, it is analyzed and",
+        "   the tool will create a dependency graph in SVG format and",
+        "   show this with the command given in the -Dbrowser property",
+        "   (default is google-chrome).",
+        "   When this fails, a file in Graphviz format is written.",
+        "",
+        "   A list of items separated by comma focuses the display to",
+        "   include only dependencies involving the mentioned items.",
+        "",
+        "   A list of items separated by comma followed by a module name",
+        "   requires actual splitting of the source file by moving",
+        "   all named top level functions and data types along with",
+        "   the items they depend on to the named module.",
+        "   The extracted items will then be removed from the original source code, ",
+        "   and an appropriate import declaration is inserted, if needed.",
+        "",
+        "   If, in addition, a name for a helper module is given, the set of items",
+        "   that are used by both the extracted items and the remaining items",
+        "   are written to that module, and appropriate import declarations are",
+        "   provided.",
+        "", 
+        "   Note that actual splitting will overwrite the original source file,",
+        "   so please make sure you have a way to undo the changes.",
+        "   If the target modules do exist already, the new items will be appended",
+        "   or else a new source file is created that inherits all imports",
+        "   from the original module.",
+        "",
+        "   Note that imports may be missing when moving items to existing modules.",
+        "   Dependencies on type aliases are not recognized, you need to specify",
+        "   type aliases to be moved explicitly.",
+        "",
+        "   It is recommended to first let the tool suggest some possible splittings,",
+        "   and only then to realise one of the suggestions."
+    ]
+
+main args = do
+    g       <- standardGlobal
+    scanned <- getOpts  args
+    case scanned  of
+        Just (opts, splitargs)
+            |      length splitargs == 1
+                || length splitargs == 2 
+                || length splitargs == 3
+                || length splitargs == 4 -> do
+                    let source = head splitargs
+                        sargs  = tail splitargs
+                        opt'   = opts.{source}.{flags <- flip BitSet.unionE IDETOKENS}
+                                                .{flags <- flip BitSet.unionE NOUNLET}
+                        g'     = g.{options = opt'}
+                        passes = takeUntil (\(_,s,) -> s.startsWith "simplify expressions") Main.passes
+                                ++ [(ideoff, "turn IDE mode off"),
+                                    (split sargs, "splitting")]
+                    (_, g) <- StIO.run (forM_ passes Main.runpass) g' 
+                    when (g.errors > 0) do
+                        stderr.println "Source code has errors. See you later."
+                        System.exit 3
+                    
+            | otherwise = do
+                stderr.println ("Please give filename, "
+                    ++ "or filename, items and one or two module names.")
+                when (length splitargs > 4) do
+                    stderr.println "Note that here must be no spaces in item list."
+                stderr.println "You may want to use the -help flag for usage information."
+                System.exit 2
+        Nothing -> usage >> System.exit 1
+        
+ideoff = do
+    changeSTT _.{options <- _.{flags <- flip BitSet.differenceE IDETOKENS}} -- turn off for error reporting
+    return ("flags", 1)
+
+ours :: Global -> [Symbol]        
+ours g      = (filter (g.ourSym) . filter noAliases) (values g.thisTab)
+    where
+        noAliases SymL{name=n@VName{},alias=a@VName{}} = g.our a && g.our n
+        noAliases SymL{} = false
+        noAliases _      = true
+ascending g = sortBy (Prelude.comparing Symbol.pos) (ours g)
+
+split :: [String] -> StIO (String, Int)
+split args = do
+    
+    g <- getSTT
+    -- members <- T.memberTree     -- to identify our members
+
+    makeRanges (ascending g)
+    -- Symbols have changed because of makeRanges
+    g <- getSTT 
+    -- doio $ mapM_ (printRange g) (ascending g)
+    let deps g  = map (symDep g) (ascending g)
+        udeps   = map (\(a,as) -> (a, filter (a!=) as))     -- eliminate self recursion
+                    (zip (map Symbol.name (ascending g)) (map keys (deps g)))
+        deptree = L.fromList udeps
+        tdeps   = tsort udeps
+        asc     = ascending g
+    
+    -- see if the user arguments make sense
+    ys <- case args of
+        [] -> return []
+        (moves:_) -> mapM selectMember (´,´.splitted moves) where
+                    selectMember x = case find ((x==) . _.base . fst) udeps of
+                        Just (q, _) -> return q
+                        Nothing -> do
+                            liftStG $ E.error Position.null (text (x ++ " is unknown"))
+                            return (VName g.thisPack "?")
+    
+    g <- getSTT                    
+    when (g.errors == 0) do 
+        -- break the tdeps array into two pieces:
+        -- the left one is the minimal one that contains all user specified names
+        -- the right one describes the items that remain in any case in the original
+        let takeU [] left items = (reverse left, items)
+            takeU _  left []    = (reverse left, [])
+            takeU us left (xs:items) = takeU 
+                    (filter (`notElem` xs) us)
+                    (xs:left)
+                    items
+            (outitems, initems) = takeU ys [] tdeps
+            niceqs = map (flip _.nicer g) . concat
+        -- The left half may contain items or groups that are not mentioned 
+        -- in further right items, move that item or group to list of items to
+        -- retain.
+        -- This can happen when we select an 'x', and there is accidentally
+        -- some unrelated item 'z' placed left from it in the topologically
+        -- sorted list.
+        let toPurge :: [QName] -> [[QName]] -> Bool
+            toPurge xs xss = not (any (`elem` ys) xs) &&
+                             not (anyReferencedBy xss xs)
+            anyReferencedBy xss xs = any (\p -> 
+                any (\ds -> p `elem` ds) 
+                    (mapMaybe (deptree.lookup) (concat xss)))
+                xs
+            purge [] = []
+            purge (xs:xss) = if toPurge xs purged
+                                then purged
+                                else xs:purged 
+                    where purged = purge xss
+            purgedItems = purge outitems
+            toKeep      = filter (`notElem` purgedItems) outitems ++ initems
+        -- helper items are those that are directly referenced from the rhs as well
+        let helperItems = 
+                        filter (anyReferencedBy toKeep) 
+                        . filter (not . any (`elem`  ys)) 
+                    $ purgedItems 
+        when (length args > 0) $ liftIO do
+            stderr.println ("--- Items remaining in original:  " 
+                                ++ joined ", " (niceqs toKeep)) 
+            stderr.println ("--- Items moved away:  "
+                                ++ joined ", " (niceqs purgedItems))
+            stderr.println ("--- Items moved to helper module: "
+                                ++ joined ", " (niceqs helperItems))
+        -- items in flat form
+        let toMove = concat purgedItems
+            toHelp = concat helperItems
+        case args of 
+            [_, modul, helper] -> liftIO do
+                    printMods g modul (Just helper) toMove toHelp asc
+  
+            [_, modul]         -> liftIO do
+                    printMods g modul Nothing toMove toHelp asc
+
+            _ -> do 
+                let pdeps 
+                        | null ys = tdeps
+                        | otherwise = [ xs | xs <- tdeps,
+                                            any (`elem` ys) xs
+                                            || anyReferencedBy [xs] ys
+                                    ]
+                let printDot dot = do
+                        dot.println ("digraph " ++ show (g.unpack g.thisPack) ++ " {")
+                        mapM_ (dotDep dot g deptree) pdeps
+                        dot.println "}"
+                        dot.close
+                    procError :: IOException -> IO ()
+                    procError ioe = do
+                            stderr.println ("error while creating/showing SVG graphic: " ++ ioe.getMessage)    
+                            dot <- openWriter "deps.dot"
+                            printDot dot
+                            stderr.println "Dependency graph written to deps.dot, use"
+                            stderr.println "  dot -Tsvg deps.dot"
+                            stderr.println "to obtain a visualisation you can view in a browser."
+                liftIO $ do
+                        tmp   <- File.createTempFile "graph" ".svg" 
+                        dotPB <- ProcessBuilder.new ["dot" , "-Tsvg"]
+                        dotPB <- dotPB.redirectOutput tmp
+                        dotPB <- dotPB.redirectError Redirect.inherit
+                        dotP  <- dotPB.start
+                        dot   <- stdinWriter dotP
+                        printDot dot
+                        dotP.waitFor
+                        let browsercmd = fromMaybe "google-chrome" (System.getProperty "browser")
+                            browser = ´\s+´.splitted browsercmd
+                            svg = tmp.getPath
+                        browserPB <- ProcessBuilder.new (browser ++ [svg])
+                        browserPB <- browserPB.inheritIO
+                        browserP  <- browserPB.start
+                        return ()
+                    `catch` procError
+                
+  
+        
+    return ("items", length (ours g))
+
+printMods :: Global  
+                -- -> PrintWriter                  -- output for original source 
+                -> String                       -- module name for outsourced
+                -> Maybe String                 -- module name for helper
+                -> [QName]                      -- names to outsource 
+                -> [QName]                      -- names that go to helper
+                -> [Symbol]                     -- symbols to write
+                -> IO ()
+printMods g modul mbHelper mItems hItems syms = do
+        dat <- openReader g.options.source >>= getContentsOf
+        -- print the initial portion of the original file
+        let first = head syms
+            startoff = first.pos.first.offset
+            initialportion = substr dat 0 startoff
+        orig <- newMod g (g.unpack g.thisPack)
+        orig.println initialportion 
+        mod  <- appMod g modul
+        helper <- case mbHelper of
+            Just h -> do
+                hpw <- appMod g h
+                orig.println
+                orig.println "-- import outsourced modules"
+                orig.println ("import  " ++ modul)
+                orig.println ("import  " ++ h)
+                orig.println
+                mod.println
+                mod.println "-- import helper modules"
+                mod.println ("import  " ++ h)
+                mod.println
+                return hpw
+            Nothing -> do
+                unless (modul `elem` [ pack |  ImpDcl{pack} <- g.definitions]) do
+                    orig.println
+                    orig.println "-- import outsourced modules"
+                    orig.println ("import  " ++ modul)
+                    orig.println
+                return mod
+        mapM_ (out dat orig mod helper) syms
+        orig.close
+        mod.close
+        maybe (return ()) (const helper.close) mbHelper
+        return ()
+    where
+        out :: String -> MutableIO PrintWriter -> MutableIO PrintWriter -> MutableIO PrintWriter -> Symbol -> IO ()
+        out dat ow mw hw sym = do
+            stderr.println (nicer sym.name g
+                ++ ", range=" ++ sym.pos.first.value ++ " .. " 
+                ++ show sym.pos.last)
+            let src = substr dat sym.pos.first.offset end
+                end = if sym.pos.end < sym.pos.first.offset || sym.pos.end > dat.length
+                    then dat.length
+                    else sym.pos.end
+                -- braces e = if e < dat.length && 
+                --                 (dat.charAt e == '}'
+                --                     || Char.isWhitespace (dat.charAt e))
+                --             then braces (e+1)
+                --             else if e+1 < dat.length
+                --                     && dat.charAt e == '-'
+                --                     && dat.charAt (e+1) == '-'
+                --             then endofline (e+2)
+                --             else e
+                -- endofline e
+                --     | e >= dat.length = e
+                --     | dat.charAt e == '\r' || dat.charAt e == '\n' = e
+                --     | otherwise = endofline (e+1)
+
+                writer = if  sym.name `elem` mItems
+                    then if  sym.name `elem` hItems
+                        then hw
+                        else mw
+                    else ow
+            writer.println src
+            writer.println
+            writer.println
+                
+
+---  make filename from package name  @x.y.z.Packet@ =>  @dest/x/y/z/Packet.suffix@
+targetPath :: Global -> String -> String -> String
+targetPath g path suffix = g.options.dir ++ "/"
+                    ++ path.replaceAll  ´\.´  "/"
+                    ++ suffix
+    
+
+
+--- Create a new package and return a 'PrintWriter' for it.
+newMod :: Global -> String -> IOMutable PrintWriter
+newMod g pack = do
+    let target = targetPath g pack ".fr"
+    stderr.println ("target is " ++ target)
+    let parent = File.getParentFile $ File.new target
+    case parent of
+        Just dir ->  dir.mkdirs    -- make sure all directories are there
+        Nothing  ->  return false
+    openWriter target
+
+appMod :: Global -> String -> IOMutable PrintWriter
+appMod g pack = do
+    let target = targetPath g pack ".fr"
+        f = File.new target
+    neu <- not <$> f.exists
+    if neu
+    then stderr.println ("creating new " ++ target)
+    else stderr.println ("appending to " ++ target)
+    let parent = f.getParentFile
+    case parent of
+        Just dir ->  dir.mkdirs    -- make sure all directories are there
+        Nothing  ->  return false
+    if neu
+    then do
+        pw <- openWriter target
+        printHeader pw pack
+        printImports g pw
+        return pw
+    else do
+        pw <- appendWriter target
+        pw.println
+        pw.println
+        return pw 
+
+
+printHeader :: MutableIO PrintWriter -> String -> IO ()
+printHeader pw pack = do
+        pw.println ("--- This is an undocumented module.")
+        pw.println ("module " ++ pack  ++ " where ")
+        pw.println ("        -- generated by Splitter")
+        
+
+printImports g pw = mapM_ (printImpDcl g pw)
+            [ idef | idef @ImpDcl{pos, pack, as, imports} <- g.definitions ]
+
+printImpDcl g pw ImpDcl{pos, pack, as, imports} = do
+        PrintWriter.println pw ("import  " ++ pack 
+            ++ maybe "" ("  as  " ++) as
+            ++ showimports imports)
+    where
+        showimports Imports{publik, except, items} = xpublic publik ++ list
+            where
+                xpublic publik = if publik then "  public" else ""
+                list
+                    | except, null items = ""
+                    | except = "  hiding" ++ shitems items
+                    | otherwise = shitems items
+                shitems items = "(" ++ joined ", " (map shitem items) ++ ")"
+                shitem Item{publik, name, members, alias} = xpublic publik
+                    ++ name.nicer g
+                    ++ maybe "" shitems members
+                    ++ (if null alias then ""
+                            else if alias == name.id.value then "" 
+                            else " " ++ alias)
+printImpDcl g pw _ = error "can only print ImpDcl"
+
+dotDep :: MutableIO PrintWriter -> Global -> (TreeMap QName [QName]) -> [QName] -> IO ()
+dotDep writer g tree qns = do
+    let deps = fold union [] (mapMaybe (TreeMap.lookup tree) qns)
+        cluster = nicename ((head qns).{base <- ("cluster_" ++)})
+        dep q = maybe [] id  (TreeMap.lookup tree q)
+        singledep x qn1 qn2 = do
+            writer.println (x ++ nicename qn1  ++ " -> " ++ nicename qn2)
+        subdep q = mapM_ (singledep "\t\t" q) (filter (`elem` qns) (dep q))
+        outdep q = mapM_ (singledep "\t\t" q) (filter (`notElem` qns) (dep q))
+        -- clusterdep q = writer.println ("\t" ++ cluster ++ " -> " ++  nicename q)
+        nicename q = case nicer q g of
+                s@´^\w+$´
+                    | s `notElem` dotkeys   -> s
+                x                           -> show x
+    case qns of
+        [qn] -> mapM_ (singledep "\t" qn) deps
+        _  -> do
+            writer.println ("\tsubgraph " ++ cluster ++ " {")
+            mapM_ subdep qns 
+            writer.println ("\t}")
+            -- mapM_ clusterdep (filter (`notElem` qns) deps)
+            mapM_ outdep qns 
+    
+    return () 
+
+--- items dot doesn't like as bare word
+dotkeys = ["strict", "subgragh" ]
+
+printDep g tree qns = do
+    print (joined "," (map (flip nicer g) qns))
+    case fold union [] (mapMaybe (TreeMap.lookup tree) qns) of
+        [] -> println " :: []"
+        xs | length qns == 1 = println (" :: " ++ show (map (flip nicer g) xs))
+           | otherwise = do
+                println ""
+                println ("    :: " ++ show (map (flip nicer g) xs))
+
+printRange g symbol = do 
+    println (show symbol.pos.first.offset
+        ++ "-" ++ show (symbol.pos.end)  
+        ++ Symbol.nicer symbol g
+        ++ "      " ++ symbol.pos.first.value ++ " .. " ++ symbol.pos.last.value)
+
+{--
+    The full range goes from the lower range to the upper range, inclusive.
+    
+    The lower range is determined by going from the original position
+    backwards as long as there are comments or documentation.
+    
+    The upper range is the last non comment or documentation token before
+    the next definition in the ascending list of definitions, or, if
+    there is no next, the last token in the file.
+    -} 
+fullRange symbol next = do
+        -- g <- getST
+        -- doio $ printRange g symbol
+        lower <- lowerRange symbol
+        upper <- upperRange symbol next
+        --doio do
+        --    stderr.println (nicer symbol g 
+        --        ++ ":  " ++ lower.value
+        --        ++ " .. "  ++ upper.value)
+        return (Pos lower upper)
+    where
+        upperRange :: Symbol -> Maybe Symbol -> StIO Token
+        upperRange symbol Nothing = do
+            g <- getSTT
+            let toks = g.sub.toks
+                last = elemAt toks (toks.length - 1)
+            -- doio $  stderr.println ("Last token: " ++ show last)
+            return last
+        upperRange symbol (Just next) 
+            | symbol.pos.end >= next.pos.start = do
+                g <- getSTT
+                liftIO do
+                    stderr.println "I am sorry, but I can't continue."
+                    stderr.println ("The definitions of " 
+                        ++ nicer symbol g ++ "  and  "
+                        ++ nicer next g   ++ "  do overlap, ")
+                    stderr.println "probably because of annotations detached from their definitions."
+                    System.exit 4
+                return symbol.pos.first
+            | otherwise = do
+                g     <- getSTT
+                lower <- lowerRange next
+                let toks = g.sub.toks
+                case lower `indexIn` toks of
+                    Nothing -> error ("Couldn't find lower range token "
+                                ++ show lower ++ " of " ++ next.nicer g)
+                    Just i  -> return (elemAt toks  (i-1))
+        -- skip comments backwards
+        skipComments :: Int -> JArray Token -> Int
+        skipComments 0 arr = 0
+        skipComments n arr
+            -- | traceLn ("skipComments: " 
+            --     ++ maybe "" (_.base . Symbol.name) next
+            --     ++ ", n=" ++ show n 
+            --     ++ " found " ++ show [prev,this]) = undefined 
+            | -- prev.tokid == DOCUMENTATION || prev.tokid == COMMENT,
+              prev.line < this.line,
+              prev.col > this.col         = n   -- most likely not our token
+            | prev.tokid `elem` dclintro  = skipComments (n-1) arr
+            | prev.tokid == CHAR,
+              prev.value == "!"           = skipComments (n-1) arr
+            | otherwise                   = n
+            where 
+                !this = elemAt arr n
+                !prev = elemAt arr (n-1)
+        lowerRange :: Symbol -> StIO Token
+        lowerRange symbol = do 
+            g <- getSTT
+            let toks = g.sub.toks
+                this = symbol.pos.first `indexIn` toks
+            case this of
+                Just index -> return (elemAt toks n) where n = skipComments index toks
+                Nothing -> error ("Couldn't find start token "
+                            ++ show symbol.pos.first ++ " of " ++ symbol.nicer g)
+                
+
+dclintro :: [TokenID]
+dclintro =  [PUBLIC, PRIVATE, PROTECTED, 
+            TYPE, DATA, CLASS, INSTANCE, DERIVE,
+            NATIVE, PURE, ABSTRACT, MUTABLE,
+            COMMENT, DOCUMENTATION]
+
+
+--- find the index of a given token    
+indexIn token array = loop 0
+    where
+        loop n | n >= JArray.length array     = Nothing
+               | elemAt array n == token      = Just n
+               | otherwise                    = loop (n+1)
+                   
+{-- 
+    Update symbol positions with their full range computed by 'fullRange'.
+    -}
+makeRanges [] = return ()   -- no symbols at all
+makeRanges ascending = do
+    -- symbol1,         symbol2,          symbol3
+    -- Just symbol2.pos Just symbol3.pos, Nothing
+    let nextTokens = map Just (tail ascending) ++ [Nothing]
+        ranges = zipWith fullRange ascending nextTokens
+    ranges <- sequence ranges
+    mapM_ (liftStG . changeSym) (zipWith Symbol.{pos=} ascending ranges)
+    
+-- symDep g _ sym | traceLn ("doing symDep for " ++ nicer sym g) = undefined
+symDep g SymA{typ} = sigmaDep g typ
+symDep g SymT{env} = fold L.union empty [ symDep g sym | 
+                                sym <- values env,
+                                not (instLink sym)]
+        where
+            instLink SymL{alias}
+                | Just SymV{name}   <- g.findit alias,
+                  MName{tynm}       <- name,
+                  Just SymI{}       <- g.findit tynm = true
+            instLink other = false
+symDep g SymD{typ} = sigmaDep g typ
+symDep g (symv@SymV{typ}) = sigmaDep g typ L.`union` maybe empty (exprDep g) (symv.gExpr g)
+symDep g SymL{name, alias}
+    | g.our name, not (g.our alias) = nameDep g empty name    -- imported item
+    | otherwise                     = nameDep g empty alias
+    | false = case g.findit alias of
+        Just sym -> nameDep g (symDep g sym) alias
+        Nothing  -> empty
+symDep g SymI{clas, typ, env} = fold L.union tree (map (symDep g) (values env))
+    where
+        tree = nameDep g sigt clas
+        sigt = sigmaDep g typ
+symDep g SymC{supers, env} = fold L.union tree (map (symDep g) (values env))
+    where
+        tree = fold (nameDep g) empty supers
+symDep g sym = error ("don't know dependencies of " ++ nicer sym g)
+
+nameDep :: Global -> TreeMap QName () -> QName -> TreeMap QName ()
+nameDep g tree Local{uid, base}   = tree
+nameDep g tree MName{tynm, base}  = if g.our tynm then TreeMap.insert tree tynm () else tree
+nameDep g tree name               = if g.our name then TreeMap.insert tree name () else tree
+
+
+exprDep g ex = exDep empty ex
+    where
+        exDep tree Vbl{name}        = nameDep g tree name
+        exDep tree Con{name}        = nameDep g tree name
+        exDep tree App{fun, arg}    = exDep (exDep tree fun) arg
+        exDep tree Lit{}            = tree
+        exDep tree Let{env, ex}     = fold L.union (exDep tree ex) (map (symDep g) syms) where
+                                         syms = mapMaybe (g.findit) env 
+        exDep tree Lam{pat, ex}     = exDep (patDep tree pat) ex
+        exDep tree Ifte{cnd, thn, els}  = fold exDep tree [cnd, thn, els]
+        exDep tree Mem{ex, member}  = exDep tree ex     -- should not happen after type check
+        exDep tree Case{ex, alts}   = fold altDep (exDep tree ex) alts where
+                                        altDep tree CAlt{pat, ex} = exDep (patDep tree pat) ex 
+        exDep tree Ann{ex, typ}  = maybe empty (sigmaDep g) typ L.`union` exDep tree ex
+        
+        patDep tree PVar{uid, var}          = tree
+        patDep tree PCon{qname, pats}       = fold patDep (nameDep g tree qname) pats
+        patDep tree PConFS{qname, fields}   = fold patDep (nameDep g tree qname) pats
+            where pats = map snd fields
+        patDep tree PAt{pat}                = patDep tree pat
+        patDep tree PUser{pat}              = patDep tree pat
+        patDep tree PLit{}                  = tree
+        patDep tree PAnn{pat}               = patDep tree pat
+        patDep tree PMat{}                  = tree
+
+
+
+sigmaDep g (ForAll _ rho) = rhoDep g empty rho
+
+rhoDep g tree RhoFun{context, sigma, rho} = result
+    where
+        result = rhoDep g sdep rho
+        sdep   = rhoDep g cdep sigma.rho
+        cdep   = fold (ctxDep g) tree context
+rhoDep g tree RhoTau{context, tau} = tauDep g cdep tau
+    where
+        cdep   = fold (ctxDep g) tree context
+                
+ctxDep g tree Ctx{pos, cname, tau} = tauDep g ctree tau
+    where
+        ctree = nameDep g tree cname
+
+tauDep :: Global -> TreeMap QName () -> Tau -> TreeMap QName ()
+tauDep g tree (TApp a b)            = tauDep g (tauDep g tree a) b
+tauDep g tree TCon{pos, name}       = nameDep g tree name
+tauDep g tree TVar{pos, kind, var}  = tree
+tauDep g tree (Meta _)              = tree
+tauDep g tree (TSig s)              = tree L.`union` sigmaDep g s
+
+      
+    

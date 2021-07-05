@@ -1,0 +1,49 @@
+--- Provide wrappers 'Any' and 'All' for 'Bool' 'Monoid's
+module frege.data.wrapper.Boolean where
+
+import Data.Monoid
+
+{--
+    'Monoid' for 'Bool' with operation 'oder' and identity @false@
+-}
+newtype Any = Any { unwrap :: Bool }  --- wrap a 'Bool' value
+derive Show Any
+derive Eq Any
+derive Ord Any
+
+--- Haskell compatibility: get the value wrapped by Any
+getAny = Any.unwrap
+
+--- The 'Semigroup' instance for 'Any' uses operation 'oder'.
+instance Semigroup Any where
+    --- Disjunction
+    Any x `mappend` Any y = Any (x `oder` y)
+  
+--- The 'Monoid' for 'Any' uses @false@ as identity.
+instance Monoid Any where
+    --- 'Any' @false@
+    mempty = Any false
+
+
+{--
+    'Monoid' for 'Bool' with operation 'und' and identity @true@
+-}
+newtype All = All { unwrap :: Bool }  --- wrap a 'Bool' value
+derive Show All
+derive Eq All
+derive Ord All
+
+--- Haskell compatibility: get the value wrapped by All
+getAll = All.unwrap
+
+
+--- The 'Semigroup' instance for 'All' uses operation 'und'.
+instance Semigroup All where
+    --- Conjunction
+    All x `mappend` All y = All (x `und` y)
+  
+--- The 'Monoid' for 'All' uses @true@ as identity.
+instance Monoid All where
+    --- 'All' @true@
+    mempty = All true
+

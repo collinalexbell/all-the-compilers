@@ -1,0 +1,29 @@
+module staging:
+
+imports:
+  module list
+  module stack
+  module control
+  module logic
+
+swash: swap pushr
+
+keep2: [] ap20 dup ap02 stack.swap2 drop
+
+in3: [] ap30 dup [ap03 swap3 drop] dip13
+
+keep3: [] ap30 dup ap03 swap3 drop
+
+dup3: in3 ap03 swap3 drop
+
+__ [f] -> [f [f]]
+self: dup [] pushl .
+
+__ [f] g -> [f [f] g]
+carry: [dup] dip12 [] ap20 .
+__ carry: [self] dip11 [] ap20
+
+check: [|] control.dip21 [dup] swap . . popr !
+
+__ simplified test function
+nullify: [popr drop] [is_nil not] iterate

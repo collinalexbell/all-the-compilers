@@ -1,0 +1,156 @@
+<!DOCTYPE html>
+
+<html>
+  <head>
+    <link rel="import" href="packages/polymer/polymer.html">
+    <link rel="import" href="packages/irhydra/src/ui/hydra.html">
+
+    <link rel="shortcut icon" type="image/x-icon" href="favicon.ico">
+
+    <link rel="stylesheet" href='http://fonts.googleapis.com/css?family=Oswald:400,700' type='text/css'>
+    <link rel="stylesheet" href='http://fonts.googleapis.com/css?family=Lato:400,700,900' type='text/css'>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css?family=RobotoDraft:regular,bold,italic,thin,light,bolditalic,black,medium" type="text/css">
+
+    <link rel="stylesheet" href="packages/irhydra/src/ui/ir-pane.css">
+    <link rel="stylesheet" href="packages/ui_utils/assets/xref.css">
+    <link rel="stylesheet" href="css/hydra.css">
+
+    <link rel="stylesheet" href="deps/fa/css/font-awesome.min.css">
+
+    <script src="deps/spin.min.js"></script>
+
+    <script src="deps/esprima.js"></script>
+    <script src="deps/estraverse.js"></script>
+
+    <script src="packages/ui_utils/assets/jquery/js/jquery-2.0.3.js"></script>
+    <script src="packages/ui_utils/assets/jquery/js/jquery-ui-1.10.4.js"></script>
+
+    <link rel="stylesheet" href="packages/ui_utils/assets/bootstrap/css/bootstrap.min.css">
+    <link rel="stylesheet" href="packages/ui_utils/assets/bootstrap/css/bootstrap-theme.min.css">
+    <script src="packages/ui_utils/assets/bootstrap/js/bootstrap.js"></script>
+
+    <script src="deps/bunzip2.js"></script>
+  </head>
+
+  <body>
+    <div id="welcome-splash">
+      <div class="welcome-message">
+        <h1>IRHydra<sup>2</sup> <span id="splash-spinner"></span></h1>
+        <p class="lead">This is a tool that can display intermediate representations used by V8 and Dart VM optimizing compilers.</p>
+        <p>If it's you first time trying IRHydra consider watching the following screencast showcasing its main features:</p>
+        <p><iframe width="420" height="315" src="https://www.youtube.com/embed/pycQWDuCBN8" frameborder="0" allowfullscreen></iframe></p>
+        <h2>Demos</h2>
+        <p>Try clicking on the links below to explore features that IRHydra provides. Each link loads compilation artifacts collected from a single V8 or Dart VM run on a given source file.</p>
+        <ul>
+          <li>
+            <h3>V8</h3>
+            <ul>
+              <li><a href="#demo-1">demo #1</a> [<a href="https://github.com/mraleph/irhydra/blob/cf180a09dfe701add33d2e8641ebb0be437e24d4/irhydra/web/demos/v8/deopt-eager/demo.js" target="_blank">source file</a>]</li>
+              <li><a href="#demo-2">demo #2</a> [<a href="https://github.com/mraleph/irhydra/blob/cf180a09dfe701add33d2e8641ebb0be437e24d4/irhydra/web/demos/v8/deopt-lazy/demo.js" target="_blank">source file</a>]</li>
+              <li><a href="#demo-3">demo #3</a> [<a href="https://github.com/mraleph/irhydra/blob/cf180a09dfe701add33d2e8641ebb0be437e24d4/irhydra/web/demos/v8/deopt-soft/demo.js" target="_blank">source file</a>]</li>
+            </ul>
+          </li>
+          <li>
+            <h3>Dart VM</h3>
+            <ul>
+              <li><a href="#demo-4">demo #4</a> [<a href="https://github.com/mraleph/irhydra/blob/cf180a09dfe701add33d2e8641ebb0be437e24d4/irhydra/web/demos/dart/demo.dart" target="_blank">source file</a>]</li>
+            </ul>
+          </li>
+          <li>
+            <h3>WebRebels 2014</h3>
+            <ul>
+              <li><a href="#webrebels-2014-concat">String concatenation</a> [<a href="https://github.com/mraleph/irhydra/blob/cf180a09dfe701add33d2e8641ebb0be437e24d4/irhydra/web/demos/webrebels2014/1-concat/concat.js" target="_blank">source file</a>]</li>
+              <li><a href="#webrebels-2014-concat-fixed">String concatenation (with a fix in V8)</a> [<a href="https://github.com/mraleph/irhydra/blob/cf180a09dfe701add33d2e8641ebb0be437e24d4/irhydra/web/demos/webrebels2014/2-concat-fixed/concat.js" target="_blank">source file</a>]</li>
+              <li><a href="#webrebels-2014-prototype-node">Prototype chain traversal (node v0.10.x): data property</a> [<a href="https://github.com/mraleph/irhydra/blob/cf180a09dfe701add33d2e8641ebb0be437e24d4/irhydra/web/demos/webrebels2014/3-prototype-node/prototype.js" target="_blank">source file</a>]</li>
+              <li><a href="#webrebels-2014-prototype-node-getter">Prototype chain traversal (node v0.10.x): getter</a> [<a href="https://github.com/mraleph/irhydra/blob/cf180a09dfe701add33d2e8641ebb0be437e24d4/irhydra/web/demos/webrebels2014/4-prototype-node-getter/prototype.js" target="_blank">source file</a>]</li>
+              <li><a href="#webrebels-2014-prototype">Prototype chain traversal (newer V8): data property, 2 runs</a> [<a href="https://github.com/mraleph/irhydra/blob/cf180a09dfe701add33d2e8641ebb0be437e24d4/irhydra/web/demos/webrebels2014/5-prototype/prototype.js" target="_blank">source file</a>]</li>
+              <li><a href="#webrebels-2014-prototype-tostring">Prototype chain traversal (newer V8): data property, 2 runs, <code>toString</code>-hack</a>  [<a href="https://github.com/mraleph/irhydra/blob/cf180a09dfe701add33d2e8641ebb0be437e24d4/irhydra/web/demos/webrebels2014/6-prototype-tostring/prototype.js" target="_blank">source file</a>]</li>
+              <li><a href="#webrebels-2014-method-function">Method vs. Function</a> [<a href="https://github.com/mraleph/irhydra/blob/cf180a09dfe701add33d2e8641ebb0be437e24d4/irhydra/web/demos/webrebels2014/7-method-function/method-function.js" target="_blank">source file</a>]</li>
+              <li><a href="#webrebels-2014-method-function-hack">Method vs. Function with more ICs</a> [<a href="https://github.com/mraleph/irhydra/blob/cf180a09dfe701add33d2e8641ebb0be437e24d4/irhydra/web/demos/webrebels2014/8-method-function-hack/method-function.js" target="_blank">source file</a>]</li>
+            </ul>
+          </li>
+        </ul>
+        <h2>Compilation Artifacts Cheatsheet</h2>
+        <p>If you already have some artifacts collected go ahead and explore them with&nbsp;<i class="fa fa-folder-open"></i>&nbsp;otherwise here is how you can collect some.</p>
+        <h3>V8</h3>
+        <p class="alpha-warning">You need V8 version >= 3.24.39 to use IRHydra<sup>2</sup>. You can check <code>about:version</code> to see if your browser comes with the suitable version.</p>
+        <p>You need to pass the following flags to V8 to collect IR and deoptimization artifacts and be able to use source level view:</p>
+        <pre>
+<span data-toggle="tooltip" data-title="Produce hydrogen.cfg containing high-level and low-level intermediate representations used by Crankshaft optimizing compiler.">--trace-hydrogen</span>
+<span data-toggle="tooltip" data-title="Dump only IR from the very last phase">--trace-phase=Z</span>
+<span data-toggle="tooltip" data-title="Print information about every deoptimization">--trace-deopt</span>
+<span data-toggle="tooltip" data-title="Emit comments as part of generated native code. Makes deoptimization traces more informative.">--code-comments</span>
+<span data-toggle="tooltip" data-title="Track precise source position information during optimization">--hydrogen-track-positions</span>
+<span data-toggle="tooltip" data-title="Redirect disassembly, source dumps and deoptimizations from stdout.">--redirect-code-traces</span>
+<span data-toggle="tooltip" data-title="Redirect disassembly, source dumps and deoptimizations from stdout into code.asm">--redirect-code-traces-to=code.asm</span>
+</pre>
+<p>Additionally you can pass the following flags to enable disassembly view. <span class="alpha-warning">This requires building V8 with <code>v8_enable_disassembler=1</code> GYP flag.</span></p>
+<pre>
+<span data-toggle="tooltip" data-title="Output disassembly for every generated optimized function">--print-opt-code</span>
+</pre>
+        <p>When run with this flags V8 will produce two files <code>hydrogen.cfg</code> and <code>code.asm</code> both of which should be loaded into IRHydra.</p>
+        <p>When running in Chromium use <code>--js-flags="..."</code> to pass V8 flags and <code>--no-sandbox</code> to allow V8 to write <code>hydrogen-&lt;pid&gt;-&lt;id&gt;.cfg</code> and <code>code-&lt;pid&gt;-&lt;id&gt;.asm</code>.</p>
+        <pre>
+--no-sandbox                           \
+--js-flags="--trace-hydrogen           \
+            --trace-phase=Z            \
+            --trace-deopt              \
+            --code-comments            \
+            --hydrogen-track-positions \
+            --redirect-code-traces"
+</pre>
+        <p>Notice that there is no need to pass <code>--redirect-code-traces-to=code.asm</code> flag, this guarantees that in the presence of multiple renderer processes compilation artifacts are correctly split between separate files.</p>
+        <h3>Dart VM</h3>
+        <p>You need to pass the following flags to Dart VM to collect IR and disassemble artifacts:</p>
+        <pre>
+<span data-toggle="tooltip" data-title="Dump intermediate representation used by the optimizing compiler.">--print-flow-graph-optimized</span>
+<span data-toggle="tooltip" data-title="Disassemble every generated optimized method">--disassemble-optimized</span>
+<span data-toggle="tooltip" data-title="Annotate disassembly with comments to make it more readable">--code-comments</span>
+</pre>
+        <p>All data is dumped into standard output.</p>
+        <p>When running in Dartium use <code>DART_FLAGS</code> environment variable to pass flags.</p>
+        <p class="alpha-warning">Deoptimization matching and source level view is not currently available for Dart VM.</p>
+      </div>
+    </div>
+    <script>
+      (function () {
+        $("[data-toggle=tooltip]").tooltip();
+
+        var spinner = new Spinner({  color: '#2980B9' }).spin(document.getElementById("splash-spinner"));
+
+        document.addEventListener("HydraReady", function () {
+          spinner.stop();
+        }, false);
+      })();
+
+      function DESTROY_SPLASH() {
+        var splash = document.querySelector("#welcome-splash");
+        if (splash) {
+          splash.parentNode.removeChild(splash);
+        }
+      }
+
+      // This is a helper method for loading files without
+      // line-endings normalization because FileReader.readAsBinaryString
+      // is not exposed to Dart.
+      function readAsBinaryString(file, cb) {
+        console.log("Reading %s", file.name);
+        var reader = new FileReader();
+
+        reader.onloadend = function () {
+          console.log("  ... %s loaded (%d characters)",
+                      file.name,
+                      reader.result.length);
+          cb(reader.result);
+        };
+
+        // Fallback to readAsText if for some strange reason
+        // readAsBinaryString is not available.
+        var method = reader.readAsBinaryString || reader.readAsText;
+        method.call(reader, file);
+      }
+    </script>
+    <hydra-app></hydra-app>
+    <script type="application/dart">export "package:polymer/init.dart";</script>
+  </body>
+</html>

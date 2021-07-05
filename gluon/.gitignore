@@ -1,0 +1,13 @@
+
+*.swp
+*.swo
+# rustfmt backup files
+*.bk
+*.bak
+*.rs.fmt
+
+*.bak
+
+target
+
+.vscode

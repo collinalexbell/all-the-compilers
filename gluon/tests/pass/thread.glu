@@ -1,0 +1,45 @@
+let { run, assert_eq, test, ? }  = import! std.test
+let { lift } = import! std.effect.lift
+let { (<|) } = import! std.function
+let prelude  = import! std.prelude
+let { Bool } = import! std.bool
+let int = import! std.int
+let { ? } = import! std.io
+let result @ { Result, ? } = import! std.result
+let string = import! std.string
+let unit @ { ? } = import! std.unit
+let { Applicative, wrap, (*>) } = import! std.applicative
+let { flat_map } = import! std.monad
+let { send, recv, channel } = import! std.channel
+let { spawn, yield, resume } = import! std.thread
+
+let { ? } = import! std.effect
+
+let assert_any_err =
+    assert_eq ?(result.show ?string.show ?unit.show)
+              ?(result.eq ?{ (==) = \x y -> True } ?unit.eq)
+
+
+let assert_recv channel expect : [Eq a] -> [Show a] -> _ -> Result () a -> _ =
+    do x = lift <| recv channel
+    assert_eq x expect
+
+test "thread" <| \_ ->
+    do { sender, receiver } = lift <| channel 0
+    do thread = lift <| spawn (
+            seq send sender 0
+            let _ = yield ()
+            seq send sender 1
+            wrap ()
+        )
+    seq lift <| resume thread
+
+    seq assert_recv receiver (Ok 0)
+
+    seq assert_recv receiver (Err ())
+    seq lift <| resume thread
+    seq assert_recv receiver (Ok 1)
+
+    seq assert_recv receiver (Err ())
+    do x = lift <| resume thread
+    assert_any_err x (Err "Any error message here")

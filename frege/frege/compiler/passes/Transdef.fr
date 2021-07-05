@@ -1,0 +1,1160 @@
+{- 
+
+    Copyright © 2011 - 2021, Ingo Wechsung
+    All rights reserved.
+
+    Redistribution and use in source and binary forms, with or
+    without modification, are permitted provided that the following
+    conditions are met:
+
+        Redistributions of source code must retain the above copyright
+        notice, this list of conditions and the following disclaimer.
+
+        Redistributions in binary form must reproduce the above
+        copyright notice, this list of conditions and the following
+        disclaimer in the documentation and/or other materials provided
+        with the distribution. Neither the name of the copyright holder
+        nor the names of its contributors may be used to endorse or
+        promote products derived from this software without specific
+        prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE
+    COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR
+    IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+    WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+    PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER
+    OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+    SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+    LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+    USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
+    AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+    LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+    IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+    THE POSSIBILITY OF SUCH DAMAGE.
+
+    -}
+{--
+    Translate definitions, expressions and types to internal form with internal names
+ -}
+
+package frege.compiler.passes.Transdef where
+
+import frege.Prelude hiding(<+>, break)
+
+import Data.TreeMap as TM(insert, lookup, values, keys, TreeMap, each, contains)
+import Data.List  as DL(find, unique, sortBy, groupBy)
+
+import Compiler.enums.Flags as Compilerflags(TRACE5, isOn, flagClr, flagSet, NODOCWARNINGS)
+import Compiler.enums.TokenID
+import Compiler.enums.Visibility
+import Compiler.enums.SymState
+import Compiler.enums.Literals
+import Compiler.enums.CaseKind
+
+import  Compiler.types.Positions
+import  Compiler.types.Tokens
+import  Compiler.types.Strictness
+import  Compiler.types.SNames
+import  Compiler.types.Packs
+import  Compiler.types.QNames
+import  Compiler.types.Types
+import  Compiler.types.Patterns
+import  Compiler.types.Expression as D()
+import  Compiler.types.SourceDefinitions
+import  Compiler.types.ConstructorField
+import  Compiler.types.Symbols
+import  Compiler.types.Global as G
+
+import  Compiler.common.Errors as E()
+import  Compiler.common.Resolve as R(resolveVName, resolveXName, defaultXName)
+import  Compiler.common.SymbolTable
+-- import  Compiler.common.Binders
+import  Compiler.common.Desugar as Des()
+import  Compiler.common.Trans(patternRefutable)
+-- import  Compiler.common.Types as CT
+
+import  Compiler.classes.Nice
+
+import frege.compiler.Utilities     as U(transSigma, transTau,
+                                            validSigma, forceTau,
+                                            freeTVnames)
+import frege.compiler.passes.Fix           as Fix()
+import frege.compiler.passes.Enter         as Enter()
+import Lib.PP (text, msgdoc, fill, </>, <+>, <+/>, sep, <>)
+import frege.compiler.Javatypes     as J()
+import frege.compiler.Kinds         as K(kiTypes, kiSigmaX, kiSigma)
+import frege.compiler.tc.Methods    as M(niKind, NIKind)
+
+
+pass = do
+    changeSTT Global.{locals = empty}
+    g <- getSTT
+
+    -- before we start, we must have operator information
+    forM_ g.sub.sourcedefs (liftStG . fixity) 
+
+    -- do the main part
+    forsome g.sub.sourcedefs (liftStG . transdef [] (VName g.thisPack))
+
+    liftStG inlineCandidates
+
+    g <- getSTT
+    forM_ (keys g.javaEnv) J.findAllSupers
+
+    liftStG kiTypes                         -- kind inference on types    
+
+    g <- getSTT
+    return ("definitions", length g.sub.sourcedefs)
+
+
+--- change 'Symbol.op' field according to @infix@ definitions.
+fixity (d@FixDcl{pos, opid, ops}) = foreach ops changeop
+    where
+        changeop op = do
+            g ← getST
+            let qo      = VName g.thisPack op
+                vals    = values g.thisTab
+                typemembers    = [ MName name op | t@SymT{name} <- vals, g.our name ]
+                classmembers   = [ MName name op | t@SymC{name} <- vals, g.our name ]
+                instmembers    = [ MName name op | t@SymI{name} <- vals, g.our name ]
+                members        = typemembers ++ classmembers ++ instmembers
+                syms           = mapMaybe g.findit (qo:members)
+            foreach syms change
+            when (null syms) do
+                E.hint pos (text ("Cannot set infix, " ++ nicer qo g ++ " is unknown."))
+
+        change sym = do
+            g <- getST
+            if sym.{op?}
+            then do
+                unless (g.our sym.name || sym.op == defaultInfix || sym.op == opid) do
+                    E.hint pos (text ("Should you change associativity/precedence for " 
+                                    ++ nicer sym.name g))
+                changeSym sym.{op=opid}
+            else do
+                E.error pos (text (nicer sym g ++ " cannot have a precedence"))
+                
+
+fixity _ = return ()
+
+--- translate inline candidates from exporting package clause to QNames and set exported flag in corresponding symbols
+inlineCandidates = do
+        g <- getST
+        rslvd <- mapM (toQ g.thisPack) g.sub.toExport
+        g <- getST
+        when (g.errors == 0) do
+            syms <- mapM U.findV rslvd
+            -- for the time being, inlining higher rank functions is not supported
+            foreach syms (\sym -> changeSym  sym.{exported=notHigherConstraint sym})
+            let zs = zip syms g.sub.toExport
+            foreach [ (s,p) | (s,p) <- zs, not (g.ourSym s) || isNothing (Symbol.expr s) ] notOurCode
+        return ()
+    where
+        -- silently remove higher rank functions with contexts from export
+        notHigherConstraint sym = notHC sym.typ.rho
+            where
+                notHC RhoTau{} = true
+                notHC RhoFun{sigma=ForAll bound srho, rho}
+                    | t <- U.freeCtxTVars [] empty srho.context,
+                      any (`elem` map _.var bound) (keys t) = false
+                    | otherwise = notHC srho && notHC rho
+        notOurCode (sym, p) = do
+            g <- getST
+            E.warn (Pos (SName.id p) (SName.id p)) 
+                (text ("Cannot export code of " ++ nicer sym g 
+                    ++ (if g.ourSym sym 
+                            then " because it has none."            -- no code
+                            else " because defined elsewhere.")     -- not our
+                    ))
+            
+        toQ pack sname = resolveVName (VName pack) pos sname 
+            where
+                !pos = Pos sid sid
+                !sid = SName.id sname
+
+findLocal :: [QName] -> String -> QName
+findLocal [] name = Local 0 name
+findLocal (qn:qns) name
+    | qn.base == name = qn
+    | otherwise = findLocal qns name
+
+{--
+    Check if an expression is just a top level variable or a constructor
+    and return the name.
+    
+    Used to introduce aliases for definitions like
+    
+    > a = b
+    -}
+varcon :: D.Expr -> Maybe QName
+varcon D.Con{name} = Just name
+varcon D.Vbl{name} | !name.isLocal = Just name
+varcon _ = Nothing
+
+
+transdef ∷ [QName] → (String→QName) → DefinitionS → StG ()
+transdef env fname def = case def  of
+    ImpDcl{} →  pure ()     -- nothing to do here
+    FixDcl{} →  pure ()     -- nothing to do here
+    DocDcl{} →  pure ()     -- nothing to do here
+    TypDcl{} →  pure ()     -- already done in TypeAlias pass
+    ClaDcl{} →  transClaDcl env fname def
+    InsDcl{} →  transInsDcl env fname def
+    DrvDcl{} →  pure ()     -- already done in Instances pass
+    AnnDcl{} →  transAnnDcl env fname def
+    NatDcl{} →  transNatDcl env fname def
+    FunDcl{} →  transFunDcl env fname def
+    DatDcl{} →  transDatDcl env fname def
+    JavDcl{} →  transJavDcl env fname def
+    ModDcl{} →  transModDcl env fname def
+
+transFunDcl env fname (d@FunDcl {positions}) = do 
+        let dname = defname d
+            aname = if null env then fname dname else findLocal env dname
+        case funbinding d of
+            Just _  -> common aname d
+            Nothing -> common aname d.{pats=[]}
+        -- common aname d
+  where
+    pos = if null positions then getpos d.lhs else positionOf (head positions)
+    classMember (MName tynm _) g = case g.findit tynm of
+        Just SymC{}  = true
+        Just SymI{}  = true
+        other        = false
+    classMember other g = false
+    common aname d = do
+        g <- getST
+        E.logmsg TRACE5 pos (text("transdef: env=" ++ show env ++ ", aname=" ++ show aname))
+        rest g
+      where
+        rest g = case g.findit aname of
+            Just sym
+                | SymV {pos} <- sym = do
+                    let funex = foldr (\p\e → Lam p e false) d.expr d.pats
+                        -- lamNil p e = Lam p e Nothing
+                    let nowarn = case sym.doc of
+                            Nothing → false
+                            Just s  → s ~ '^\s*nowarn:'
+                    when (nowarn) do
+                        changeST Global.{options <- Options.{flags <- flagSet NODOCWARNINGS}}
+                    x <- transExpr env fname funex
+                    when (nowarn) do
+                        changeST Global.{options <- Options.{flags <- flagClr NODOCWARNINGS}}
+                    case varcon x of
+                        -- make non local, unannotated definitions like @a = b@ into aliases
+                        Just name  
+                            | !sym.anno, 
+                              !sym.name.isLocal, 
+                              !(classMember aname g),
+                              Just osym <- g.findit name,
+                              -- make sure there is no precedence conflict
+                              sym.op == osym.op || sym.op == defaultInfix || osym.op == defaultInfix,
+                              -- no loops, please!
+                              name != sym.name = do
+                                let alias = SymL{sid=sym.sid, 
+                                                pos=sym.pos, 
+                                                vis=sym.vis, 
+                                                name=sym.name, 
+                                                alias=name}
+                                --
+                                when (osym.op != sym.op && sym.op != defaultInfix) do
+                                    when (osym.op != defaultInfix) do
+                                        E.warn pos (msgdoc ("This changes associativity/precedence for " 
+                                            ++ nicer osym.name g
+                                            ++ " to the one given for "
+                                            ++ nicer sym.name g))
+                                    changeSym osym.{op=sym.op}
+                                changeSym alias
+                        othr -> changeSym sym.{expr = Just (return x)}
+                | otherwise = E.fatal pos (text ("expected function, found " ++ sym.nice g))
+            nothing -> do E.fatal pos (text ("Cannot happen, function " ++ aname.nice g ++ " missing"))
+transFunDcl _ _ d = E.fatal d.pos (text "not a fun dcl") 
+
+{-
+    AnnDcl    {pos::Line, vis::Visibility, name::String, typ::SigmaT t, doc::Maybe String}
+    SymV  {pos::Line, vis::Visibility, doc::Maybe String, name ::QName,
+                 typ::Sigma, expr::Maybe Expr, nativ::Maybe String,
+                 pur::Bool, anno::Bool} /// variable
+-}
+transAnnDcl env fname (d@AnnDcl {pos}) = do
+        g <- getST
+        let aname = if null env then fname d.name else findLocal env d.name
+        case g.findit aname of
+            Nothing -> do E.fatal pos (text ("Cannot happen, function " ++ aname.nice g ++ " missing"))
+            Just sym
+                | SymV {pos} <- sym = do
+                    t <- transSigma d.typ
+                    changeSym sym.{typ = t, anno=true}
+                    E.logmsg TRACE5 pos (text ("function " ++ aname.nice g ++ " = " ++ t.nice g))
+                | SymL{pos=dpos, name, alias} <- sym, g.our name =
+                    E.error pos (msgdoc ("function " ++ name.nice g
+                        ++ " has been defined as alias for " ++ alias.nicer g
+                        ++ ". Place this annotation before line " ++ show dpos.line
+                        ++ " to prevent this error.")) 
+                | otherwise = E.fatal pos (text ("expected function, found " ++ sym.nice g))
+transAnnDcl _ _ d = E.fatal d.pos (text "not a ann dcl")
+
+transNatDcl env fname (d@NatDcl {pos}) = do
+        g <- getST
+        let aname = fname d.name
+        case g.findit aname of
+            Nothing -> do E.fatal pos (text ("Cannot happen, function " ++ aname.nice g ++ " missing"))
+            Just sym
+                | SymV {pos} <- sym = case d.txs of 
+                    [(sig, thrs)] = do
+                        t <- transSigma sig
+                        thrs <- mapM transTau thrs >>= mapM U.forceTau
+                        gargs ← mkGargs false sym d t
+                        changeSym sym.{typ = t, throwing = thrs, gargs}
+                    overloaded = do
+                        over <- mapM (uncurry (overload d sym)) overloaded
+                        changeSym sym.{typ = ovlsigma, over}
+                | otherwise = E.fatal pos (text ("expected function, found " ++ sym.nice g))
+                where
+                    overload ∷ DefinitionS → Symbol → SigmaS → [TauS] → StG QName
+                    overload def sym sig exs = do
+                        g <- getST
+                        let name = U.unusedASCIIName sym.name g
+                        t <- transSigma sig
+                        thrs <- mapM transTau exs >>= mapM U.forceTau
+                        gargs ← mkGargs true sym def t
+                        enter sym.{sid=0, name, typ = t, throwing = thrs, vis = Protected, gargs}
+                        return name
+                    -- extract and translate generic type arguments
+                    mkGargs ∷ Bool → Symbol → DefinitionS → Sigma → StG [Tau]
+                    mkGargs ovld sym d sig = do
+                        g   ← getST
+                        dgargs ← case d.gargs of
+                                    Just gs -> (mapM (\t → transTau t >>= forceTau)) gs
+                                    Nothing -> pure []
+                        let nik = if sig.isFun then niKind d.meth else NIOp  -- fake
+                            (rt, sigs) = U.returnType sig.rho
+                            -- for a class method
+                            -- native foo :: C a -> b -> ST s d
+                            -- the generic types are just b and d
+                            -- a is determined by the object that method is invoked on
+                            -- s is the ST phantom type, it will never get passed
+                            -- Thus we need to exclude the type vars that occur in the
+                            -- first argument, if this is an instance method.
+                            -- get the type variable names that occur in the first argument
+                            objectvars = case nik  of
+                                NIMethod    →  case sigs of 
+                                    (objty:_) → U.freeTVnames (objty.vars) objty.rho
+                                    _ → []  -- this is obviously wrong, 
+                                            -- but will be flagged later in type checking 
+                                others      → []
+
+                            -- get the phantom type, if any
+                            phantom = case unST rt of
+                                Just (TVar{var}, _) → Just var
+                                _                   → Nothing
+                            -- type variables we want to avoid
+                            avoid = maybeToList phantom ++ objectvars
+                            -- type variables that are valid
+                            sigvars = filter 
+                                    ((`notElem` avoid) . _.var) 
+                                    (sig.tvars)
+                            bound = map _.var sigvars
+                            inferred = if nik == NIMethod || nik == NIStatic then sigvars else []
+                            initial = maybe inferred (const dgargs) d.gargs
+                            gargs
+                                | ovld       = filter (null . freeTVnames bound . RhoTau []) initial
+                                | otherwise  = initial
+                        -- gargs ← mapM transTau sgargs >>= mapM forceTau
+                        when (length gargs > 1 && isNothing d.gargs) do
+                            E.error d.pos (
+                                text "Cannot infer the order of the generic type arguments."
+                                </> text "Please specify like so: "
+                                <+/> PP.group (
+                                        text (if d.isPure then "pure native" else "native")
+                                        <+> text d.name
+                                        <+> (if d.name == d.meth then PP.nil else text d.meth)
+                                        <+> text "{" 
+                                        <>  text (joined ", " bound)
+                                        <>  text "} :: ...." 
+                                    ))
+                        when (nik != NIMethod && nik != NIStatic && isJust d.gargs) do
+                            E.error d.pos (
+                                text "generic type arguments must only be given for methods, found invalid"
+                                </> PP.group (
+                                        text (if d.isPure then "pure native" else "native")
+                                        <+> text d.name
+                                        <+> (if d.name == d.meth then PP.nil else (text . show) d.meth)
+                                        <+> text "{" 
+                                        <>  (text . joined ", " . map (flip nicer g)) gargs
+                                        <>  text "} :: ...." 
+                                    ))
+                        -- check that generic type arguments do not contain free type variables
+                        forM_ gargs $ \tau → do
+                            let free = freeTVnames bound (RhoTau [] tau)
+                                phantomError  = filter (`elem` maybeToList phantom) free
+                                instanceError = filter (`elem` objectvars) free
+                                unboundError  = filter (`notElem` sig.vars) free
+                                nicevars ∷ [String] → String
+                                nicevars xs   = joined ", " (map (\x → "`" ++ x ++ "´") xs)
+                                variables ∷ [String] → String
+                                variables [x] = "type variable " ++ nicevars [x]
+                                variables xs  = "type variables " ++ nicevars xs
+                            unless (null free) do
+                                E.error (getpos tau) (
+                                    text "Generic type argument "
+                                    <+> text (nicer tau g)
+                                    <+> text " is invalid because "
+                                    <+/> if not (null phantomError)
+                                        then text "it contains" <+> text (variables phantomError)
+                                            <+/>  (text "and this is the phantom type of the ST monad,"
+                                                <+> text "which is never seen by java code.")
+                                        else if not (null instanceError)
+                                        then text "it contains" <+> text (variables instanceError)
+                                            <+/> (text "already bound by the object"
+                                                <+> text "the method is invoked on.")
+                                        else text "it contains" <+> text (variables unboundError)
+                                            <+/> ((if length unboundError == 1
+                                                    then text "that is"
+                                                    else text "that are") 
+                                                <+> text "not occurring in the type "
+                                                <+> text (nicer sig g)) 
+                                    )
+                        when (isNothing d.gargs && not (null gargs)) do
+                            E.hint d.pos (text "inferred generic type arguments {"
+                                <> (text . joined ", ") (map (flip nicer g) gargs)
+                                <> text "} for" <+> text (nicer sym.name g))   
+                        return gargs
+
+transNatDcl _ _ d = E.fatal d.pos (text "not a nat dcl")
+
+transInsDcl env fname (d@InsDcl {pos}) = do
+        g <- getST
+        let iname = TName g.thisPack (Enter.insName d)
+        case g.findit iname of
+            Just sym
+                | SymI {pos} <- sym = do
+                    clas <- defaultXName pos (TName pPreludeBase "Eq") d.clas
+                    typ  <- U.transSigma d.typ
+                    E.logmsg TRACE5 pos (text ("instance " ++ QName.nice clas g ++ " (" ++ Sigma.nice typ g ++ ")"))
+                    changeSym sym.{clas,typ}
+                    foreach d.defs (transdef [] (MName iname))
+            nothing -> do E.fatal pos (text ("Cannot happen, instance " ++ iname.nice g ++ " missing"))
+transInsDcl _ _ d = E.fatal d.pos (text "not a ins dcl")
+
+
+private refreshType ∷ DefinitionS → Symbol → StG Symbol
+private refreshType d sym = do
+    g ← getST
+    vars  ← mapM (\t → transTau t >>= forceTau) d.vars
+    let !dname = TName g.thisPack d.name
+        dtcon  = TCon {pos=d.pos, name=dname}
+        dtau  = dtcon.mkapp vars :: Tau
+        !dsig  = ForAll vars (RhoTau [] dtau)
+        !kind  = foldr KApp KType dsig.kinds :: Kind
+        newsym = sym.{typ=dsig, kind=kind}  
+    changeSym newsym
+    pure newsym
+
+transDatDcl env fname (d@DatDcl {pos}) = do
+        g <- getST
+        let tname = TName g.thisPack d.name
+        case g.findit tname of
+            Just sym | SymT {pos} <- sym = do
+                sym ← refreshType d sym
+                foreach d.ctrs (transCon sym.typ (MName tname))
+                foreach d.defs (transdef [] (MName tname))
+                polymorphicFields tname
+                U.findT tname >>= newtCheck
+            other -> do E.fatal pos (text ("Cannot happen, data " ++ tname.nice g ++ " missing"))
+    where
+        newtCheck (symt@SymT{newt=true})                            -- this is declared as newtype
+            | [con] ← [ c | c@SymD{}  <- values symt.env ],         -- so it has 1 constructor
+              [fld] ← [ f | f@Field {typ} <- con.flds ],            -- with 1 field
+              ForAll _ RhoTau{tau} ← fld.typ,                       -- which has some type tau
+              TApp{} ← tau,                                         -- that is an application
+              TVar{}:_ ← tau.flat                                   -- of a type variable to smth.
+            = do
+                g   ← getST
+                E.hint symt.pos (text "Implementation restriction: type "
+                        <+/> text (nicer symt.name g)
+                        <+/> text " cannot be a newtype and will be treated as data."
+                    )
+                changeSym symt.{newt=false}                     -- make it data
+                changeSym con.{flds <- map _.{strict=true}}     -- with strict field
+                pure ()
+        newtCheck other = pure ()
+        polymorphicFields tname = do
+            symt <- U.findT tname
+            let cons = [ c | c@SymD{}  <- values symt.env ]
+                fields = [ f | con <- cons,                                 -- from constructors 
+                               f@Field {name = Just n} <- Symbol.flds con,  -- take named fields
+                               not (null f.typ.bound)                       -- with polymorphic type
+                         ]
+                ufields = map (("upd$" ++) • unJust • ConField.name) fields
+                cfields = map (("chg$" ++) • unJust • ConField.name) fields
+                umethods = [ m | m@SymV{} <- values symt.env,   -- methods that update a poly field
+                                m.name.base `elem` ufields ]
+                cmethods = [ m | m@SymV{} <- values symt.env,   -- methods that change a poly field
+                                m.name.base `elem` cfields ]
+            foreach umethods (updPolyAnn symt fields)
+            foreach cmethods (chgPolyAnn symt fields)
+            return ()
+        -- determine type of update function for polymorphic fields
+        -- data Rec a = R { v::a, f :: forall b . a -> [b] -> [b] }
+        -- upd$f :: Rec a -> (f :: forall b . a -> [b] -> [b]) -> Rec a
+        -- NOTE Issue 203: the type of the record could only be changed if 
+        --                 f was the only field that mentions outer bound type a
+        --                 Hence, poly-update will not be possible here.   
+        updPolyAnn :: Symbol -> [ConField QName] -> Symbol -> StG ()
+        updPolyAnn dtyp flds meth = do
+            g <- getST
+
+            case find ((meth.name.base ==)•("upd$"++)•unJust•ConField.name) flds of
+                Just cf -> do
+                    E.logmsg TRACE5 (Symbol.pos meth) (text "polymorphic update " 
+                        <+> text (nice meth g)
+                        <+> text " :: " 
+                        <+> text (nice cf.typ g))
+                    let mtyp = ForAll (dtyp.typ.bound) rho1 where
+                                rho1 = RhoFun [] dtyp.typ.{bound=[]} rho2
+                                rho2 = RhoFun [] cft ret
+                        ret = dtyp.typ.rho
+                        cft = cf.typ 
+                    kim ← fst <$> kiSigma [] [] mtyp
+                    changeSym meth.{typ = kim, anno = true}
+                    E.logmsg TRACE5 meth.pos (text (nice meth g ++ " :: " ++ nicer mtyp g))
+                    return ()
+                Nothing -> E.fatal dtyp.pos (text (nice meth.name g ++ ": field not found."))
+        -- determine type of chg$f method when field f is polymorphic, like in
+        --   data Poly a = P { fun :: forall e. Functor e => e a -> e a, item :: a } 
+        --   chg$listop (P a b) = P (f a) b
+
+        -- Note that all type class constraints in the signature of fun
+        -- are by necessity ones that constrain the type variables of the function. 
+        -- Otherwise, they could only be constrain type variables
+        -- of the record type, and this would mean that the instantiation would take place
+        -- already at record construction time, and so the context must not be mentioned, as in
+        --    data Shower a = Sh { showit :: a -> String, item :: a }
+        -- We can instantiate this both with functions of type Show a => a -> String
+        -- and also ones that are simply a -> String:
+        --     Sh show 42
+        --     Sh (const "Hi!") ()
+
+        -- because field fun is polymorphic, the changing function is also higher ranked:
+        --   chg$listop :: Poly a -> (forall b.Functor b => (b a -> b a) -> b a -> b a) -> Poly a
+        -- Note that the original function is instantiated at the constraint that gets passed
+        -- to the changing function.
+        chgPolyAnn :: Symbol -> [ConField QName] -> Symbol -> StG ()
+        chgPolyAnn dtyp flds meth = do
+            g <- getST
+            E.logmsg TRACE5 (Symbol.pos meth) (text ("polymorphic change " ++ nice meth g))
+            case find ((meth.name.base ==)•("chg$"++)•unJust•ConField.name) flds of
+                Just cf -> do
+                    -- we have:
+                    -- field "fun"  ∀ f.Ctx f => f a -> f b
+                    -- type "Poly"  ∀ a b . T a b 
+                    -- we want:
+                    -- ∀ a b . T a b → (∀ f . Ctx f ⇒ (f a → f b) → f a → f b) → T a b
+                    -- ^^^^^                                                            outerbound
+                    --         ^^^^^                                             ^^^^^  record
+                    --                  ^^^                                             funbound
+                    --                        ^^^^^                                     functx
+                    --                                 ^^^^^^^^^                        funrho
+                    --                  ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^           charg
+                    let outerbound = dtyp.typ.bound                     -- ∀ a b.
+                        record     = dtyp.typ.rho                       -- T a b
+                        funbound   = cf.typ.bound                       -- ∀ f.
+                        functx     = cf.typ.rho.context                 -- Ctx f ⇒
+                        funrho     = cf.typ.rho.{context=[]}            -- f a → f b
+                        charg      = ForAll funbound                    -- ∀ f . Ctx f ⇒ (f a → f b) → f a → f b
+                                        RhoFun{
+                                            context = functx, 
+                                            sigma   = ForAll [] funrho, 
+                                            rho     = funrho}
+                        result     = ForAll outerbound                  -- ∀a b.T a b → charg → T a b
+                                        RhoFun{
+                                            context = [], 
+                                            sigma   = ForAll [] record, 
+                                            rho     = RhoFun{
+                                                context = [], 
+                                                sigma   = charg, 
+                                                rho     = record}}
+                    kir ← fst <$> kiSigma [] [] result
+                    changeSym meth.{typ = kir, anno = true}
+                    E.logmsg TRACE5 meth.pos (text (nice meth g ++ " :: " ++ nicer kir g))
+                    pure ()
+                Nothing -> E.fatal dtyp.pos (text (nice meth.name g ++ ": field not found."))
+
+        transCon (ForAll bndrs rho) mname (d@DCon {pos}) = do
+            g <- getST
+            let cname = mname d.name
+            case g.findit cname of
+                Just (con@SymD {pos}) = do
+                    let transSigma1 (ForAll [] (RhoTau [] t)) = transTau t
+                        transSigma1 s = do      -- field types can be sigmas
+                            ForAll bound frho <- U.validSigma1 (map _.var bndrs) s
+                            bounds ← U.transBounds bound
+                            let env = fold (\tm tv → tm.insertS tv.var tv) TreeMap.empty (bounds ++ bndrs)
+                            frho <- U.transRho env frho
+                            stio (ForAll bounds frho)
+                    sigmas <- mapSt (transSigma1 • ConField.typ) d.flds
+                    let nfs sigs = zipWith ConField.{typ=}  con.flds sigs
+                        typ = ForAll bndrs (foldr (RhoFun []) rho sigmas)
+                    E.logmsg TRACE5 con.pos (text (con.nice g ++ " :: " ++ typ.nice g))
+                    sig <- U.validSigma typ >>= kiSigma [] [] >>= pure . fst
+                    let additional = filter (`notElem` map _.var bndrs) (map _.var sig.bound)
+                    unless (null additional) do
+                        E.error pos (text ("type variable(s) " 
+                            ++ joined ", " additional
+                            ++ " may not appear in fields of " ++ d.name))
+                    -- when (con.strsig.isStrict) (foreach nfs (strictFieldsCheck cname))
+                    changeSym con.{typ=sig}.{flds=nfs . snd . U.returnType $ sig.rho}
+                _ -> E.fatal pos (text ("constructor `" ++ cname.nice g ++ "` vanished."))
+transDatDcl _ _ d = E.fatal d.pos (text "not a data dcl")
+
+transJavDcl env fname (d@JavDcl {pos}) = do
+        g <- getST
+        let tname = TName g.thisPack d.name
+        case g.findit tname of
+            Just sym 
+                | SymT {nativ = Just nativ} <- sym = do
+                    -- Redo types
+                    sym ← refreshType d sym
+                    -- extract and translate generic type arguments
+                    let doit (Just gs) = mapM transTau gs >>= mapM forceTau
+                        doit Nothing   = pure sym.typ.tvars
+                    gargs ← doit d.gargs       -- fromMaybe (pure (sym.typ.tvars sym.pos))  (map transTau <$> d.gargs)
+                    let bound = sym.typ.vars
+                    -- check that generic type arguments do not contain free type variables
+                    forM_ gargs $ \tau → do
+                        let free = freeTVnames bound (RhoTau [] tau)
+                        unless (null free) do
+                            E.error (getpos tau) (
+                                    text "Generic type argument may only use type variables"
+                                    <+/> (text "that are bound in type constructor `"
+                                            <+> text d.name 
+                                            <+> text "´.")
+                                    </> (text "In particular"
+                                            <+> sep "," [ 
+                                                    text "`" <> text v <> text "´" |
+                                                    v ← free ]
+                                            <+> text "may not be used here.")
+                                )
+                    -- fix type arguments that are not generic to kind * 
+                    ktype t = case t of
+                        TVar{kind=KVar} → t.{kind=KType}
+                        _               → t
+                    let typ = sym.typ.{bound ← map ktype}
+                        !kind  = foldr KApp KType (map _.kind typ.bound) 
+                    let purity = d.isPure || (nativ `elem` pureTypes)
+                    changeSym sym.{pur = purity, gargs, typ, kind}
+                    foreach d.defs (transdef [] (MName tname))
+                    U.nativeType nativ tname
+                    when (nativ ~ ´\[\]$´) do
+                        E.warn pos (text (nativ ++ ": this way of declaring array types is strongly discouraged."))
+                | otherwise = E.fatal pos (text ("Cannot happen, native type " ++ tname.nice g ++ " is not native?"))
+            nothing -> do E.fatal pos (text ("Cannot happen, data " ++ tname.nice g ++ " missing"))
+transJavDcl _ _ d = E.fatal d.pos (text "not a java dcl")
+
+transClaDcl env fname (d@ClaDcl {pos}) = do
+        g <- getST
+        let tname = TName g.thisPack d.name
+        case g.findit tname of
+            Nothing -> do E.fatal pos (text ("Cannot happen, class "
+                                    ++ tname.nice g ++ " missing."))
+                          -- stio Nothing
+            Just sym
+                | SymC {pos} <- sym = do transclass d sym -- ; stio (Just d)
+                | otherwise = do
+                    E.fatal pos (text ("expected class, found " ++ sym.nice g))
+transClaDcl _ _ d = E.fatal d.pos (text "not a class dcl")
+
+-- record the super type and super interfaces of the module in Options.
+transModDcl env fname ModDcl{pos, extending, implementing, code} = do
+    g ← getST 
+    case length (filter _.{code?} g.sub.sourcedefs) of
+        1 = do
+            ext ← case extending of
+                Just t  → Just <$> (transTau t >>= starSigma)
+                _       → return Nothing
+            imp ← mapM transTau implementing >>= mapM starSigma
+            changeST Global.{options <- Options.{extending = ext, implementing = imp, code}}
+          where 
+            starSigma sig = fst <$> kiSigmaX sig KType
+        _ = E.error pos (msgdoc ("There may be at most one native module definition."))
+
+transModDcl _ _ d = E.fatal d.pos (text "not a mod dcl")
+
+--- Type for overloaded functions
+ovlsigma :: Sigma
+ovlsigma = ForAll{  bound=[tvar], 
+                    rho = RhoTau [] TVar{pos=Position.null, kind=KType, var="ω"}}
+            where tvar = TVar{pos=Position.null, kind=KType, var="ω"}
+
+--- java types where we know for sure that they are pure
+pureTypes = primitiveTypes ++ ["java.lang.String", "java.math.BigInteger", "java.util.regex.Pattern",
+            "java.lang.Boolean", "java.lang.Byte", "java.lang.Character", "java.lang.Short",
+            "java.lang.Integer", "java.lang.Long", "java.lang.Float", "java.lang.Double"]
+
+--- translate pattern to normal form and check for uniqueness of names
+--- every pattern must get assigned new unique numbers - they come with uid=0 from the parser
+transPatUnique  :: (String -> QName) -> ExprS -> StG Pattern
+transPatUnique fname pat = do
+        pat <- transPat fname pat
+        let !vars = sortBy  (comparing Pattern.var) (patVars pat)
+            !grps = groupBy (using Pattern.var) vars
+        foreach grps check
+        return pat    
+  where
+    check ::  [Pattern] -> StG ()
+    check [_] = return ()   -- unique
+    check xs 
+        | (var:_) <- reverse xs, Pattern.var var != "_" = do
+            g <- getST
+            E.error (Pattern.pos var) (msgdoc ("Variable `" 
+                                ++ nicer var g 
+                                ++ "` must not occur more than once in pattern."))
+        | otherwise = return ()       
+    transPat fname pat = do
+        g <- getST
+        E.logmsg TRACE5 (getpos pat) (text ("transPat: " ++ nice pat g ))
+        case pat of
+            Vbl{name}
+                | Simple t <- name  = do
+                    u <- uniqid 
+                    let pos = positionOf t
+                        var = t.value
+                        sym = U.patLocal pos u var 
+                    enter sym
+                    when (var != "_") do
+                        changeST Global.{sub <- SubSt.{
+                            idKind <- insert (KeyTk t) (Right sym.name)}}
+                    stio (PVar {pos,uid=u,var})
+                | otherwise = do
+                    let pos = getpos name
+                    E.error pos (msgdoc "Qualified variables must not occur in patterns.")
+                    stio (PVar {pos, uid=0, var="_"})
+            Con{name} -> do
+                let pos = positionOf name.id 
+                qname <- resolveVName fname pos name
+                checkCon pos qname []
+                case qname of 
+                    MName{tynm=TName{pack, base="HaskellBool"}, base}
+                        | pack == pPreludeBase
+                        = pure PLit{pos, kind=LBool, negated = false,
+                                    value=if base=="True" then "true" else "false"}
+                    _ -> pure (PCon {pos,qname,pats=[]})
+            App{} -> case flats pat of
+                Con{name}:pats = do
+                            let pos = positionOf name.id 
+                            qname <- resolveVName fname pos name
+                            pats <- mapSt (transPat fname) pats
+                            checkCon pos qname pats
+                            return (PCon {pos,qname,pats})
+                [Vbl(Simple Token{value="@"}), var, pat] = do
+                    var <- transPat fname var
+                    pat <- transPat fname pat
+                    case var of 
+                        PVar{pos, uid, var} 
+                            = return PAt{pos, uid, var, pat}
+                        PUser{pat=PVar{pos, uid, var}, lazy}
+                            = return PUser{pat=PAt{pos, uid, var, pat}, lazy}
+                        other = do
+                           E.error (getpos var) (text "Illegal pattern "
+                                <+> text (nicer var g) 
+                                <+> text " found left from (@)"
+                                <+> text "where only a variable is allowed.")
+                           return (PVar {pos=getpos var, uid=0, var="_"}) 
+                [op@Vbl(Simple Token{value="~"}), var, rgx]
+                    | Lit{kind=LRegex} <- rgx = do
+                        var <- transPat fname var
+                        case var of
+                            PVar{pos, uid, var}
+                                = return PMat{pos, uid, var, value=rgx.value}
+                            PUser{pat=PVar{pos, uid, var}, lazy}
+                                = return PUser{pat=PMat{pos, uid, var, value=rgx.value}, lazy}
+                            other = do
+                                E.error (getpos var) (text "Illegal pattern "
+                                    <+> text (nicer var g)
+                                    <+> text " found left from (~)"
+                                    <+> text "where only a variable is allowed.")
+                                return (PVar {pos=getpos var, uid=0, var="_"})
+                    | otherwise = do
+                        E.error (getpos op) (text "Illegal pattern "
+                            <+> text (nicer rgx g)
+                            <+> text " found right from (~)"
+                            <+> text "where only a regular expression is allowed.")
+                        return (PVar {pos=getpos var, uid=0, var="_"})
+                [op@Vbl(Simple Token{value="negate"}), pat@Lit{kind}]
+                    | isLiteralNumeric kind =
+                        Pattern.{negated=true} <$> transPat fname pat 
+                    | otherwise = do
+                        E.error (getpos pat) (text "Only numeric patterns may be negated.")
+                        transPat fname pat
+                [op@Vbl(Simple Token{value=s}), pat] 
+                    | s == "!" || s == "?" = do
+                        pat <- transPat fname pat
+                        case pat of 
+                            PVar{pos, uid, var} -> do
+                                sym <- U.findV Local{uid, base=var}
+                                changeSym sym.{state=StrictChecked,
+                                            strsig = if s == "?" then U else S[]}
+                                return PUser{pat, lazy=s=="?"}
+                            _ -> return PUser{pat, lazy=s=="?"}
+                wrong -> do
+                    E.error (getpos pat) (text "application of " 
+                        <+> text (nicer (head wrong) g)
+                        <+> text " is not allowed in patterns.")
+                    return (PVar {pos=getpos pat, uid=0, var="_"})  
+            Term p -> transPat fname p
+            Infx{} -> infx fname pat >>= transPat fname
+            Lit p k v n     -> return (PLit p k v n)
+            Ann{ex, typ}   -> do
+                pat <- transPat fname ex
+                typ <- transSigma typ
+                return PAnn{pat, typ}
+            ConFS {name,fields} -> do
+                let pos = positionOf name.id
+                qname <- resolveVName fname pos name
+                pats <- mapSt (transPat fname • snd) fields
+                let pfs = map fst fields
+                    ft  = TM.fromList (zip pfs pats)
+                    fpat (Just x)
+                        | Just p <- ft.lookup x = return p
+                    fpat other = transPat fname (Vbl Simple{id = name.id.{tokid=VARID, value="_"}})
+                case g.findit qname of
+                    Just (SymD {flds}) -> do
+                        let fs = [ f | Field {name = Just f} <- flds ]
+                            badfs = filter (`notElem` fs) pfs
+                        pats <- mapSt fpat (map ConField.name flds)
+                        if null badfs then return (PCon {pos,qname,pats})
+                        else do
+                            E.error pos (msgdoc ("Constructor " ++ qname.nice g ++ " has no "
+                                        ++ (if length badfs == 1 then "field " else "fields ")
+                                        ++ joined ", " badfs))
+                            return (PCon {pos,qname,pats})
+                    _ -> do
+                        checkCon pos qname pats
+                        return (PCon {pos,qname,pats})
+            _ -> do
+                E.error (getpos pat) (text "Illegal pattern:" </> text (nicer pat g))
+                return PLit{pos=getpos pat, kind=LBool, value="true", negated=false} 
+
+      where
+            checkCon pos qcon ps = do
+                    g <- getST
+                    case g.findit qcon of
+                        Just (SymD {flds})
+                                    | length flds == length ps = stio ()
+                                    | otherwise = E.error pos (msgdoc ("constructor " ++ qcon.nice g
+                                                    ++ " demands " ++ show (length flds)
+                                                    ++ " arguments, but you gave "
+                                                    ++ show (length ps)))
+                        nothing -> when (g.errors == 0) do
+                            E.error pos (msgdoc (pos.last.value ++ " is not a data constructor"))
+
+transMbSigma (Just s) = liftM Just (transSigma s)
+transMbSigma Nothing  = stio Nothing
+
+fName env fname nm = case findLocal env nm of
+    Local 0 _ -> fname nm
+    local     -> local 
+
+defname (d@FunDcl{})
+    | Just t <- funbinding d = t.value
+    | not (patbinding d),
+      Vbl{name=Simple excl} <- d.lhs,
+      excl.value == "!" || excl.value=="?",
+      [pat] <- d.pats,
+      Just t <- funbinding d.{lhs=pat, pats=[]} = t.value 
+defname AnnDcl{name} = name
+defname x = error ("defname: no FunDcl: " ++ show (constructor x))
+
+
+transExpr :: [QName] -> (String -> QName) -> ExprS -> StG D.Expr
+transExpr env fname ex = do
+    g <- getST
+    E.logmsg TRACE5 (getpos ex) (text ("transExpr: " ++ show env ++ "    " ++ ex.nice g))
+    case ex of
+        Vbl {name}  -> do
+                        qname <- resolveVName (fName env fname) (positionOf name.id) name
+                        return D.Vbl{pos=positionOf name.id, name=qname, typ=Nothing}
+        Con {name}  -> do
+                        let pos = positionOf name.id
+                        name <- resolveVName fname pos name
+                        checkCon pos name
+                        case name of 
+                            MName{tynm=TName{pack, base="HaskellBool"}, base}
+                                | pack == pPreludeBase
+                                = pure D.Lit{pos, kind=LBool, 
+                                            value=if base=="True" then "true" else "false", 
+                                            typ=Nothing, negated = false}
+                            _ -> pure (D.Con {pos, name, typ=Nothing})
+        Mem x s     -> do
+                            x <- transExpr env fname x
+                            stio (D.Mem x s Nothing)
+        App a b     -> do
+                            a  <- transExpr env fname a
+                            b  <- transExpr env fname b
+                            stio (D.App a b Nothing)
+        Lit p k v n -> pure  (D.Lit p k v n Nothing)
+        Term e      -> transExpr env fname e
+        Infx{name, left, right} -> infx (fName env fname) ex >>= transExpr env fname
+        Case {ckind,ex,alts} -> do
+                    ex   <- transExpr env fname ex
+                    alts <- mapSt transAlt alts
+                    return (D.Case {ckind, ex, alts, typ=Nothing})
+                where
+                        transAlt (CAlt {pat, ex}) = do
+                                pat <- transPatUnique  fname pat
+                                forbidHigherRank pat
+                                let nenv = patNames pat
+                                ex  <- transExpr (nenv++env) fname ex
+                                stio (D.CAlt {pat, ex})
+
+                        -- in case expressions, higher rank sigmas are not allowed
+                        -- (see https://github.com/Frege/frege/issues/47)
+                        forbidHigherRank PAnn{typ} 
+                            | not (null typ.bound) = do
+                                E.error (getpos typ) (msgdoc "higher rank type annotations are not allowed for case patterns")
+                                return ()
+                        forbidHigherRank _ = return ()
+
+        Ifte c a b  -> do
+                        c <- transExpr env fname c
+                        a <- transExpr env fname a
+                        b <- transExpr env fname b
+                        return (D.Ifte c a b Nothing)
+        Let {defs,ex} -> do
+                        defs <- Fix.fixdefs defs
+                        nenv <- foldM enterlocal [] (Enter.annosLast defs)
+                        foreach defs (transdef (nenv++env) fname)
+                        ex   <- transExpr (nenv++env) fname ex
+                        syms <- mapSt U.findV nenv
+                        foreach (syms) checkDefined
+                        stio (D.Let {env=nenv, ex, typ=Nothing})
+                    where
+                        checkDefined (SymV {expr = Just _}) = stio ()
+                        checkDefined sym = E.error sym.pos (msgdoc (nice sym g ++ " is annotated but not defined."))
+                        enterlocal :: [QName] -> DefinitionS -> StG [QName]
+                        enterlocal env def = case findLocal env (defname def) of
+                            Local 0 _ = do      -- not yet entered
+                                uid <- uniqid
+                                Enter.enter1 (Local uid) def
+                                return  (Local uid (defname def):env)
+                            Local u _ = do
+                                Enter.enter1 (Local u) def
+                                return env
+                            _ = error "onlyLocal possible"
+        Lam {pat=spat,ex,fromDO}  -> do
+                        g ← getST           -- mark environment *before* transPat  
+                        pat <- transPatUnique  fname spat
+                        -- check if we had a refutable pattern in 
+                        --    do pat <- ....
+                        if fromDO && patternRefutable g pat
+                        then do
+                            -- transform to: \do$1 -> case do$1 of  { spat -> ex; _ -> fail "..." } 
+                            putST g         -- "undo" transPat in state
+                            duid <- uniqid  -- get a unique id for that extra variable we need
+                            let ptok  = (getpos spat).first
+                                etok  = (getpos ex). first
+                                snam  = contextName ptok ("do$" ++ show duid)
+                                unam  = contextName ptok ("_")
+                                fnam  = contextName etok "fail"
+                                fstr  = Lit{pos=getpos ex, kind=LString, negated = false, 
+                                            value = "\"pattern failed in do block, "
+                                                    ++ g.unpack g.thisPack 
+                                                    ++ " line " ++ show ptok.line
+                                                    ++ "\""}
+                                dovar = Vbl{name = snam}    -- do$123
+                                unvar = Vbl{name = unam}    -- _
+                                fvar  = Vbl{name = fnam}    -- fail
+                                docas = Case{ckind=CNormal, ex=dovar, alts=[
+                                            CAlt{pat=spat, ex},
+                                            CAlt{pat=unvar, ex = fvar `nApp` fstr}
+                                            ]}
+                                doex  = Lam{pat=dovar, ex=docas, fromDO=false}
+                            transExpr env fname doex
+                        else do
+                            let nenv = patNames pat
+                            ex  <- transExpr (nenv++env) fname ex
+                            return (D.Lam {pat,ex,typ=Nothing})
+        Ann {ex,typ} -> do
+                        ex  <- transExpr env fname ex
+                        typ <- transSigma typ
+                        stio (D.Ann {ex,typ=Just typ})
+        ConFS {name,fields} -> do
+                        let pos = positionOf name.id
+                        name <- resolveVName fname pos name
+                        exs  <- mapSt (transExpr env fname) (map snd fields)
+                        let vUndef = D.Vbl (pos.change VARID "undefined") (VName pPreludeBase "undefined") Nothing
+                        g <- getST
+                        case g.findit name of
+                            Just (symd@SymD {}) -> do
+                                let xnms = map fst fields
+                                    flds = [ f | Field {name = Just f} <- symd.flds ]
+                                    badf = filter (`notElem` flds) xnms
+                                    miss = filter (`notElem` xnms) flds
+                                    tree = TM.fromList (zip xnms exs)
+                                    mapx s = case tree.lookup s of
+                                        Just x -> x
+                                        Nothing -> vUndef
+                                    oexs = map mapx flds
+                                    res  = fold D.nApp (D.Con {pos,name,typ=Nothing}) oexs
+                                    f1s  = if length badf == 1 then "field " else "fields "
+                                    f2s  = if length miss == 1 then "field " else "fields "
+                                unless (null badf) do
+                                    g <- getST
+                                    E.error pos (msgdoc (nice symd g ++ " has no " ++ f1s ++ joined ", " badf))
+                                unless (null miss) do
+                                    g <- getST
+                                    E.error pos (msgdoc (f2s ++ joined ", " miss ++ " missing in construction of "
+                                                    ++ symd.name.nice g))
+                                stio res
+                            Just sym -> do
+                                when (g.errors == 0 && sym.name.base != "undefined") do
+                                    E.error pos (msgdoc ("looked for constructor " ++ name.nice g ++ ", found "
+                                                            ++ sym.nice g))
+                                stio vUndef
+                            Nothing -> do 
+                                when (g.errors == 0) do 
+                                    E.error pos (msgdoc ("looked for constructor " ++ name.nice g ++ ", found Nothing"))
+                                stio vUndef
+        Enclosed{firstT, lastT, ex} -> do
+            x ← transExpr env fname ex
+            case x of
+                y | y.{pos?} = pure y.{pos = Pos firstT lastT}
+                  | otherwise = pure y
+        _ -> do
+            E.error (getpos ex) (text "cannot transExpr: " </> text (nicer ex g))
+            return D.Lit{pos=getpos ex, kind=LBool, value="true", typ=Nothing, negated=false}
+  where
+        -- avoid problems with findD later
+        -- if this is not a data constructor, flag an extra error so as to end processing
+        checkCon pos qcon = do
+            g <- getST
+            case g.findit qcon of
+                Just (SymD {}) -> return ()
+                nothing -> when (g.errors == 0) do
+                    E.error pos (msgdoc (pos.last.value ++ " is not a data constructor"))
+
+--- transform an expression of the form  
+--- > a `op` b
+--- to
+--- > (op) a b
+--- taking the operator of @b@ into account, if any
+infx :: (String -> QName) -> ExprS -> StG ExprS
+infx fname = fmap unInfix . ordInfix fname
+
+--- make 'Con' or 'Vbl' from 'SName'
+vbl :: SName -> ExprS
+vbl name = Des.varcon name.id name
+
+{-- 
+    Order an infix expression according to associativity and precedence
+    > a : (m ~ (s : rest))
+    > a : ((m ~ s) : rest)
+    > a : (m ~s) : rest
+    by first ordering the right hand side.
+    
+    Then, if the operator binds more than the topmost 
+    of the ordered right hand side:
+    > m ~ (s : rest)
+    build a new infix expression from the left hand sides:
+    > (m ~ s)
+    and order it. This is then the new left hand side.
+    
+    Another example:
+    
+    > 3 * 2 / 6
+    The ordered right hand side is
+    > 2 / 6
+    Now, @*@ binds more than @/@, because it is left associative,
+    hence:
+    > (3 * 2) / 6
+    
+    *Invariant* : If you pass an infix expression, you also get one back.
+    -} 
+ordInfix :: (String -> QName) -> ExprS -> StG ExprS
+ordInfix fname (orig@Infx{name, left, right})
+    | Infx{} <- right = do
+        right <- ordInfix fname right
+        g <- getST
+        let pos = positionOf name.id
+        op1 <- resolveVName fname pos name
+        op2 <- resolveVName fname (positionOf right.name.id) right.name
+        let bindleft = do
+                -- a + 1 # f = (a+1) # f
+                left <- ordInfix fname Infx{name, left, right=right.left}
+                return Infx{name=right.name, left, right=right.right}
+            bindright = return Infx{name, left, right} -- a $ x+1 == a $ (x+1)
+        case (g.findit op1, g.findit op2) of
+            (Just sym1, Just sym2) = 
+                     if prec sym1.op > prec sym2.op then bindleft
+                else if prec sym1.op < prec sym2.op then bindright
+                else -- equal precedence 
+                    case (assoc sym1.op, assoc sym2.op) of
+                        ("left", "left")   -> bindleft
+                        ("right", "right") -> bindright
+                        (left, right) -> do
+                            E.error (getrange orig) (msgdoc (
+                                "invalid expression, "
+                                ++ left ++ "-associative operator " 
+                                ++ nice op1 g
+                                ++ " found on same level as "
+                                ++ right ++ "-associative operator " 
+                                ++ nice op2 g
+                                ))
+                            E.hint (getrange orig) (msgdoc (
+                                "Use parentheses to disambiguate an expression like "
+                                ++ " a " ++ nice op1 g ++ " b " 
+                                ++ nice op2 g ++ " c"
+                                ))
+                            bindright
+            (Nothing, _) = do
+                E.error pos (text("cannot find " ++ nice op1 g)) 
+                return orig
+            (_, Nothing) = do
+                E.error pos (text("cannot find " ++ nice op2 g)) 
+                return orig
+ordInfix fname expr = return expr
+
+--- Translate infix expression to application.
+--- The infix expression should have been ordered before, see 'ordInfix'.
+unInfix :: ExprS -> ExprS
+unInfix Infx{name, left, right} = vbl name `App` unInfix left `App` unInfix right
+unInfix x                       = x
+
+
+--- > bindsmore left other
+--- check if left token binds more than the other
+bindsmore :: TokenID -> TokenID -> Bool
+bindsmore t1 t2 = if p1 != p2 
+                then p1 > p2 
+                -- with equal precedence, the first left-op binds more 
+                else t1 >= LOP1 && t1 <= LOP16 && t2 >= LOP1 && t2 <= LOP16
+    where
+        p1 = prec t1
+        p2 = prec t2
+
+--- precedence of an operator (1..16)
+prec :: TokenID -> Int
+prec t
+    | t >= NOP1 && t <= NOP16 = ord t - ord NOP0
+    | t >= LOP1 && t <= LOP16 = ord t - ord LOP0
+    | t >= ROP1 && t <= ROP16 = ord t - ord ROP0
+    | otherwise = error ("no precedence for operator: " ++ show t)
+
+--- associativity of an operator (as string "none", "left" or "right")
+assoc ∷ TokenID → String
+assoc t
+    | t >= NOP1 && t <= NOP16 = "none"
+    | t >= LOP1 && t <= LOP16 = "left"
+    | t >= ROP1 && t <= ROP16 = "right"
+    | otherwise = error ("no precedence for operator: " ++ show t)
+
+
+transclass :: DefinitionS -> Symbol -> StG ()
+transclass def sym = do
+        supers <- liftM (map unJust • filter isJust)
+                        (mapSt (resolveXName def.pos sym) def.supers)
+        changeSym sym.{supers = unique supers}
+        g <- getST
+        foreach def.defs  (transdef [] (MName sym.name))
+

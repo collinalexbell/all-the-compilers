@@ -1,0 +1,18 @@
+let prelude = import! std.prelude
+let { (<|) } = import! std.function
+let { run, Test, assert_eq, test, group, ? } = import! std.test
+let { Applicative, (*>) } = import! std.applicative
+let int = import! std.int
+let stream @ { Stream, ? } = import! std.stream
+let list @ { List, ? } = import! std.list
+let { Option } = import! std.option
+let { foldl } = import! std.foldable
+
+let s = stream.from (\i -> if i < 5 then Some i else None)
+
+group "stream" [
+    test "fold" <| \_ -> (assert_eq (foldl (+) 0 s) 10),
+    test "from" <| \_ -> (assert_eq s (stream.of [0, 1, 2, 3, 4])),
+    test "map" <| \_ -> (assert_eq (stream.functor.map (\x -> x + x) s) (stream.of [0, 2, 4, 6, 8])),
+    test "zip_with" <| \_ -> (assert_eq (stream.zip_with (+) s s) (stream.of [0, 2, 4, 6, 8]))
+]

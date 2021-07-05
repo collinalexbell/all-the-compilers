@@ -1,0 +1,16 @@
+(import cstdio)
+(import macros)
+(import assert)
+
+(def istype
+  (macro intern (f)
+    (if (not (exists-type mc f))
+        (do (report-error mc f "this node is not a type")
+            (std.macros.qq + 0 0))
+        (std.macros.qq + 0 1))))
+
+(def main
+  (fn extern-c int (void)
+    (printf "Int is type:  %d\n" (istype int))
+    (printf "Blah is type: %d\n" (istype blah))
+    0))

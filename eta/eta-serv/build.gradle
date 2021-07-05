@@ -1,0 +1,51 @@
+buildscript {
+  dependencies {
+    classpath 'net.sf.proguard:proguard-gradle:6.1.0beta2'
+  }
+}
+
+plugins {
+    id 'com.typelead.eta' version '0.8.0'
+}
+
+eta {
+    useSystemEta = true
+    useSystemEtlas = true
+}
+
+dependencies {
+  compile eta('base:[4,5[')
+  compile eta('binary:[0.7,0.9[')
+  compile eta('bytestring:0.10.+')
+  compile eta('filepath')
+  compile eta('directory')
+  compile eta('deepseq:[1.4,1.5[')
+  compile eta('eta-repl')
+  compile eta('eta-meta')
+}
+
+compileEta {
+  options.args = ['-Wall', '-Werror']
+}
+
+jar {
+  manifest {
+    attributes 'Main-Class': "eta.main"
+  }
+}
+
+import proguard.gradle.ProGuardTask
+
+task proJar(type: ProGuardTask) {
+    configuration defaultEtaProguardFile
+    configuration 'proguard.txt'
+
+    if (JavaVersion.current().isJava9Compatible()) {
+      libraryjars "${System.properties['java.home']}/jmods"
+    } else {
+      libraryjars "${System.properties['java.home']}/lib/rt.jar"
+    }
+    injars(filter: '!META-INF/MANIFEST.MF', files(sourceSets.main.compileClasspath))
+    injars jar.outputs
+    outjars 'build/eta-serv.jar'
+}

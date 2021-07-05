@@ -1,0 +1,113 @@
+{- «•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»
+
+    Copyright © 2011 - 2021, Ingo Wechsung
+    All rights reserved.
+
+    Redistribution and use in source and binary forms, with or
+    without modification, are permitted provided that the following
+    conditions are met:
+
+        Redistributions of source code must retain the above copyright
+        notice, this list of conditions and the following disclaimer.
+
+        Redistributions in binary form must reproduce the above
+        copyright notice, this list of conditions and the following
+        disclaimer in the documentation and/or other materials provided
+        with the distribution. Neither the name of the copyright holder
+        nor the names of its contributors may be used to endorse or
+        promote products derived from this software without specific
+        prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE
+    COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR
+    IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+    WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+    PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER
+    OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+    SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+    LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+    USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
+    AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+    LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+    IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+    THE POSSIBILITY OF SUCH DAMAGE.
+
+    «•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•»«•» -}
+
+{--
+    Data structures and classes used to print and format values nicely.
+    The class 'Anno' is called so for historical reasons. The pretty printing
+    stuff was first used in generating annotations. Later on, also
+    java code was printed pretty. And finally, the same mechanism
+    was utilized for error and log messages, together with
+    internal data that occurs there.
+ -}
+
+
+package frege.compiler.common.Annotate where
+
+import frege.Prelude except(break, <+>)
+import Data.List as DL(intersperse)
+import frege.lib.PP  except (line)
+
+import  Compiler.enums.RFlag(RState)
+import  Compiler.types.Packs
+-- import  Compiler.types.QNames
+-- import  Compiler.types.External
+-- import  Compiler.types.Global as G()
+
+
+
+--- print a simple value
+lit :: Show α => α -> DOCUMENT
+lit d = text (show d)
+
+
+--- print a 'Maybe' 'String' as either empty string or string, @null@ may not occur in annotations.
+annoMbString  = maybe (lit "") String.anno
+
+
+
+oldPrelude = Pack.new "frege.Prelude"
+
+
+--- things that can be pretty printed
+class Anno a where
+    anno :: a -> DOCUMENT
+    annoSome :: String -> String -> String -> [a] -> DOCUMENT
+    annoList :: [a] -> DOCUMENT
+
+    --- annotate a list of things using given separators
+    annoSome left _     right []     = text (left++right)
+    annoSome left comma right xs     = bracket left (sep comma (map anno xs)) right
+    --- annotate a list of things using standard separators "(" "," ")"
+    annoList = annoSome "(" "," ")" 
+
+
+
+instance Anno String where
+    anno = PP.fill • DL.intersperse (text "+\"\\n\"+") • map lit • ´\n´.splitted
+
+
+instance Anno Int where
+    anno i = lit i
+
+
+instance Anno Long where
+    anno l = text (show l ++ "L")
+
+
+instance Anno Bool where
+    anno b = lit b
+
+
+instance Anno RState where
+    anno = lit . RState.set         -- assuming we need only a few bits    
+
+instance Anno x => Anno [x] where
+    anno = annoSome "{" "," "}"
+
+
+
+
+

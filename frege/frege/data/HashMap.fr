@@ -1,0 +1,1071 @@
+{- 
+
+    Copyright © 2011 - 2021, Ingo Wechsung
+    All rights reserved.
+
+    Redistribution and use in source and binary forms, with or
+    without modification, are permitted provided that the following
+    conditions are met:
+
+        Redistributions of source code must retain the above copyright
+        notice, this list of conditions and the following disclaimer.
+
+        Redistributions in binary form must reproduce the above
+        copyright notice, this list of conditions and the following
+        disclaimer in the documentation and/or other materials provided
+        with the distribution. Neither the name of the copyright holder
+        nor the names of its contributors may be used to endorse or
+        promote products derived from this software without specific
+        prior written permission.
+
+    THIS SOFTWARE IS PROVIDED BY THE
+    COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS" AND ANY EXPRESS OR
+    IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE IMPLIED
+    WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR
+    PURPOSE ARE DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER
+    OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+    SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+    LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF
+    USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED
+    AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT
+    LIABILITY, OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING
+    IN ANY WAY OUT OF THE USE OF THIS SOFTWARE, EVEN IF ADVISED OF
+    THE POSSIBILITY OF SUCH DAMAGE.
+
+ -}
+
+{--
+    A HashMap implementation based on a 
+    'https://en.wikipedia.org/wiki/Hash_array_mapped_trie Hash Array Mapped Trie'
+
+    The hash array mapped trie achieves almost hash table-like speed 
+    while using memory much more economically. 
+    Also, a hash table may have to be periodically resized, 
+    an expensive operation, whereas HAMTs grow and shrink dynamically.
+    
+    ## Comparison with 'Data.TreeMap'
+    
+    ### Advantages of the 'HashMap'
+    
+    - The hash map can be used with key types that do not have a 'Ord' instance.
+    - It is less affected by slow implementations of the ('==') operation on keys.
+    - There is less aggregated memory overhead per key/value pair.
+    
+    ### Disadvantages of the 'HashMap'
+    
+    - Performance is severely affected when the hashing function tends to 
+        produce many collisions.
+    - It does not support getting the minimum/maximum key in logarithmic time,
+        nor processing in key order in linear time.
+
+    ## Creating Hash Maps
+
+    Get an empty map with 'HashMap.mempty' or 'HashMap.empty', make a singleton one
+    with 'singleton' or turn an association list into a 'HashMap' with 'fromList'.
+    The more general function 'fromListWith' allows custom handling of 
+    associations with duplicate keys.
+
+    ## Add, Change or Remove Associations
+
+    Use 'insert', 'delete', 'adjust' and 'replace'. The more general form of 'insert' 
+    is 'insertWith' which accepts a function to combine the given value with an
+    already existing one.
+
+    ## Lookups
+
+    The basic function is 'lookup', of which 'member' and 'lookupDefault' are variants.
+    The operator ('!!') may be used when the existence of the keys looked for is out
+    of the question.
+
+    ## Set operations
+
+    There is 'union', 'difference' and 'intersection'. More general functions 
+    'unionWith' and 'intersectionWith' allow combination of the affected values.
+
+    ## Folds
+
+    Left folds as well as right folds are provided by 'foldValues' and 'foldrValues'. 
+    Variants 'foldWithKey' and 'foldrWithKey' allow examination not only of the value, 
+    but also of the key.
+
+    Frequently needed functions such as 'values', 'keys', 'each' and 'size' are just
+    predefined folds for your convenience.
+
+    ## Filtering
+
+    Create a subset of an existing map with 'filterValues' or 'filterWithKey'.
+
+    ## Transformations
+
+    'mapValues', 'mapWithKey' and 'traverseWithKey' should cover any need to 
+    transform an existing map.
+
+    ### Naming Conventions
+
+    Functions whose name have the _With_ suffix take a custom function to combine two
+    values and are thus more general than the ones without that suffix. 
+    Most often it is the case that 
+    > xxx = xxxWith const
+
+    Functions whose name have the _Values_ suffix operate on the values of the mappings
+    contained in the map and take an appropriate custom function as argument. 
+    The _Values_ suffix also serves to avoid conflicts with
+    Prelude functions (i.e. 'map', 'filter', 'fold', 'foldr').
+
+    The companions of the _Values_ functions have the suffix _WithKey_ and accept 
+    functions that take an extra argument for the key. The key portion of
+    a mapping or association is always passed first, followed by the associated value.
+
+-}
+module frege.data.HashMap where
+
+import frege.Prelude hiding(Freezable, freeze, thaw, !!)
+
+import Data.Bits
+import Data.JSON
+import Data.Monoid
+import Data.List()
+import Data.Traversable(traverse, Traversable)
+import Data.Foldable(Foldable)
+
+-- General interface of a Hash Map
+
+--- _O(1)_ Create a singleton map
+singleton ∷ Eq k ⇒ k → v → HashMap k v
+singleton k v = HashMap.KV{hash=hashCode k, key=k, value=v}
+
+--- _O(n)_ Compute the size of the map
+size ∷ HashMap k v → Int
+size HashMap.KV{}         = 1
+size HashMap.CO{list}     = length list
+size HashMap.BM{subnodes} = sum (map size (toList subnodes))
+
+--- _O(n)_ Retrieve a list of the values in the map
+values :: HashMap k v -> [v]
+values = foldValues (flip (:)) []
+
+--- _O(n)_ Retrieve a list of the keys in the map
+keys ∷ HashMap k v → [k]
+keys = foldWithKey (\ks\k\_ → k:ks) []
+
+--- _O(n)_ Retrieve a list of the associations in the map
+each ∷ HashMap k v → [(k,v)]
+each = foldWithKey (\xs\k\v → (k,v):xs) []
+
+{-- 
+    _O(log n)_
+    > insert k v m
+    is a 'HashMap' _h_ such that 
+    > lookup k h = Just v
+    and lookup for any other key _o_
+    > lookup o h = lookup o m  
+
+    Less formally said, _k_ is associated with _v_ in the resulting map, updating
+    a previously existing association of _k_ if it exists, while all other associations
+    are left untouched.
+
+    In the case of an update, the new value will get forced, see 'insertWith' for details. 
+-}
+insert ∷ Eq k ⇒ k → v → HashMap k v → HashMap k v
+insert k v hm = HashMap.insertWork const k v hm (hashCode k) 0
+
+{-- 
+    _O(log n)_
+    > insertWith f k v m
+    If _m_ does not contain _k_, this works like 'insert'.
+    Otherwise, the existing association of _k_ with some value _v'_ is replaced by
+    an association of _k_ with the result of evaluating 
+    > f v v'
+    in the resulting map. 
+
+    Strict evaluation is necessary to prevent building up of large thunks 
+    of the form
+    > f v3 (f v2 (f v1 v0))
+
+    Note that
+    > insert = insertWith const
+    and that this will evaluate the *new* value in case of an update. If you
+    want to prevent this, use
+
+    > replace k v = insert k v . delete k
+    
+    The replaced value will be evaluated only if the given function is strict
+    in the second argument. Since 'const' is lazy in the second argument, the
+    following will be fine:
+    
+    > insert "foo" 7 (insert "foo" undefined (delete "foo" m))
+    
+    That is, the value that is inserted for a given key first is not evaluated on
+    insertion, and only evaluated on update if the update function demands it, which
+    is not the case for a plain 'insert'.
+-} 
+insertWith ∷ Eq k ⇒ (v→v→v) → k → v → HashMap k v → HashMap k v
+insertWith !f k v hm = HashMap.insertWork f k v hm (hashCode k) 0
+
+{-- 
+    _O(log n)_
+    > delete k m
+    is a 'HashMap' h such that
+    > lookup k h = Nothing
+    and for any other key _o_
+    > lookup o h = lookup o m
+
+    Less formally, the association of _k_ with some value, if any, 
+    is removed in the result, while all other associations are retained.
+
+    If _m_ didn't contain _k_ in the first place,
+    > delete k m = m    
+-}
+delete ∷ Eq k ⇒ k → HashMap k v → HashMap k v
+delete k hm = HashMap.deleteWork k hm (hashCode k) 0
+
+{--
+    _O(log n)_
+    > lookup k m
+    If _k_ is associated with some value _v_  in map _m_, it returns
+    > Just v
+    and otherwise
+    > Nothing 
+-}
+lookup ∷ Eq k ⇒ k → HashMap k v → Maybe v
+lookup k hm = HashMap.lookupWork k hm (hashCode k) 0
+
+--- _O(log n)_ 
+--- Checks whether the key is present in the map
+member ∷ Eq k ⇒ k → HashMap k v → Bool
+member k = maybe false (const true) . lookup k
+
+{-- _O(log n)_ 
+
+    Return the value to which the specified key is mapped, 
+    or the default value if this map contains no mapping for the key.
+-}
+lookupDefault ∷ Eq k ⇒ v → k → HashMap k v → v
+lookupDefault v k = fromMaybe v . lookup k
+
+{-- _O(log n)_
+
+    Return the value associated with the given key in the map.
+    Fails with 'error' if the key is not present.
+-}
+protected (!!) ∷ Eq k ⇒ HashMap k v → k → v
+protected (hm !! k) = HashMap.indexWork k hm (hashCode k) 0
+infixl 16 !!
+
+{-- _O(log n)_ 
+    
+    Adjust the value tied to a given key in this map only if it is present. 
+    Otherwise, leave the map alone. 
+-}
+adjust :: Eq k => (v → v) → k → HashMap k v → HashMap k v
+adjust !f k hm = case lookup k hm of
+    Just v  → insertWith (\vn \vo → f vn)  k v hm
+    Nothing → hm
+
+{-- _O(log n)_
+    > replace k v m = insert k v . delete k $ m
+    
+    Insert or update the association of _k_ with _v_ in _m_
+    but avoid evaluation of _v_ even if _m_ already contains _k_.
+    
+    See also notes concerning updates on function 'insertWith'.
+-} 
+replace ∷ Eq k ⇒ k → v → HashMap k v → HashMap k v
+replace k v = insert k v . delete k
+
+{-- _O(m*log n)_
+
+    Computes the union of two hash maps.
+
+    If a key occurs in both maps, the function provided in the first argument 
+    will be used to compute the result in the same way as 'insertWith' would do
+    it, that is, the value from the left hash map will be evaluated while the
+    value from the right map may be evaluated only if the function demands it.
+    However, values associated with keys that are member of only one map are
+    left alone.
+-}
+unionWith ∷ Eq k ⇒ (v→v→v) → HashMap k v → HashMap k v → HashMap k v
+unionWith !f left right
+    | null left  = right
+    | null right = left
+    | otherwise  = HashMap.unionWork f left right 0
+
+{-- _O(m*log n)_
+
+    Computes the union of two hash maps.
+
+    If a key occurs in both maps, the value from the left map will be 
+    evaluated and taken over to the new map.
+    
+    Because
+    > union  =  unionWith const 
+    the considerations concerning strictness apply for 'union' in the same
+    way as for 'unionWith'.
+-}
+union ∷ Eq k ⇒ HashMap k v → HashMap k v → HashMap k v
+union = unionWith const
+
+{--
+    The union of all 'HashMap's in a list.
+-}
+unions ∷ Eq k ⇒ [HashMap k v] → HashMap k v
+unions = fold union empty
+
+{-- _O(n)_
+
+    Reduce this map by applying a function to all associations, 
+    using the given starting value (typically the left-identity of the operator). 
+    Each application of the function is evaluated before 
+    using the result in the next application. 
+
+    This function is strict in the starting value.
+-}
+foldWithKey ∷ (a→k→ v→a) → a → HashMap k v → a
+foldWithKey !f !s hm = case hm  of
+    HashMap.KV{hash, key, value}    → f s key value
+    HashMap.BM{subnodes, bitmap}    → fold (foldWithKey f) s subnodes.toList
+    HashMap.CO{hash, list}          → fold (\a\(k,v) -> f a k v) s list
+
+{-- _O(n)_
+
+    Reduce this map by applying a binary operator to all values, 
+    using the given starting value (typically the left-identity of the operator). 
+    Each application of the operator is evaluated before 
+    using the result in the next application. 
+
+    This function is strict in the starting value.
+-}
+foldValues  ∷ (a→ v→a) → a → HashMap k v → a
+foldValues !f !s hm = case hm  of
+    HashMap.KV{hash, key, value}    → f s value
+    HashMap.BM{subnodes, bitmap}    → fold (foldValues f) s subnodes.toList
+    HashMap.CO{hash, list}          → fold f s (map snd list)
+
+{-- _O(n)_
+
+    Reduce this map by applying a binary operator to all values, 
+    using the given starting value (typically the right-identity of the operator).
+    
+    *Warning*: this function exists for Haskell compatibility only. 
+    Please be aware that right folds suffer from the danger of stack overflows,
+    while left folds don't and are also faster because of tail recursion. Since
+    the order of values is arbitrary anyway, there is often no good reason to insist on
+    a right fold, so please use 'foldValues' instead.
+-}
+foldrValues ∷ (v→ a→a) → a → HashMap k v → a
+foldrValues !f s hm = case hm  of
+    HashMap.KV{hash, key, value}    → f value s
+    HashMap.BM{subnodes, bitmap}    → foldr (flip (foldrValues f)) s subnodes.toList
+    HashMap.CO{hash, list}          → foldr f s (map snd list)
+
+{-- _O(n)_
+
+    Reduce this map by applying a binary operator to all mappings, 
+    using the given starting value (typically the right-identity of the operator).
+    
+    *Warning*: this function exists for Haskell compatibility only. 
+    Please be aware that right folds suffer from the danger of stack overflows,
+    while left folds don't and are also faster because of tail recursion. Since
+    the order of values is arbitrary anyway, there is often no good reason to insist on
+    a right fold, so please use 'foldWithKey' instead.
+-}
+foldrWithKey :: (k→v→a→a) → a → HashMap k v → a
+foldrWithKey !f s hm = case hm  of
+    HashMap.KV{hash, key, value}    →  f key value s
+    HashMap.BM{subnodes, bitmap}    →  foldr (flip (foldrWithKey f)) s subnodes.toList
+    HashMap.CO{hash, list}          →  foldr (\(k,v)\a -> f k v a) s list
+    
+
+{-- _O(n)_
+
+    Transform a map by applying a function to every value.
+-}
+mapValues :: (v→u) → HashMap k v → HashMap k u 
+mapValues !f hm = case hm  of
+    HashMap.KV{}        → hm.{value     ← f}
+    HashMap.BM{}        → hm.{subnodes  ← genericArrayMap (mapValues f)}
+    HashMap.CO{}        → hm.{list      ← map (fmap f)}
+
+{--
+    _O(n)_ 
+
+    Transform a map by applying a function to every key and its
+    associated value.
+-}
+mapWithKey :: (k -> v -> u) -> HashMap k v -> HashMap k u
+mapWithKey !f hm = case hm  of
+    HashMap.KV{key}     →  hm.{value    ← f key}
+    HashMap.BM{}        →  hm.{subnodes ← genericArrayMap (mapWithKey f)}
+    HashMap.CO{}        →  hm.{list     ← map fkv}
+        where
+            fkv (k,v) = (k, f k v)
+
+{--
+    _O(n)_
+    
+    Transform a map by applying an applicative functor to every key
+    and its associated value.
+-}
+traverseWithKey ∷ Applicative a ⇒ (k→v→a u) → HashMap k v → a (HashMap k u)
+traverseWithKey !f hm = case hm  of
+    HashMap.KV{}    →  hm.{value=} 
+                            <$> f hm.key hm.value
+    HashMap.BM{}    →  hm.{subnodes=} . arrayFromList 
+                            <$> traverse (traverseWithKey f) hm.subnodes.toList
+    HashMap.CO{}    →  hm.{list=} 
+                            <$> traverse fkv hm.list
+        where
+            fkv (k,v) = (,) k <$> f k v 
+
+{--
+    _O(n)_
+
+    Filter a map, retaining only mappings whose key and value satisfy
+    a given predicate.
+-}
+filterWithKey ∷ (k→v→Bool) → HashMap k v → HashMap k v
+filterWithKey !p hm = HashMap.filterWork p hm
+
+{--
+    _O(n)_
+
+    Filter a map, retaining only mappings whose value satisfies
+    a given predicate.
+-}
+filterValues ∷ (v→Bool) → HashMap k v → HashMap k v
+filterValues !p hm = HashMap.filterWork (\k\v -> p v) hm
+
+{--
+    _O(n*log m)_ 
+
+    Computes the difference of two maps. 
+
+    Returns a map that contains the mappings of the first map 
+    whose keys do not exist in the second.
+-}
+difference ∷ Eq k ⇒ HashMap k v → HashMap k u → HashMap k v
+difference left right = filterWithKey (\k\_ → not (k `member` right)) left 
+
+{--
+    _O(n*log m)_ 
+
+    Computes the intersection of two maps. 
+
+    Return a map that contains the mappings of the first map 
+    for keys that also exist in the second.
+-}
+intersection ∷ Eq k ⇒ HashMap k v → HashMap k u → HashMap k v
+intersection left right = filterWithKey (\k\_ → k `member` right) left
+
+{--
+    _O(n*log m)_
+
+    Computes the intersection of two maps, combining the values with a
+    given function.
+-}
+intersectionWith ∷ Eq k ⇒ (v→u→w) → HashMap k v → HashMap k u → HashMap k w
+intersectionWith !f left right = foldWithKey combine empty left
+    where
+        combine a k v = case lookup k right of
+            Just rv → insert k (f v rv) a 
+            Nothing → a
+
+{--
+    _O(n)_
+
+    Build a map from an association list.
+    If the list contains duplicate mappings, the later mappings take precedence.
+-}
+fromList ∷ Eq k ⇒ [(k,v)] → HashMap k v
+fromList = fromListWith const
+
+
+{--
+    _O(n)_
+    
+    Build a map from an association list.
+    Uses the provided function to merge values associated 
+    with duplicate keys.
+-}
+fromListWith ∷ Eq k ⇒ (v→v→v) → [(k,v)] → HashMap k v
+fromListWith !f = fold ins empty where
+    ins hm (k,v) = insertWith f k v hm
+
+{--
+    A map from hashable keys to values based on a Hash Mapped Array Trie.
+
+    A map cannot contain duplicate keys; each key can map to at most one value. 
+    A 'HashMap' makes no guarantees as to the order of its elements.
+
+    A node of the 'HashMap' is either
+
+        - a key/value pair
+        - a list of key/value tuples with pair-wise different keys,
+        where the hash code for all keys is identical (collisions). 
+        In the (hopefully) unlikely case of such collisions,
+        the performance of operations using the affected keys degrades to 
+        that of similar operations on lists. 
+        However, collision lists should be short, if occurring at all.
+        - a bitmapped node with a bitmap of size 32 to indicate
+        absence or presence of sub-nodes, followed by an array of up to 32
+        (sub)nodes.
+    
+    This implementation of a
+    'https://en.wikipedia.org/wiki/Persistent_data_structure persistent' 
+    hash array mapped trie uses 32 bit hash values as provided by Java and the
+    Frege 'Eq' type class. 
+
+    To find a value, the search starts with the root node.
+    If the node is a key/value pair, the node's key is compared to the search key.
+    When the keys are equal, the value is returned, otherwise the key is not in the map. 
+
+    If the node is a bitmapped node, the hash code of the lookup key is computed 
+    and the presence of the index provided by the last five bits is checked in the bitmap.
+    If it is there, the search continues with the corresponding node 
+    from the node array, otherwise the key is not in the map. With every recursion,
+    the next five bits of the hash code will be used for indexing.
+
+    It remains the case that the node is a collision list. The searched key's
+    hashcode either is the same as the one of the keys in the collision list, 
+    in which case the search degrades to a sequential search in that list, or it
+    is different, and in the latter case we know that the key is not in the
+    map without even touching the list.
+    
+    Hence, the worst case in searching must do the following: 
+    
+      - 1 time: compute the hash code of the key
+      - 7 times: find the next node through the sub-node array. This is in 
+        essence computation of an index with bit operations, followed by a
+        memory read. The reason this is done at max 7 times is that it consumes
+        5 bits of the hash code every time. With 32 bit hash codes, we have 6 5-bit
+        quantities that can range from 0 to 31, while the last 5-bit quantity has
+        only 2 significant bits, the other ones are always zero. The hashmapped nodes
+        at the 7th level of the map will consequently have at most 4 sub-nodes.
+        (Note that this is an intrinsic limit that is 
+        determined by the hash code bit size, *not* by the algorithm.
+        Should later Java versions choose to provide 'Long' bitcodes, for example,
+        this code will still work with marginal adjustments, 
+        just that there would be 13 levels of bitmapped nodes instead of 7.)
+      - _n_ times: comparison with the keys in the collision list, where _n_
+        is the number of elements of the collision list, or comparison with the
+        key of a key/value node (this is equivalent to a collision list of length 1).
+
+    It turns out that - absent hash collisions - lookups will be done almost in 
+    *constant time*. 
+    And so will be inserts and deletes, although with a slightly larger constant
+    factor due to the house-keeping necessary for a persistent data structure. 
+    However, even this are in the worst case 7 array copies, where 6 of them may
+    be of size 32 and one of size 4. Assuming that the pointers are 4 bytes long, 
+    this amounts to copying at most 196*4 bytes of memory. 
+
+    The map can have at most 2^32 non-bitmapped nodes maintained in
+    1+32+1024+32768+1048576+33554432+1073741824 bitmapped nodes. 
+    But because collision lists can be arbitrary long, 
+    the total number of key/value pairs is *not limited*. 
+
+-}
+
+abstract data HashMap k v =
+      {-- 
+        Singleton node holding a key with a value.
+        Also caches the 'hashCode' of the key to avoid
+        possibly expensive recomputation.
+      -}
+      KV {!hash :: Int, !key::k, value :: v }
+    | {--
+        Collision node, holding a list of key/value tuples
+        as well as the 'hashCode' all keys have in common.
+        This helps us avoid touching the list when the 
+        sought key has a different hash code. 
+        
+        [Invariant 1] length of 'list' is at least 2.
+        [Invariant 2] all keys in 'list' are different.
+      -}
+      CO {!hash :: Int, !list :: [(k,v)]}
+    | {--
+        Bitmapped node. It has a bitmap of 32 bits that indicate presence
+        or absence of a sub node for a given index which is in the range [0..31],
+        and an array of sub nodes. The size of the array is equal to the number
+        of 1-bits in the bitmap. An index is mapped to an actual array index
+        like so: If the corresponding 'bit' is set in the bitmap, the number
+        of less significant 1-bits in the bitmap is counted with 'bitCount' and
+        this is then the index in the array. Otherwise there is no 
+        sub node for that index.
+
+        [Invariant 1] The length of 'subnodes' equals the number of set bits in 'bitmap'.
+        [Invariant 2] There is no null pointer in 'subnodes'.
+        [Invariant 3] No subnode is the empty node.
+
+      -}
+      BM {!subnodes :: JArray (HashMap k v), !bitmap :: Int } where
+
+    --- this checks the invariants for a node
+    invariants ∷ Eq k ⇒ HashMap k v → Bool
+    invariants KV{} = true
+    invariants CO{list} = coinv list
+        where
+            coinv [a,b] = fst a != fst b
+            coinv (a:xs) = all (!= fst a) (map fst xs) && coinv xs
+            coinv _ = false -- less than 2 elements
+    invariants BM{bitmap, subnodes} = bitCount bitmap == arrayLength subnodes
+                                        && all isJust (genericToMaybeList subnodes)
+                                        && all (\n -> not (null n) && invariants n) 
+                                                        (toList subnodes)
+
+    --- transform an index into an actual array index
+    --- > indexMap bmap nodes inx
+    --- _bmap_ is the bitmap
+    --- _nodes_ is the number of actual subnodes
+    --- _inx_ is a hash code or part of a hash code, whose least significant 5 bits are the index
+    --- returns a number in the range 0..nodes, where _nodes_ means "no corresponding node"
+    indexMap !bmap !nodes !inx = if bmap .&. b == 0 then nodes
+                                else bitCount (bmap .&. (b-1)) 
+        where !b = Int.bit (inx .&. 0x1f)
+
+    --- _O(1)_
+    --- The empty 'HashMap', represented by a bitmapped node with a bitmap that is 0.
+    empty :: HashMap k v
+    !empty = BM{subnodes = arrayFromList [], bitmap = 0}
+
+    --- _O(1)_ 
+    --- @true@ if and only if the argument is the empty 'HashMap', otherwise @false@
+    null BM{bitmap} = bitmap == 0
+    null _ = false
+
+
+
+    --- _O(n)_ Compute a 3-tuple of
+    --- - the number of collision nodes
+    --- - the total number of keys that have a collision
+    --- - a list of lists of colliding keys
+    collisions = go (0, 0, [])
+        where
+            go t KV{} = t
+            go t BM{subnodes} = fold go t subnodes.toList
+            go t CO{list} = case t of
+                    (a, b, kss) → (a', b', kss')
+                        where 
+                            !a'   = a+1
+                            !b'   = b+length list
+                            !fss  = map fst list
+                            !kss' = fss:kss  
+
+    --- _O(log n)_
+    --- > hm.insert k v 
+    --- Variant of 'insert' that is better suited for left folds and supports dot-notation.
+    insert ∷ Eq k ⇒ HashMap k v → k → v → HashMap k v
+    insert hm k v = insertWork const k v hm (hashCode k) 0
+
+    --- _O(log n)_
+    --- > hm.delete k 
+    --- Variant of 'delete' that is better suited for left folds and supports dot-notation.
+    delete ∷ Eq k ⇒ HashMap k v → k → HashMap k v
+    delete hm k = deleteWork k hm (hashCode k) 0
+
+    --- _O(log n)_
+    --- > hm.lookup k 
+    --- Variant of 'lookup' that supports dot-notation.
+    lookup ∷ Eq k ⇒ HashMap k v → k → Maybe v
+    lookup hm k = lookupWork k hm (hashCode k) 0
+
+
+    --- > insertWork f "foo" v node h s
+    --- _f_ is the function called as @f newval oldval@ if the key is already in the map
+    --- _h_ is the *unshifted* original hash code!
+    --- _s_ is the number of bits to shift _h_ to the right for getting an index at this level
+    private insertWork ∷ Eq k ⇒ (v→v→v) → k → v → HashMap k v → Int → Int → HashMap k v
+    private insertWork !f !k v !node !h !s = case node  of
+        KV{hash, key, value}
+            | hash == h, key == k = case f v value of !v -> node.{value = v} -- update
+            | hash == h = CO{hash,list=(k,v)!:(key,value)!:[]}  -- collision
+            | otherwise = joinNodes s KV{hash=h, key=k, value=v} node  
+        BM{subnodes, bitmap}
+            | bitmap == 0 = KV{hash=h, key=k, value=v}      -- replace empty
+            | otherwise   = case indexMap bitmap (arrayLength subnodes) vi of
+                i | i < arrayLength subnodes = node.{subnodes = cloneSetElemAt i sub subnodes} 
+                  | otherwise = BM{bitmap = nbm, subnodes = insertAt j nkv subnodes}
+                  where
+                    sub   = insertWork f k v (elemAt subnodes i) h (s+5)  -- recurse
+                    !nbit = Int.bit vi
+                    !nbm  = bitmap .|. nbit
+                    !j    = bitCount (nbm .&. (nbit-1))
+                    nkv   = KV{hash=h, key=k, value=v}
+            where
+                !vi   = (h `ushiftR` s) .&. 0x1F  -- virtual index
+        CO{hash, list}
+            | hash == h = case List.lookup k list of
+                Just v' -> case rFilterNEQ k [] list of
+                                    !rev -> case f v v' of
+                                        !nv -> node.{list = (k, nv) !: rev}
+                nothing       -> node.{list = (k,v) !: list}        -- very bad, collision list grows
+            | otherwise = joinNodes s KV{hash=h, key=k, value=v} node 
+
+    --- > deleteWork "foo" node h s
+    --- _h_ is the *unshifted* original hash code!
+    --- _s_ is the number of bits to shift _h_ to the right for getting an index at this level
+    private deleteWork ∷ Eq k ⇒ k  → HashMap k v → Int → Int → HashMap k v
+    private deleteWork !k !node !h !s = case node  of
+        KV{hash, key, value}
+            | hash == h, key == k   = empty
+            | otherwise             = node      -- not found
+        BM{subnodes, bitmap}
+            | bitmap == 0           = node      -- not found
+            | otherwise   = case indexMap bitmap (arrayLength subnodes) vi of
+                i | i < arrayLength subnodes = case deleteWork k (elemAt subnodes i) h (s+5) of
+                        !sub | null sub  = node.{bitmap = nbm, subnodes = removeAt i subnodes}
+                             | otherwise = node.{subnodes = cloneSetElemAt i sub subnodes} 
+                  | otherwise = node            -- not found 
+                  where
+                    !nbit = Int.bit vi
+                    !nbm  = bitmap .&. complement nbit
+            where
+                !vi   = (h `ushiftR` s) .&. 0x1F  -- virtual index
+        CO{hash, list}
+            | hash == h = case rFilterNEQ k [] list of
+                            [(key, value)] → KV{hash,key,value}
+                            kvs            → node.{list = kvs}
+            | otherwise = node                  -- not found
+
+    --- > lookupWork "foo" node h s
+    --- _h_ is the *unshifted* original hash code!
+    --- _s_ is the number of bits to shift _h_ to the right for getting an index at this level
+    private lookupWork ∷ Eq k ⇒ k → HashMap k v → Int → Int → Maybe v
+    private lookupWork !k !node !h !s = case node of
+        KV{hash, key, value}
+            | hash == h, key == k   = Just value
+            | otherwise             = Nothing
+        BM{subnodes, bitmap}
+            | bitmap == 0           = Nothing
+            | otherwise             = case indexMap bitmap (arrayLength subnodes) vi of
+                inx | inx < arrayLength subnodes = lookupWork k (elemAt subnodes inx) h (s+5)
+                    | otherwise                  = Nothing
+            where
+                !vi   = (h `ushiftR` s) .&. 0x1F  -- virtual index
+        CO{hash,list}
+            | hash != h             = Nothing
+            | otherwise             = List.lookup k list
+
+    --- > indexWork "foo" node h s
+    --- _h_ is the *unshifted* original hash code!
+    --- _s_ is the number of bits to shift _h_ to the right for getting an index at this level
+    private indexWork ∷ Eq k ⇒ k → HashMap k v → Int → Int → v
+    private indexWork !k !node !h !s = case node of
+        KV{hash, key, value}
+            | hash == h, key == k   = value
+            | otherwise             = error "key not found in HashMap"
+        BM{subnodes, bitmap}
+            | bitmap == 0           = error "key not found in HashMap"
+            | otherwise             = case indexMap bitmap (arrayLength subnodes) vi of
+                inx | inx < arrayLength subnodes = indexWork k (elemAt subnodes inx) h (s+5)
+                    | otherwise                  = error "key not found in HashMap"
+            where
+                !vi   = (h `ushiftR` s) .&. 0x1F  -- virtual index
+        CO{hash,list}
+            | hash != h             = error "key not found in HashMap"
+            | otherwise             = case List.lookup k list of
+                        Nothing     = error "key not found in HashMap"
+                        Just v      = v
+
+    --- unionWork f hm1 hm2 s
+    --- The union of two *non empty* hash maps. 
+    --- The cases for empty must be handled in the calling function! 
+    --- _f_ is the function to combine values for equal keys
+    --- _hm1_ is the left hashmap
+    --- _hm2_ is the right hashmap
+    --- _s_ is the number of bits to shift hash keys to the right (i.e. level we are working on) 
+    private unionWork ∷ Eq k ⇒ (v → v → v) → HashMap k v → HashMap k v → Int → HashMap k v
+    private unionWork f left right s = case left  of
+        KV{} -> insertWork f left.key  left.value  right left.hash  s
+        BM{} -> case right of
+            BM{} -> BM{subnodes, bitmap} where
+                    bitmap = left.bitmap .|. right.bitmap
+                    subnodes = arrayFromList (loop 1)
+                    loop 0 = []
+                    loop b
+                        | left.bitmap  .&. b != 0,
+                          right.bitmap .&. b != 0 
+                        = unionWork f el er (s+5) !: loop (b+b)
+                        | left.bitmap  .&. b != 0 = el !: loop (b+b)
+                        | right.bitmap .&. b != 0 = er !: loop (b+b)
+                        | otherwise = loop (b+b) 
+                        where
+                            el = (elemAt left.subnodes  (bitCount (left.bitmap  .&. (b-1))))
+                            er = (elemAt right.subnodes (bitCount (right.bitmap .&. (b-1))))  
+            _    -> unionWork (flip f) right left s
+        CO{hash,list} -> fold ins right list where
+            ins hm (k,v) = insertWork f k v hm hash s
+
+    --- filterWork p hm
+    --- remove all mappings that do not satisfy the predicate
+    --- _p_ is the predicate
+    --- _hm_ is the hashmap
+    --- When reconstructing bitmapped nodes, sub-nodes can vanish
+    private filterWork  ∷ (k → v → Bool) → HashMap k v → HashMap k v
+    private filterWork p hm = case hm  of
+        KV{key, value}
+            | p key value   = hm
+            | otherwise     = empty
+        BM{}                = loop hm 1 where
+                loop !hm 0  = if hm.bitmap == 0 then empty else hm
+                loop !hm !b
+                    | hm.bitmap == 0       = empty
+                    | hm.bitmap .&. b == 0 = loop hm (b+b)
+                    | otherwise = case filterWork p (elemAt hm.subnodes index) of
+                        el | null el = loop BM{bitmap   = hm.bitmap .^. b,
+                                          subnodes = removeAt index hm.subnodes} (b+b)
+                           | otherwise = loop hm.{subnodes = cloneSetElemAt index el hm.subnodes} (b+b)
+                    where !index = bitCount (hm.bitmap .&. (b-1))
+        HashMap.CO{list}    = case rFilterP p [] list of
+            []      → empty
+            [(k,v)] → KV{hash=hm.hash, key=k, value=v}
+            other   → hm.{list = other}
+
+
+    
+ 
+    --- join two non bitmapped nodes with *different* hash codes into a BM node
+    --- works for KV/KV, KV/CO, CO/KV and CO/CO
+    private joinNodes !s !n1 !n2
+        -- different hashes that map to same index at this level
+        -- try next level, there must be a difference
+        | h1 == h2  = BM{bitmap, subnodes = mkSingleton (joinNodes (s+5) n1 n2)}
+        | h1 <  h2  = BM{bitmap, subnodes = mkPair n1 n2}
+        | otherwise = BM{bitmap, subnodes = mkPair n2 n1}  
+        where
+            !h1 = (n1.hash `ushiftR` s) .&. 0x1F
+            !h2 = (n2.hash `ushiftR` s) .&. 0x1F
+            !bitmap = Int.bit h1 .|. Int.bit h2
+
+    {--
+        Reverse list while filtering out some key.
+
+        Consider a collision list @[("foo", n), ("...", m)]@ in a word counting application.
+        Assume that "foo" occurs many times, while "..." occurs just once.
+        So if we would re-compute the collision list with
+        > ("foo", n+1) : filter (!="foo")
+        we would get
+        > ("foo", n+1) : ("...", m) : filter (!="foo") []
+        because 'filter' is lazy in the tail. The next time "foo" occurs, we would get
+        > ("foo", n+1+1) : ("...", m) : filter (!="foo") (filter (!="foo") [])
+        thus building up thunks. In the end, this breaks down on operations like
+        'size', 'keys', 'values', 'each' ... etc. because the wrapped up filters will have
+        to get evaluated, and a stack overflow may happen.
+    -}
+    private rFilterNEQ !k !acc (t:ts)
+        | k == fst t = rFilterNEQ k acc ts
+        | otherwise  = rFilterNEQ k (t:acc) ts
+    private rFilterNEQ _ acc [] = acc
+    
+    private rFilterP p !acc ((t@(k,v)):ts)
+        | p k v     = rFilterP p (t:acc) ts
+        | otherwise = rFilterP p acc     ts
+    private rFilterP p !acc [] = acc
+
+-- Instances
+
+instance ListEmpty (HashMap k) 
+
+instance ListSource (HashMap k) where
+    --- Return the list of values in a 'HashMap'.
+    --- Note that this is not symmetric with 'fromList'!
+    toList = values
+
+instance (Eq k) ⇒ ListMonoid (HashMap k)  where
+    (++) = union
+
+instance (Eq k) ⇒ Monoid (HashMap k v) where
+    --- The empty 'HashMap'.
+    mempty ∷ Eq k ⇒ HashMap k v
+    mempty  = HashMap.empty
+    --- builds the 'union' of two 'HashMap's
+    mappend ∷ Eq k ⇒ HashMap k v → HashMap k v → HashMap k v
+    mappend = union 
+
+instance Functor (HashMap k) where
+    fmap ∷ (v → u) → HashMap k v → HashMap k u
+    fmap = mapValues
+
+instance Foldable (HashMap k) where
+    foldl = foldValues
+    foldr = foldrValues
+
+instance Traversable (HashMap k) where
+    traverse f = traverseWithKey (const f) 
+
+instance (ToJSON k, ToJSON v) ⇒ ToJSON (HashMap k v) where
+    toJSON node = case node  of
+        HashMap.KV{hash, key, value}    → struct "KV" (hash, key, value)
+        HashMap.CO{hash, list}          → struct "CO" (hash, list)
+        HashMap.BM{subnodes, bitmap}    → struct "BM" (subnodes, bitmap)
+
+
+instance (Eq k, Eq v) ⇒ Eq (HashMap k v) where
+    hm1 == hm2 = case hm1  of
+        HashMap.KV{} →  case hm2  of
+            HashMap.KV{} →  hm1.hash == hm2.hash
+                                && hm1.key == hm2.key && hm1.value == hm2.value
+            _            →  false
+        HashMap.CO{} →  case hm2  of
+            HashMap.CO{} →  hm1.hash == hm2.hash
+                                && length hm1.list == length hm2.list
+                                && null (hm1.list List.\\ hm2.list)
+            _            →  false 
+
+        HashMap.BM{} →  case hm2  of
+            HashMap.BM{} →  hm1.bitmap == hm2.bitmap
+                                && hm1.subnodes == hm2.subnodes
+            _            →  false
+
+    hashCode hm = case hm  of
+            HashMap.KV{hash, key, value} →  fold mkHash 1 [hash, hashCode value]
+            HashMap.CO{hash, list}       →  fold mkHash 2 [hash, hashCode (map snd list)]
+            HashMap.BM{subnodes, bitmap} →  fold mkHash 3 [bitmap, hashCode subnodes]
+        where
+            mkHash a b = (31*a)+b
+
+
+derive ArrayElement (HashMap k v)
+
+instance (Show k, Show v) => Show (HashMap k v) where
+    show hm = "fromList " ++ show (each hm)
+
+-- Array primitives
+
+native module where {
+    // clone and set element
+    private static final<K,V> THashMap<K,V>[] cSEA(int inx, THashMap<K,V> node, THashMap<K,V>[] array) {
+        THashMap<K,V>[] neu = array.clone();
+        neu[inx] = node;
+        return neu;
+    }
+    
+    // insert element in a copy that is one element greater
+    private final static<K,V> THashMap<K,V>[] iA(int inx, THashMap<K,V> node, THashMap<K,V>[] array) {
+        final int sz   = array.length;
+        THashMap<K,V>[] neu = java.util.Arrays.copyOf(array, 1+sz);
+        if (inx < sz)
+            java.lang.System.arraycopy(array, inx, neu, inx+1, sz-inx);
+        neu[inx] = node;
+        return neu;
+    }
+
+    // delete element in a copy that is one element smaller
+    private final static<K,V> THashMap<K,V>[] dA(int inx, THashMap<K,V>[] array) {
+        final int sz   = array.length;
+        THashMap<K,V>[] neu = java.util.Arrays.copyOf(array, sz-1);
+        if (inx != sz-1)
+            java.lang.System.arraycopy(array, inx+1, neu, inx, sz-1-inx);
+        return neu;
+    }
+
+
+    // make a singleton array
+    private final static<K,V> THashMap<K,V>[] mkS(THashMap<K,V> node) {
+        @SuppressWarnings("unchecked")
+        final THashMap<K,V>[] neu = (THashMap<K,V>[]) new THashMap[] { node };
+        return neu;
+    }
+    
+    // make an  array with 2 elements
+    private final static<K,V> THashMap<K,V>[] mkP(THashMap<K,V> node1, THashMap<K,V> node2) {
+        @SuppressWarnings("unchecked")
+        final THashMap<K,V>[] neu = (THashMap<K,V>[]) new THashMap[] { node1, node2 };
+        return neu;
+    }
+}
+
+{--
+    Clone (duplicate) an array, and set a single element to a new value
+-}
+private pure native cloneSetElemAt HashMap.cSEA{k,v} 
+        ∷ Int → HashMap k v → JArray (HashMap k v) → JArray (HashMap k v)
+-- cloneSetElemAt ∷ Int → HashMap k v → JArray (HashMap k v) → JArray (HashMap k v)
+-- cloneSetElemAt !inx !node !array = ST.run do
+--     new ← thaw (mutable array)
+--     setElemAt new inx node
+--     freeze new
+
+{--
+    Insert an element in a copy of an array that is one element greater.
+-}
+private pure native insertAt HashMap.iA{k,v} 
+        ∷ Int → HashMap k v → JArray (HashMap k v) → JArray (HashMap k v)
+-- insertAt ∷ Int → HashMap k v → JArray (HashMap k v) → JArray (HashMap k v)
+-- insertAt !inx !node !array = ST.run do
+--         new ← copyOf (mutable array) (1+sz)
+--         if inx == sz 
+--             then do -- append at end
+--                 setElemAt new sz node
+--             else do
+--                 -- old i0, i1, i2, sz == 3
+--                 -- new i0, n, i1, i2
+--                 -- shift elements from j on one to the right
+--                 arraycopy (mutable array) inx new (inx+1) (sz-inx)
+--                 setElemAt new inx node
+--         freeze new
+--     where
+--         !sz = arrayLength array
+
+{--
+    > removeAt inx arr
+    Returns an array that has 1 element less than @arr@ and the element at index
+    @inx@ is removed.
+-}
+private pure native removeAt HashMap.dA{k,v}
+        ∷ Int → JArray (HashMap k v) → JArray (HashMap k v)
+-- private removeAt ∷ Int → JArray (HashMap k v) → JArray (HashMap k v)
+-- private removeAt inx arr = ST.run do
+--         new ← copyOf (mutable arr) (sz-1)
+--         unless (inx == sz-1) do
+--             arraycopy (mutable arr) (inx+1) new inx (sz-1-inx)
+--         freeze new
+--     where
+--         !sz = arrayLength arr
+
+{--
+    Make a 1 element array
+-}
+private pure native mkSingleton HashMap.mkS{k,v} 
+        ∷ HashMap k v → JArray (HashMap k v)
+-- mkSingleton ∷ HashMap k v → JArray (HashMap k v)
+-- mkSingleton !node = ST.run do
+--     new ← newArray 1
+--     setElemAt new 0 node
+--     freeze new
+
+{--
+    Make a 2 element array
+-}
+private pure native mkPair HashMap.mkP{k,v} 
+        ∷ HashMap k v → HashMap k v → JArray (HashMap k v)
+-- mkPair ∷ HashMap k v → HashMap k v → JArray (HashMap k v)
+-- mkPair !node1 !node2 = ST.run do
+--     new ← newArray 2
+--     setElemAt new 0 node1
+--     setElemAt new 1 node2
+--     freeze new
+
+--- clone an array
+private native thaw clone ∷ ArrayOf s (HashMap k v) -> ST s (ArrayOf s (HashMap k v))
+
+--- freeze an array
+private freeze = readonly id
+
+-- use the native array.length to get the length
+-- private pure native arrayLength ".length" ∷ JArray (HashMap k v) → Int 
+
+
+--- Copies the specified array, truncating or padding with nulls (if necessary) so the copy has the specified length.
+private native copyOf java.util.Arrays.copyOf{} 
+        :: ArrayOf s (HashMap k v) -> Int -> ST s (ArrayOf s (HashMap k v)) 
+
+{--
+    > arraycopy(Object src, int srcPos, Object dest, int destPos, int length)
+
+    Copies an array from the specified source array, 
+    beginning at the specified position, to the specified position of the destination array.
+    
+    Can be used to do overlapping copies.
+-}
+private native arraycopy java.lang.System.arraycopy{} 
+    ∷ ArrayOf s (HashMap k v) -> Int -> ArrayOf s (HashMap k v) -> Int -> Int -> ST s ()

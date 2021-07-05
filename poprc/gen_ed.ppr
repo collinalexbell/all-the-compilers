@@ -1,0 +1,89 @@
+__, Copyright 2012-2019 Dustin DeWeese
+  | This file is part of PoprC.
+  |
+  |  PoprC is free software: you can redistribute it and/or modify
+  |  it under the terms of the GNU General Public License as published by
+  |  the Free Software Foundation, either version 3 of the License, or
+  |  (at your option) any later version.
+  |
+  |  PoprC is distributed in the hope that it will be useful,
+  |  but WITHOUT ANY WARRANTY; without even the implied warranty of
+  |  MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE.  See the
+  |  GNU General Public License for more details.
+  |
+  |  You should have received a copy of the GNU General Public License
+  |  along with PoprC.  If not, see <http://www.gnu.org/licenses/>.
+  |______________________________________________________________________
+
+module gen_ed:
+
+imports:
+  module list
+  module stack
+  module control
+  module num
+  module logic
+  module algorithm
+  module io
+
+dupu: [dup] dip12
+
+__ a [fn] [test]
+iterate_linear:
+  swap [dup [ap12 swap2 drop] dip22] dip23 swap __ a' bool [fn] [test]
+    [[dup [$] dip21] dip22 iterate_linear] ap20 __ a' bool [[fn] $ [fn] [test] iterate_linear]
+    [] ifte $
+
+il_test: [3+] [dup 10<] iterate_linear
+
+do_linear: [$keep] dip22 iterate_linear
+
+dl_test: [3+] [dup 10<] do_linear
+dl_test2: [] pushl [[3+].] [[dup 10<]. popr] do_linear head
+__ {hide}
+dl_test3:
+  [""] ap20
+    [[[read] dip23 swap].]
+    [[dup [++] dip21 "" =s not]. popr]
+    do_linear get3
+
+__ breaks for s/iterate/do/
+count_lines:
+  [0] ap20 __ IO h cnt
+    [[[getline drop] dip22 1+].]
+    [[[is_eof] dip23 swap not]. popr]
+    iterate_linear get3
+
+count_lines_test:
+  getline_std "in:" swap ++
+    open count_lines [close] dip21
+    ->str write_std
+
+sum_lines:
+  [0] ap20 __ IO h cnt
+    [[[getline <-str] dip23 +].]
+    [[[is_eof] dip23 swap not]. popr]
+    iterate_linear get3
+
+sum_lines_test:
+  getline_std "in:" swap ++
+    open sum_lines [close] dip21
+    ->str write_std
+
+read_list:
+  [[]] ap20 __ IO h cnt
+    [[[getline] dip23 pushl].]
+    [[[is_eof] dip23 swap not]. popr]
+    iterate_linear get3
+
+write_list:
+  [] ap30
+    [[pull [write "\n" write] dip32].]
+    [[dup head valid]. popr]
+    iterate_linear tail get2
+
+__ IO in_stream out_stream
+reverse_list:
+  [read_list reverse] dip23
+    exch2 [write_list] dip32
+    swap

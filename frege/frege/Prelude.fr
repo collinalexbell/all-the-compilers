@@ -1,0 +1,177 @@
+--- Public interface for the various prelude modules
+protected package frege.Prelude where
+
+import frege.prelude.PreludeBase public hiding(Ordering, Integral.big)
+import frege.control.Semigroupoid public (.)
+import frege.control.Category public (id)
+-- provide some names Haskellers are used to
+import frege.prelude.PreludeBase public (Ordering(Eq EQ, Lt LT, Gt GT), != /=)
+import frege.prelude.PreludeBase public (from toEnum, ord fromEnum)
+import frege.prelude.PreludeBase public (Integral.big toInteger)
+import frege.prelude.PreludeDecimal public
+import frege.prelude.PreludeList public
+import frege.prelude.PreludeList public (fold foldl', foldl1 foldl1')
+import frege.prelude.PreludeText public
+import frege.prelude.PreludeMonad public
+import frege.prelude.PreludeIO public
+import frege.prelude.PreludeArrays public
+import frege.java.util.Regex public
+import frege.prelude.Maybe public
+import frege.java.Lang public
+import frege.java.IO public 
+import frege.java.Util (Scanner)
+
+infix 7 `/=`
+
+-- derived instances for named types
+derive Eq   Ordering
+derive Ord  Ordering
+derive Enum Ordering
+
+derive Eq   (Either a b)
+derive Ord  (Either a b)
+
+
+-- ----------------------- tuple instances ---------------------------
+derive Ord      ()
+
+derive Eq       (a,b)
+derive Ord      (a,b)
+instance (Bounded a, Bounded b) => Bounded (a,b) where
+    maxBound = (maxBound, maxBound) 
+    minBound = (minBound, minBound)
+
+
+derive Eq       (a,b,c)
+derive Ord      (a,b,c)
+instance (Bounded a, Bounded b, Bounded c) => Bounded (a,b,c) where
+    maxBound = (maxBound, maxBound, maxBound) 
+    minBound = (minBound, minBound, minBound)
+
+-- -------------------------- decimal instances -----------------------------------
+instance Show Decimal where
+    show :: Decimal → String
+    show d  | d.isNaN         = "NaN"
+            | d.exponent == 0 = show d.coefficient
+            | otherwise       = show d.coefficient ++ "e" ++ show d.exponent
+
+--- for now
+
+parseDecimal s = case s of
+    m~'^(-)?(\d+)(\.\d+)?([eE]([+-]?)(\d+))?$' → let
+                minus = maybe false (=="-") (m.group 1)
+                sign  = if minus then (-1L) else 1L
+                ipart = fromMaybe "?" (m.group 2)           -- must be there, since no ?
+                fpart = maybe "" tail (m.group 3)           -- skip '.' if there at all
+                esign = case m.group 5 of
+                    Just "-" → (-1)
+                    Just "+" → 1
+                    nothing  → 1
+                epart = maybe (Right 0) String.int (m.group 6)
+            in case ipart.replaceFirst '^0*' "" of                              -- cut leading 0 
+                ipart -> case fpart.replaceFirst '0*$' "" of                    -- cut trailing 0
+                    fpart -> case ipart of
+                                ""  | null fpart = Right Decimal.zero
+                                _   = do                            -- we have abc.000xyz
+                                        e ← epart
+                                        let effe = e * esign - length fpart
+                                        co ← (ipart ++ fpart).long
+                                        let ecoff = co * sign
+                                        if ecoff > Decimal.maxCoefficient 
+                                            then Left (NumberFormatException.new "coefficient too big")
+                                        else if ecoff < Decimal.minCoefficient
+                                            then Left (NumberFormatException.new "coefficient too small")
+                                        else if effe > Decimal.maxExponent
+                                            then Left (NumberFormatException.new "exponent too big")
+                                        else if effe < Decimal.minExponent
+                                            then Left (NumberFormatException.new "exponent too small")
+                                        else pure (Decimal.pack (co*sign) effe)
+    _ → Left (NumberFormatException.new ("'" ++ s ++  "'" ++ "  doesn't match  ^(-)?(\\d+)(\\.\\d+)?([eE]([+-]?)(\\d+))?$"))
+
+
+--- Print a value to the standard output writer.
+--- This will come out UTF8 encoded.
+print !d   = stdout.print (display d)
+
+--- Print a value to the standard output stream and append a platform typical new line character.
+--- This will come out UTF8 encoded.
+println !d = stdout.println (display d)
+
+--- write a character to 'stdout'
+putChar :: Char -> IO ()
+putChar = stdout.putChar
+
+--- write a 'String' to standard output (Haskell compatibility)
+putStr ::  String -> IO()
+putStr = stdout.print
+
+--- write a 'String' and a new line to standard output (Haskell compatibility)
+putStrLn ::  String -> IO()
+putStrLn = stdout.println
+
+
+--- read a character from the standard input reader
+getChar = IO.stdin.getChar
+
+--- read a line from the standard input reader, end of line characters are removed.
+getLine = IO.stdin.getLine
+
+--- The 'getContents' operation returns all user input as a single string
+getContents = getContentsOf IO.stdin
+
+--- The 'getContentsOf' operation returns all input from the supplied 'Reader' as a single string.
+--- After completion, the 'Reader' is closed.
+getContentsOf :: MutableIO Reader -> IO String
+getContentsOf x = do
+        scanner <- Scanner.new x
+        scanner.useDelimiter ´\uEdda$´ >>= Scanner.next
+            `catch` nothing
+            `finally` scanner.close
+    where
+        nothing :: Util.NoSuchElementException -> IO String
+        nothing _ = return ""
+
+{--
+    The 'interact' function takes a function of type 'String' -> 'String' as its argument. 
+    The entire input from the standard input device is passed to this function as its argument, 
+    and the resulting string is output on the standard output device.
+-}    
+interact f = do
+    string <- getContents
+    putStr (f string)
+
+--- The readFile function reads a file and returns the contents of the file as a string.
+--- If the file doesn't exist, a 'FileNotFoundException' will be thrown.
+readFile string = do
+    openReader string >>= getContentsOf
+
+--- Writes the 'String' given as second argument to the file whose name is given as the first argument.
+--- After completion, the file will be closed.
+writeFile path string = do
+    pw <- openWriter path
+    pw.print string
+        `finally`  pw.close
+
+--- Appends the 'String' given as second argument to the file whose name is given as the first argument.
+--- After completion, the file will be closed.
+appendFile path string = do
+    pw <- appendWriter path
+    pw.print string
+        `finally`  pw.close
+
+--- nowarn: performUnsafe        
+{-- unsafe trace, returns always *false* and can thus be used like
+    
+    > fun x y
+    >    | trace   ("x is " ++ show x) = undefined
+    >    | traceLn ("y is " ++ show y) = undefined
+    >    | otherwise = ......
+    
+    Note that this imposes strictness on the traced data.
+-}
+trace   str = IO.performUnsafe (stderr.print str >> IO.return false)
+
+--- nowarn: performUnsafe
+--- same as 'trace' but appends a line break 
+traceLn str = IO.performUnsafe (stderr.println str >> IO.return false)
+

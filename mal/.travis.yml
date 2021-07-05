@@ -1,0 +1,19 @@
+sudo: required
+
+# matrix layout based on:
+# https://github.com/libressl-portable/portable/blob/9e090286b55def5ca2c0cc375c65023a70d8796e/.travis.yml
+
+matrix:
+  include:
+    - {env: IMPL=objc NO_DOCKER=1, os: osx, osx_image: xcode7}
+    - {env: IMPL=swift NO_DOCKER=1, os: osx, osx_image: xcode7.3}
+    - {env: IMPL=swift3 NO_DOCKER=1, os: osx, osx_image: xcode8}
+    - {env: IMPL=swift4 NO_DOCKER=1, os: osx, osx_image: xcode10}
+    - {env: IMPL=swift5 NO_DOCKER=1, os: osx, osx_image: xcode11}
+
+script:
+  # Build, test, perf
+  - ./ci.sh build ${IMPL}
+  - ./ci.sh test ${IMPL}
+  - STEP=stepA REGRESS=1 HARD=1 OPTIONAL=0 ./ci.sh test ${IMPL}
+  - ./ci.sh perf ${IMPL}

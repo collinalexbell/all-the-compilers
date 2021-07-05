@@ -1,0 +1,221 @@
+--- The content of a source file in parsed form.
+module frege.compiler.types.SourceDefinitions where 
+
+import  frege.compiler.enums.TokenID(TokenID)
+import  frege.compiler.types.Positions
+import  frege.compiler.types.Tokens
+import  frege.compiler.enums.Visibility
+import  frege.compiler.enums.Literals
+import  frege.compiler.enums.CaseKind
+import  frege.compiler.types.SNames
+import  frege.compiler.types.ImportDetails
+import  frege.compiler.types.Types
+import  frege.compiler.instances.PositionedSName
+import  frege.compiler.types.ConstructorField
+
+
+--- create 'App' 
+nApp a b = App a b 
+
+infixl 16 `App` `nApp`  `TApp`  
+
+
+{--
+ * definitions
+ -}
+data DefinitionS =
+      ImpDcl    {pos::Position, pack::String, as::Maybe String,
+                    imports::ImportList}
+    | FixDcl    {pos::Position, opid::TokenID, ops::[String]}
+    | DocDcl    {pos::Position, text::String}
+    | TypDcl    {pos::Position, vis::Visibility, name::String,
+                    vars::[TauS], typ::SigmaS, doc::Maybe String}
+    | ClaDcl    {pos::Position, vis::Visibility, name::String,
+                    clvar::TauS, supers::[SName],
+                    defs::[DefinitionS], doc::Maybe String}
+    | InsDcl    {pos::Position, vis::Visibility,
+                    clas::SName, typ::SigmaS,
+                    defs::[DefinitionS], doc::Maybe String}
+    | DrvDcl    {pos::Position, vis::Visibility,
+                    clas::SName, typ::SigmaS,
+                    doc::Maybe String}
+    | AnnDcl    {pos::Position, vis::Visibility, name::String, typ::SigmaS, doc::Maybe String}
+    | NatDcl    {pos::Position, vis::Visibility, name::String, txs::[SigExs],
+                    meth::String, isPure::Bool, gargs::Maybe [TauS], doc::Maybe String}
+    | FunDcl    {vis::Visibility, lhs::ExprS,
+                    pats::[ExprS], expr::ExprS,
+                    doc::Maybe String,
+                    positions::[Token]    --- the tokens that introduce the equally named definitions
+                }
+    | DatDcl    {pos::Position, vis::Visibility, name::String, newt :: Bool,
+                    vars::[TauS], ctrs::[DCon], defs::[DefinitionS],
+                    doc::Maybe String}
+    | JavDcl    {pos::Position, vis::Visibility, name::String, isPure::Bool,
+                    jclas::String, vars::[TauS], gargs::Maybe [TauS], defs::[DefinitionS],
+                    doc::Maybe String}
+    | ModDcl    {pos::Position, extending::Maybe TauS, implementing::[TauS], code::[Token]}
+
+--- Is this a function binding?
+--- If so, return the identifier.
+funbinding FunDcl{lhs = Vbl{name=Simple{id}},pats}
+    | null pats = Just id
+    | id.value != "!", 
+      id.value != "?",
+      id.value != "@",
+      id.value != "~" = Just id
+funbinding _ = Nothing
+
+--- Is this a real pattern, not just 
+--- > !name
+patbinding FunDcl{lhs = Con{}} = true
+--- > x @ foo
+--- is a pattern binding, but not
+--- > @
+patbinding FunDcl{lhs = Vbl{name=Simple{id}}, pats=(_:_)}
+                               = id.value == "@" || id.value == "~"
+patbinding _                   = false
+
+
+
+{--
+    Alternatives (constructors) in a data declaration.
+    
+    Note: every field has its own strictness information, the overall strictness 
+    of the data constructor is derived from that.
+ -}
+data DCon = DCon {pos::Position, vis::Visibility, name::String,
+                  flds::[ConField SName], doc::Maybe String}
+
+
+type DConS = DCon
+
+
+{--
+    Source expressions are untyped and contain some constructs
+    that will get desugared later.
+    
+    In addition, contrary to the desugared forms they don't have 
+    patterns yet. They, too, are represented by 'ExprS'. 
+    
+    Infix operator application is parsed as if all operators
+    were right associative and had the same precedence:
+    
+    > a * b + c
+    
+    results in 
+    
+    > Infx(*, a, Infx(+, b, c))
+    
+    This will be desugared later into plain function applications ('App')
+    when the precedence and associativity of the operators is known.
+    
+    In order to distinguish the above from
+    
+    > a * (b + c)
+    
+    we have the 'Term' variant, which keeps track of parentheses.
+    Hence the above is parsed as:
+    
+    > Infx(*, a, Term(Infx(+,b,c)))
+    
+    and operator desugaring will not be able to see through the 'Term'.
+    
+    The desugaring of do-expressions must take care of refutable patterns.
+    If the generator pattern is refutable, the right hand side must be wrapped
+    in a case expression. Here is an example:
+    
+    > do
+    >    P x <- foo
+    >    return x
+    
+    Unfortunately, at parsing time, we don't know anything about constructor
+    P yet and in particular whether that pattern is refutable or not.
+    
+    Therefore, we first desugar to:
+    
+    > foo >>= \P x -> return x
+    
+    but mark the lambda as generated from do ('ExprS.fromDO').
+    
+    Later, on translation to internal form, if such a marked lambda is found,
+    the pattern will be checked to see if it is refutable. If not, it is 
+    translated like any others. Otherwise, we make
+    
+    > \newvar -> case newvar of
+    >       P x -> return x
+    >       _   -> fail "pattern mismatch, source.fr line 21"
+    
+    In this case, the type checker will infer a 'MonadFail' constraint,
+    because of the reference to 'fail'.
+    
+ -}
+data ExprS =
+      !Vbl      { name::SName }                             --- variable
+    | !Lit      { pos::Position, kind::Literalkind, 
+                    value::String, negated∷Bool }           --- > 123 "string" 'c' ´regex´
+    | !Con      { name::SName }                             --- data constructor
+    | !ConFS    { name::SName, 
+                    fields::[(String, ExprS)] }             --- > Con{field1 = ex1, field2 = ex2}
+    | !App      { fun, arg::ExprS }                         --- > fun arg
+    | !Let      { defs::[DefinitionS], ex :: ExprS }        --- > let {defs} in ex
+    | !Lam      { pat, ex::ExprS, fromDO  :: Bool }         --- > \pat -> ex
+    | !Ifte     { cnd, thn, els::ExprS }                    --- > if cnd then thn else els
+    | !Mem      { ex::ExprS, member::Token }                --- > ex.member
+    | !Case     { ckind::CKind, ex::ExprS, alts::[CAltS] }  --- > case ex of { alts }
+    | !Ann      { ex::ExprS, typ::SigmaT SName}             --- > ex :: typ
+    | !Term     { ex::ExprS }                               --- > ( ex )
+    | !Infx     { name::SName,
+                    left, right :: ExprS }                  --- > left × right
+    | !Enclosed  { firstT, lastT :: Token, ex :: ExprS }     --- > (Foo.+)
+
+
+flats x = reverse (go x)
+    where
+        go (App a b) = b : go a
+        go x         = [x] 
+
+{--
+    case alternative 
+ -}
+data CAltS = CAlt {!pat::ExprS, !ex::ExprS}                 --- > pat -> ex
+
+
+
+
+
+instance Positioned ExprS where
+    is x = "source expression"
+    --- get the line number of an expression
+    getpos (App a b)    = (getpos a).merge (getpos b)
+    getpos Mem{ex}      = getpos ex
+    getpos Lam{pat,ex}  = pat.getpos.merge ex.getpos
+    getpos (Case _ e alts) = (getpos e).merge (Position.merges (map Positioned.getrange alts))
+    getpos (Let _ x)  = getpos x
+    getpos (Ifte c a b) = Position.merges (map getpos [c, a, b])
+    getpos (Ann e s)      = (getpos e).merge (s.getpos)
+    getpos (Term e)       = getpos e
+    getpos Infx{name, left, right} = Position.merge (getpos left) (getpos right)
+    getpos Enclosed{firstT, lastT, ex} = Pos firstT lastT
+    getpos e | e.{pos?}   = e.pos
+             | e.{name?}  = getpos e.name
+             | otherwise  = Prelude.error ("can't determine expr pos " ++ show (constructor e))
+
+    getrange x = getpos x
+
+
+instance Positioned (CAltS) where
+    is _ = "case alternative"
+    getpos   c = c.pat.getpos.merge   c.ex.getpos
+    getrange c = c.pat.getrange.merge c.ex.getrange
+
+--- retrieve and return the prospective pattern variables contained in this expression
+--- > Vbl {Simple{Token{VARID}}}
+--- expression types that cannot be patterns are ignored.
+exvars :: ExprS -> [ExprS]
+exvars (ex@Vbl Simple{id=Token{tokid=VARID}})   = [ex]
+exvars ConFS{name, fields}                      = concatMap (exvars . snd) fields
+exvars App{fun, arg}                            = exvars fun ++ exvars arg
+exvars Ann{ex, typ}                             = exvars ex
+exvars Term{ex}                                 = exvars ex
+exvars Infx{name, left, right}                  = exvars left ++ exvars right
+exvars other = []

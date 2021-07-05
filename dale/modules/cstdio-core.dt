@@ -1,0 +1,75 @@
+#|
+@module cstdio-core
+
+Provides bindings for the parts of `stdio.h` on which the `macros`
+module depends. This is separate from `cstdio`, so that `cstdio` can
+depend in turn on `macros`.
+
+|#
+(module cstdio-core)
+
+#|
+@struct file
+
+@linkage extern
+|#
+(def file (struct extern))
+
+#|
+@fn strlen
+|#
+(def strlen
+  (fn extern-c size ((str (p (const char))))))
+
+#|
+@fn strncpy
+|#
+(def strncpy
+  (fn extern-c (p char) ((dest (p char)) (source (p (const char))) (size
+  size))))
+
+#|
+@fn fprintf
+|#
+(def fprintf
+  (fn extern-c int ((stream (p file)) (str (p (const char))) ...)))
+
+#|
+@fn printf
+|#
+(def printf
+  (fn extern-c int ((str (p (const char))) ...)))
+
+#|
+@fn sprintf
+|#
+(def sprintf
+  (fn extern-c int ((str (p char)) (fmt (p (const char))) ...)))
+
+#|
+@fn strchr
+|#
+(def strchr
+  (fn extern-c (p char) ((str (p char)) (c int))))
+
+(def strchr
+  (fn extern (p (const char)) ((str (p (const char))) (c int))
+    (cast (strchr (cast str (p char)) c) (p (const char)))))
+
+#|
+@fn memset
+|#
+(def memset
+  (fn extern-c (p void) ((a (p void)) (b int) (c size))))
+
+#|
+@fn strcmp
+|#
+(def strcmp
+  (fn extern-c int ((str (p (const char))) (str2 (p (const char))))))
+
+#|
+@fn strncmp
+|#
+(def strncmp
+  (fn extern-c int ((str (p (const char))) (str2 (p (const char))) (n size))))

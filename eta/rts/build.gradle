@@ -1,0 +1,34 @@
+plugins {
+  id 'java-library'
+  id 'com.diffplug.gradle.spotless' version '3.17.0'
+}
+
+ext {
+    jdkLevel = 1.7
+    encoding = 'UTF-8'
+}
+
+repositories {
+    jcenter()
+}
+
+dependencies {
+    testImplementation 'junit:junit:4.12'
+}
+
+tasks.withType(JavaCompile) {
+    sourceCompatibility = jdkLevel
+    targetCompatibility = jdkLevel
+    options.encoding    = encoding
+    options.compilerArgs += [ '-XDignore.symbol.file', '-Xlint:-options' ]
+    /* We fork a JVM because the argument above flag doesn't work via the
+       Java Compiler API */
+    options.fork = true
+    options.forkOptions.executable = 'javac'
+}
+
+spotless {
+  java {
+    removeUnusedImports()
+  }
+}

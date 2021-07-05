@@ -1,0 +1,24 @@
+//@NO-IMPLICIT-PRELUDE
+//! Implementation of the `Applicative` type
+
+/// `Semigroup a` represents an associative operation on `a`.
+/// This means the following laws must hold:
+///
+/// * `forall x . append x (append y z) == append (append x y) z`
+#[implicit]
+type Semigroup a = {
+    /// # Note
+    ///
+    /// * Known as `(<>)` or `mappend` in Haskell
+    append : a -> a -> a
+}
+
+let append ?s : [Semigroup a] -> a -> a -> a = s.append
+#[infix(left, 4)]
+let (<>) : [Semigroup a] -> a -> a -> a = append
+
+{
+    Semigroup,
+    append,
+    (<>),
+}

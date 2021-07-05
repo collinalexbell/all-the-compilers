@@ -1,0 +1,1157 @@
+#|
+@module concepts-core
+
+Provides the core functions and macros required for defining and
+implementing concepts. The basic concepts are defined in
+`concept-defs`, and they are implemented for the basic types in
+`concepts`. Each binding in this module is in the `std.concepts`
+namespace.
+
+Concepts are a way in which the requirements of a macro can be
+formalised, such that macro authors can depend on certain arguments
+satisfying certain conditions. This means that problems are found
+before a macro is instantiated, as opposed to after. They also allow
+for multiple implementations of a given macro to operate concurrently,
+with the specific macro to use being selected based on the concepts
+implemented by the macro's arguments.
+
+Concepts as implemented by this library are a little different from
+those proposed from time to time for C++. The concept definitions
+themselves are procedures, as opposed to lists of required
+methods/attributes, and there is no support for concept maps or
+axioms. There is also no facility for a given parameter in a concept
+macro to satisfy multiple concepts at the same time, except by way of
+a check in the concept definition body proper. (Allowing multiple
+concepts per parameter complicates dispatch tremendously when concept
+refinements are present.)
+
+There are many `extern`-scoped functions in this module, but the only
+ones that should be used directly are:
+
+  * `exists-concept`;
+  * `def-concept`;
+  * `implement`;
+  * `implements`; and
+  * `def-concept-macro`.
+
+|#
+(module concepts-core (attr cto))
+
+(import unistd)
+(import cstring)
+(import macros)
+(import assert)
+
+(namespace std (namespace concepts
+(using-namespace std.macros
+
+#|
+@fn std.concepts.exists-concept-fn
+
+Determines whether the given concept, as described by the node, has
+been defined.
+
+@param mc       An MContext.
+@param frm      The node containing the concept name.
+|#
+(def exists-concept-fn
+  (fn extern bool ((mc (p MContext)) (frm (p DNode)))
+    (let ((fn-name (array-of 255 char)))
+      (sprintf fn-name "_concept-%s" (@:@ frm token-str))
+      (let ((myn   \ (mnfv mc fn-name))
+            (frm   \ (qq int (uq myn) void)))
+        (return (exists-fn mc frm))))))
+
+#|
+@macro std.concepts.exists-concept
+
+Expands to `true` or `false`, depending on whether the concept, as
+described by the argument node, has been defined.
+
+@param concept-name     The node containing the concept name.
+|#
+(def exists-concept
+  (macro extern (concept-name)
+    (if (exists-concept-fn mc concept-name)
+        (qq do true)
+        (qq do false))))
+
+#|
+@macro std.concepts.def-concept
+
+Define a new concept. Takes a name, a list of refinements, a list of
+parameters and an arbitrary number of forms representing the body of
+the concept.
+
+The list of refinements has the following form:
+
+        (refines {concept-1} {concept-2} ... {concept-N})
+
+A concept P 'refines' another concept Q when it must meet the criteria
+of Q, as well as certain other criteria. If the concept being defined
+does not refine any other concept, then the second argument should be
+`(refines)`.  Apart from allowing a concept to import the criteria of
+another concept, refinements are also used during `instantiate`: the
+instantiation that is most-specific with respect to the arguments'
+concepts, taking into account their refinements, is the one that is
+used.
+
+The parameter list is as per a macro's parameter list, except that all
+of the parameters must be untyped. Currently, a concept may only
+accept one parameter.
+
+The body of the concept must evaluate to a boolean value indicating
+whether the specified parameters satisfy the concept. Its environment
+is as per a normal macro, so an `mc` is present.
+
+Concepts, once defined, can be used to 'tag' the parameters to a macro
+constructed by way of `def-concept-macro`.
+
+|#
+(def def-concept
+  (macro extern (concept-name-node refinement-list type-arguments rest)
+    (if (= 1 (@:@ concept-name-node is-list))
+        (do (report-error mc concept-name-node
+                          "concept name argument must not be a list")
+            (return (nullptr DNode)))
+        (nullptr DNode))
+    (if (= 0 (@:@ refinement-list is-list))
+        (do (report-error mc refinement-list
+                          "refinement argument must be a list")
+            (return (nullptr DNode)))
+        (nullptr DNode))
+    (if (= 0 (@:@ type-arguments is-list))
+        (do (report-error mc type-arguments
+                          "type argument must be a list")
+            (return (nullptr DNode)))
+        (nullptr DNode))
+
+    (def refinements (var auto \ (@:@ refinement-list list-node)))
+    (def types       (var auto \ (@:@ type-arguments  list-node)))
+
+    (if (!= 0 (strcmp "refines" (@:@ refinements token-str)))
+        (do (report-error mc refinements
+                          "refinement list first element must be 'refines'")
+            (return (nullptr DNode)))
+        (nullptr DNode))
+
+    (def refinement-nodes (var auto (array-of 255 (p DNode))))
+    (def rn-count (var auto \ 0))
+
+    (while (not (null (@:@ refinements next-node)))
+      (setv refinements (@:@ refinements next-node))
+      (if (not (exists-concept-fn mc refinements))
+          (do (report-error mc refinements
+                            "refinement concept does not exist")
+              (return (nullptr DNode)))
+          (do (setf ($ refinement-nodes rn-count) refinements)
+              (incv rn-count))))
+
+    (def new-rnodes (var auto (array-of 255 (p DNode))))
+    (for (i \ 0) (< i rn-count) (incv i)
+      (let ((myrnode \ (@$ refinement-nodes i)))
+        (setf ($ new-rnodes i)
+              (qq do (std.concepts.implement (uq myrnode) 
+                                             (uq (uq myn)))))))
+
+    (def new-rfnodes (var auto (array-of 255 (p DNode))))
+    (for (i \ 0) (< i rn-count) (incv i)
+      (let ((myrnode \ (@$ refinement-nodes i))
+            (fnstr (array-of 255 char))
+            (nn (p DNode)))
+        (sprintf fnstr "_check-concept-%s" (@:@ myrnode token-str))
+        (setv nn (mnfv mc fnstr))
+        (setf ($ new-rfnodes i)
+              (qq and (not ((uq nn) myn mc))
+                      (return (nullptr DNode)) ))))
+
+    (def ta (var auto \ (@:@ type-arguments list-node)))
+
+    (def new-rfnodes2 (var auto (array-of 255 (p DNode))))
+    (for (i \ 0) (< i rn-count) (incv i)
+      (let ((myrnode \ (@$ refinement-nodes i))
+            (fnstr (array-of 255 char))
+            (nn (p DNode)))
+        (sprintf fnstr "_check-concept-%s" (@:@ myrnode token-str))
+        (setv nn (mnfv mc fnstr))
+        (setf ($ new-rfnodes2 i)
+              (qq and (not ((uq nn) (uq ta) mc))
+                      (return false) ))))
+
+    (def linked-rfnodes (var auto (p DNode)
+        (link-nodes-array rn-count new-rfnodes)))
+    (if (null linked-rfnodes)
+        (do (setv linked-rfnodes (qq do true)))
+        true)
+
+    (def linked-rfnodes2 (var auto (p DNode)
+        (link-nodes-array rn-count new-rfnodes2)))
+    (if (null linked-rfnodes2)
+        (do (setv linked-rfnodes2 (qq do true)))
+        true)
+
+    (def linked-rnodes (var auto (p DNode)
+        (link-nodes-array rn-count new-rnodes)))
+    (if (null linked-rnodes)
+        (do (setv linked-rnodes (qq namespace unused1)))
+        true)
+
+    (def concept-name 
+      (var auto (p char) (@:@ concept-name-node token-str)))
+
+    (def new-linknodes (var auto (array-of 255 (p DNode))))
+    (for (i \ 0) (< i rn-count) (incv i)
+      (let ((myrnode  \ (@$ refinement-nodes i))
+            (myfnname (array-of 255 char))
+            (myfnnode (p DNode)))
+        (sprintf myfnname "_refines-%s"
+                          (@:@ myrnode token-str))
+        (setv myfnnode (mnfv mc myfnname))
+        (setf ($ new-linknodes i)
+              (qq def (uq myfnnode)
+                (fn extern int ((a (uq concept-name-node))))))))
+
+    (def linked-refine-nodes (var auto (p DNode)
+        (link-nodes-array rn-count new-linknodes)))
+    (if (null linked-refine-nodes)
+        (do (setv linked-refine-nodes (link-nodes 2 
+                    (qq namespace unused1)
+                    (qq namespace unused2))))
+        true)
+
+    (def arg-count (var auto \ (arg-count mc)))
+    (setv arg-count (- arg-count 3))
+    (def varargs-list (var auto \ (get-varargs-list mc arg-count rest)))
+
+    (def function-name
+      (var auto (p char) (pool-malloc' 255 char)))
+    (sprintf function-name "_concept-%s" concept-name)
+    (def function-name-node
+      (var auto \ (mnfv mc function-name)))
+
+    (def implements-name
+      (var auto (p char) (pool-malloc' 255 char)))
+    (sprintf implements-name "_impl-of-concept-%s" concept-name)
+    (def implements-name-node
+      (var auto \ (mnfv mc implements-name)))
+
+    (def macro-name
+      (var auto (p char) (pool-malloc' 255 char)))
+    (sprintf macro-name "_impl-concept-%s" concept-name)
+    (def macro-name-node
+      (var auto \ (mnfv mc macro-name)))
+
+    (def check-fn-name
+      (var auto (p char) (pool-malloc' 255 char)))
+    (sprintf check-fn-name "_check-concept-%s" concept-name)
+    (def check-fn-name-node
+      (var auto \ (mnfv mc check-fn-name)))
+
+    (let ((mine \ (qq do
+        (def (uq check-fn-name-node)
+          (fn (attr cto) extern bool (((uq ta) (p DNode))
+                                       (mc (p MContext)))
+            (uql linked-rfnodes2)
+            (uql varargs-list)))
+        (def (uq macro-name-node)
+          (macro extern (uq type-arguments)
+              (def myn
+                (var auto \ (std.macros.copy mc true (uq types))))
+              (def function-arg-list
+                (var auto \ (qq a (uq (uq myn)))))
+              (let ((mine2 \ (qq do
+                (uql linked-rnodes)
+                (def (uq implements-name-node)
+                  (fn extern int ((uq (uq function-arg-list)))
+                  0)))))
+                (if (exists-fn mc 
+                        (std.macros.qq int (uq implements-name-node) 
+                                           (uq (uq myn))))
+                    ; todo: a better 'do-nothing-successfully' form
+                    ; would be nice (cf. 'do-nothing-unsuccessfully',
+                    ; as per (nullptr DNode)).
+                    (return (std.macros.qq namespace unused))
+                    0)
+                (do
+                    (uql linked-rfnodes)
+                    (let ((result bool ((uq check-fn-name-node) 
+                                        (uq ta) mc)))
+                      (if (not result)
+                          (return (nullptr DNode))
+                          (do mine2)))))))
+        (def (uq concept-name-node)
+          (struct extern ((a int))))
+        (def (uq function-name-node)
+          (fn extern int (void) 0))
+        (uql linked-refine-nodes))))
+     mine)))
+
+#|
+@macro std.concepts.implement
+
+Takes a concept name and a list of type arguments. Attempts to
+'implement' the concept for those type arguments, which involves
+checking whether the type satisfies the concept's constraints and
+marking the type as such if it does. If the type does not satisfy the
+constraints, the expansion is a no-op, though note that the concept
+body may (generally, will) add errors if its requirements are not met.
+
+|#
+(def implement
+  (macro extern (concept-name-node rest)
+    (def concept-name 
+      (var auto (p char) (@:@ concept-name-node token-str)))
+    (def arg-count (var auto \ (arg-count mc)))
+    (setv arg-count (- arg-count 1))
+    (def varargs-list (var auto \ (get-varargs-list mc arg-count rest)))
+    (def macro-name
+      (var auto (p char) (pool-malloc' 255 char)))
+    (sprintf macro-name "_impl-concept-%s" concept-name)
+    (def macro-name-node
+      (var auto \ (mnfv mc macro-name)))
+    
+    (let ((mine \ (qq do ((uq macro-name-node) (uql varargs-list)))))
+      mine)))
+
+#|
+@fn std.concepts.implements-fn
+
+@param mc   An MContext.
+@param T    A type node.
+@param C    A concept node.
+|#
+(def implements-fn
+  (fn extern bool ((mc (p MContext)) (T (p DNode)) (C (p DNode)))
+    (let ((fnname (array-of 255 char)))
+      (sprintf fnname "_impl-of-concept-%s"
+                      (@:@ C token-str))
+      (let ((fnnode \ (mnfv mc fnname)))
+        (return (exists-fn mc (qq int (uq fnnode) (uq T))))))))
+
+#|
+@macro std.concepts.implements
+
+If the type implements the concept, this is a no-op. Otherwise, it
+reports an error about the concept not being implemented.
+
+@param T    A type node.
+@param C    A concept node.
+|#
+(def implements
+  (macro extern (T C)
+    (let ((concept-name \ (@:@ C token-str))
+          (fnname (array-of 255 char)))
+      (sprintf fnname "_impl-of-concept-%s" concept-name)
+      (let ((fnnode \ (mnfv mc fnname)))
+        (and (not (exists-fn mc (qq int (uq fnnode) (uq T))))
+          (let ((buf (array-of 1024 char)))
+            (sprintf buf "type does not implement concept %s"
+                     concept-name)
+            (report-error mc T buf)))
+        (nullptr DNode)))))
+
+#|
+@fn std.concepts.get-node-type-concept-list
+
+Takes a type DNode as its single argument.  Returns a list of char
+pointers, each being the name of a concept implemented by this type.
+This is recursive, so if the type implements a concept A, which is in
+turn a refinement of concept B, the list will includes entries for
+both A and B.
+
+@param mc   An MContext.
+@param T    A type node.
+|#
+(def get-node-type-concept-list
+  (fn extern (p (p char)) ((mc (p MContext)) (T (p DNode)))
+    (let ((cnames  (array-of 255 (p char)))
+          (cnamesi \ 0)
+          (fnbgn   \ "_impl-of-concept-")
+          (count   \ (fn-by-args-count mc (qq (uq T)) fnbgn)))
+      (for (i \ 0) (< i count) (incv i)
+        (let ((fnnm  \ (fn-by-args-name mc (qq (uq T)) i))
+              (ncpy \ (pool-malloc' 255 char)))
+          (and (null fnnm)
+               (do (fprintf stderr "Unable to load function.\n")
+                   (abort)
+                   false))
+          (strcpy ncpy (p+ fnnm (strlen fnbgn)))
+          (setf ($ cnames cnamesi) ncpy)
+          (incv cnamesi)))
+      (if (= cnamesi 0)
+          (return (nullptr (p char)))
+          0)
+      (let ((cnamesp (p (p char)) (pool-malloc' (+ 2 cnamesi) (p char))))
+        (for (i \ 0) (< i cnamesi) (incv i)
+          (setf (p+ cnamesp i) (@$ cnames i)))
+        (setf (p+ cnamesp cnamesi) (nullptr char))
+        cnamesp))))
+
+(def concept-node
+  (struct extern ((name             (p (const char)))
+                  (refinement-count int)
+                  (refinements      (p (p concept-node))))))
+
+#|
+@fn std.concepts.refines
+
+@param mc       An MContext.
+@param Tupper   The possibly-refined type.
+@param Tlower   The refining type.
+|#
+(def refines
+  (fn extern bool ((mc (p MContext))
+                   (Tupper (p (const char)))
+                   (Tlower (p (const char))))
+    (def tnode   (var auto \ (mnfv mc Tlower)))
+    (def fnname  (var auto (array-of 255 char)))
+    (sprintf fnname "_refines-%s" Tupper)
+    (def refnode (var auto \ (mnfv mc fnname)))
+    (let ((mine \ (qq int (uq refnode) (uq tnode)))
+          (res \ (exists-fn mc mine)))
+      res)))
+
+#|
+@fn std.concepts.refines-multiple
+
+@param mc       An MContext.
+@param Tupper   The possibly-refined type.
+@param Tlower   The refining type.
+|#
+(def refines-multiple
+  (fn extern bool ((mc (p MContext))
+                   (Tupper (p (const char)))
+                   (Tlower (p (const char))))
+    (def upperspace (var auto \ (strchr Tupper (cast #\SPACE int))))
+    (def lowerspace (var auto \ (strchr Tlower (cast #\SPACE int))))
+    (and (p= (nullptr char) upperspace)
+         (do (return (refines mc Tupper Tlower))))
+    (def upperone (var auto (array-of 255 char)))
+    (def lowerone (var auto (array-of 255 char)))
+    (memcpy (cast upperone (p void))
+            (cast Tupper (p void))
+            (cast (p- upperspace Tupper) size))
+    (memcpy (cast lowerone (p void))
+            (cast Tlower (p void))
+            (cast (p- lowerspace Tlower) size))
+    (setf ($ upperone (cast (p- upperspace Tupper) size)) #\NULL)
+    (setf ($ lowerone (cast (p- lowerspace Tlower) size)) #\NULL)
+    (def use-this (var auto \ (!= 0 (strcmp upperone lowerone))))
+    (def use-rest (var auto \ (and (not (p= (nullptr char)
+                                            (p+ upperspace 1)))
+                                   (!= 0 (strcmp (p+ upperspace 1)
+                                                 (p+ lowerspace 1))))))
+    (and (and (not use-this) (not use-rest))
+         (do (printf "Internal concept error.\n") (abort) true))
+    (return (if (not use-rest)
+                (refines mc upperone lowerone)
+            (if (not use-this)
+                (refines-multiple mc (p+ upperspace 1)
+                                     (p+ lowerspace 1))
+                (and (refines mc upperone lowerone)
+                     (refines-multiple mc (p+ upperspace 1)
+                                          (p+ lowerspace 1))))))))
+
+#|
+@fn std.concepts.add-refinement
+
+@param current-cn   The current concept node.
+@param refine-cn    The refinement concept node.
+|#
+(def add-refinement
+  (fn extern void ((current-cn (p concept-node))
+                   (refine-cn  (p concept-node)))
+    (setf (p+ (@:@ current-cn refinements)
+              (@:@ current-cn refinement-count))
+          refine-cn)
+    (incf (:@ current-cn refinement-count))
+    (return)))
+
+#|
+@fn std.concepts.make-simple-node
+
+@param mc    An MContext.
+@param name  The name of the concept.
+|#
+(def make-simple-node
+  (fn extern (p concept-node) ((mc (p MContext))
+                               (name (p DNode)))
+    (let ((pcn   \ (pool-malloc' 1 concept-node))
+          (mname \ (pool-malloc' 255 char)))
+      (sprintf mname "%s" (@:@ name token-str))
+      (setf (:@ pcn refinements)      (nullptr (p concept-node)))
+      (setf (:@ pcn refinement-count) 0)
+      (setf (:@ pcn name            ) mname)
+      pcn)))
+
+(def pd (fn intern void ((n int))
+  (while (!= n 0) (printf ".") (setv n (- n 1)))
+  (return)))
+
+#|
+@fn std.concepts.dump-concept-map
+
+|#
+(def dump-concept-map
+  (fn extern void ((mc (p MContext))
+                   (mapp (p concept-node))
+                   (mlist bool)
+                   (n int))
+    (pd n)
+    (printf " %s (%d)\n" (@:@ mapp name) (@:@ mapp refinement-count))
+    (for (i \ 0) (< i (@:@ mapp refinement-count)) (incv i)
+      (dump-concept-map mc (@ (p+ (@:@ mapp refinements) i)) false (+ n 1)))
+    (return)))
+
+#|
+@fn std.concepts.concept-map-to-string
+
+|#
+(def concept-map-to-string
+  (fn extern void ((mc (p MContext))
+                   (mapp (p concept-node))
+                   (buf (p char)))
+    (and (= 0 (strcmp (@:@ mapp name) "not-applicable"))
+      (do (for (i \ 0) (< i (@:@ mapp refinement-count)) (incv i)
+          (and (!= i 0)
+            (strcat buf ", "))
+          (concept-map-to-string mc (@ (p+ (@:@ mapp refinements) i)) buf))
+          (return)))
+
+    (strcat buf (@:@ mapp name))
+    (for (i \ 0) (< i (@:@ mapp refinement-count)) (incv i)
+      (if (= i 0)
+          (do (strcat buf " (refines ")
+              (concept-map-to-string mc (@ (p+ (@:@ mapp refinements) i))
+                                     buf))
+          (do (strcat buf ", ")
+              (concept-map-to-string mc (@ (p+ (@:@ mapp refinements) i))
+                                     buf))))
+    (and (!= 0 (@:@ mapp refinement-count))
+      (strcat buf ")"))
+    (return)))
+
+#|
+@fn std.concepts.concepts-to-string
+
+|#
+(def concepts-to-string
+  (fn extern void ((mc (p MContext))
+                   (name (p DNode))
+                   (buf (p char)))
+    (let ((prename \ (@:@ name token-str))
+          (name (array-of 256 char)))
+      (sprintf name "_finder-%s" prename)
+      (let ((instance-count \ (fn-by-name-count mc name))
+            (type-buf (array-of 1024 char)))
+        (for (i \ 0) (< i instance-count) (incv i)
+          (let ((types-count \ (fn-by-name-types-count mc name i)))
+            (for (j \ 0) (< j types-count) (incv j)
+              (type-to-display-string
+                mc
+                (fn-by-name-types-type mc name i j)
+                type-buf)
+              (strcat buf type-buf)
+              (and (!= (+ j 1) types-count)
+                (strcat buf ", "))))
+          (and (!= (+ i 1) instance-count)
+            (strcat buf "; ")))
+        (return)))))
+
+#|
+@fn std.concepts.get-type-concept-map
+
+|#
+(def get-type-concept-map
+  (fn extern (p concept-node) ((mc (p MContext))
+                               (T    (p DNode)))
+    (def tcl (var auto \ (get-node-type-concept-list mc T)))
+
+    (if (null tcl)
+        (return (nullptr concept-node))
+        0)
+
+    ; Make a list of concept nodes out of the type concept list.
+    (def cns       (var auto (array-of 255 (p concept-node))))
+    (def cns-count (var auto \ 0))
+    (while (not (null (@ tcl)))
+      (let ((pcn \ ($ cns cns-count))
+            (cn  \ (pool-malloc' 1 concept-node)))
+        (setf (:@ cn name)             (@ tcl))
+        (setf (:@ cn refinement-count) 0)
+        (setf (:@ cn refinements)      
+              (pool-malloc' 64 (p concept-node)))
+        (setf ($ cns cns-count) cn)
+        (incv cns-count)
+        (setv tcl (p+ tcl 1))))
+    ; For each of those nodes, iterate over the list again, skipping
+    ; the instant concept node. For each other concept that the
+    ; instant concept refines, add a link to that other concept to the
+    ; instant concept's list of refinements.
+    (def refbuf  (var auto (array-of 255 char)))
+    (def tstr    (var auto (array-of 255 char)))
+    (def refnode (var auto (p DNode)))
+    (def tnode   (var auto (p DNode)))
+    (for (i \ 0) (< i cns-count) (incv i)
+      (let ((current-cn (p concept-node) (@$ cns i)))
+        (for (j \ 0) (< j cns-count) (incv j)
+          (let ((upper-cn (p concept-node) (@$ cns j)))
+            (if (!= i j) 
+                (do 
+                (if (refines mc (@:@ upper-cn name)
+                                      (@:@ current-cn name))
+                    (do (add-refinement current-cn upper-cn) 0)
+                    (do 0)))
+                (do 0))))))
+    (def root (var auto (p concept-node) 
+                           (pool-malloc' 1 concept-node)))
+    (setf (:@ root name) "not-applicable")
+    (setf (:@ root refinement-count) 0)
+    (setf (:@ root refinements)
+          (pool-malloc' 64 (p concept-node)))
+    ; Iterate over the list again, finding each concept that is not
+    ; refined by any other concept. Add each of those to the root
+    ; node's list of refinements.
+    (for (i \ 0) (< i cns-count) (incv i)
+      (let ((current-cn \ (@$ cns i))
+            (refined \ 0))
+        (for (j \ 0) (< j cns-count) (incv j)
+          (let ((lower-cn \ (@$ cns j)))
+            (if (and (!= i j) 
+                     (refines mc
+                                      (@:@ current-cn name)
+                                      (@:@ lower-cn name)))
+                (do (setv refined 1)
+                    (break))
+                0)))
+        (if (= 0 refined)
+            (do (add-refinement root current-cn) 0)
+            (do 0))))
+
+    (return root)))
+
+#|
+@fn std.concepts.get-concept-macro-name
+
+@param mc           An MContext.
+@param macro-name   The macro name node.
+@param mt-vl        The concept macro type.
+@param tnames       Whether the type is a list or an atom.
+@param buf          The buffer for the name.
+|#
+(def get-concept-macro-name
+  (fn intern bool ((mc   (p MContext))
+                   (macro-name (p DNode))
+                   (mt-vl      (p DNode))
+                   (tnames     bool)
+                   (buf        (p char)))
+    (let ((tstr (array-of 255 char)))
+      (sprintf buf "_%s" (@:@ macro-name token-str))
+      (while (not (null mt-vl))
+        (if tnames
+            (do (if (= 0 (@:@ mt-vl is-list))
+                    (do (report-error mc mt-vl 
+                            "concept macro types must be concepts")
+                        (return false))
+                    0)
+                (def myx (var auto \ 
+                                (@:@ (@:@ mt-vl list-node) next-node)))
+                (if (not (type-to-string mc myx tstr))
+                    (do (report-error mc myx "unable to convert type to string")
+                        (return false))
+                    0))
+            (do (if (= 1 (@:@ mt-vl is-list))
+                    (do (report-error mc mt-vl
+                            "concept macro types must be atoms")
+                        (return false))
+                    0)
+                (if (not (type-to-string mc mt-vl tstr))
+                    (do (report-error mc mt-vl "unable to convert type to string")
+                        (return false))
+                    0)))
+        (strcat buf "@")
+        (strcat buf tstr)
+        (setv mt-vl (@:@ mt-vl next-node)))
+      (return true))))
+
+#|
+@macro std.concepts.def-concept-macro
+
+Define a new concept macro. Takes a name, a linkage type, a list of
+macro parameters and an arbitrary number of forms (the body of the
+macro) as its parameters. The list of macro parameters is as per a
+normally-defined macro, except that each parameter must be 'typed'
+with a concept.
+
+Macros defined by way of this macro are executed by running
+`instantiate`. That macro takes care of determining which concept
+macro to actually run, based on the concepts implemented by the
+arguments.
+
+@param macro-name   The name of the concept macro.
+@param linkage      The linkage of the concept macro.
+@param macro-types  The parameters (typed) for the macro.
+|#
+(def def-concept-macro
+  (macro extern (macro-name linkage macro-types rest)
+    (def arg-count (var auto \ (arg-count mc)))
+    (setv arg-count (- arg-count 3))
+    (def varargs-list (var auto \ (get-varargs-list mc arg-count rest)))
+    (let ((newname (array-of 255 char)))
+      (if (not (get-concept-macro-name mc macro-name 
+                                       (@:@ macro-types list-node)
+                                       true
+                                       newname))
+          (return (nullptr DNode))
+          0)
+      (def newnamenode (var auto \ (mnfv mc newname)))
+      (def original-mts (var auto \ (copy mc true macro-types)))
+      (setv macro-types (@:@ macro-types list-node))
+      (let ((name-only \ (@:@ macro-types list-node))
+            (name-onlyh \ name-only))
+        (while (not (null (@:@ macro-types next-node)))
+          (do (setv macro-types (@:@ macro-types next-node))
+              (setf (:@ name-onlyh next-node)
+                    (@:@ macro-types list-node))
+              (setv name-onlyh (@:@ name-onlyh next-node))))
+        (setf (:@ name-onlyh next-node) (nullptr DNode))
+        (def finder-name-str (var auto (array-of 256 char)))
+        (sprintf finder-name-str "_finder-%s" (@:@ macro-name token-str))
+        (def finder-node (var auto \ (mnfv mc finder-name-str)))
+        (let ((nn \ (qq (uql name-only)))
+              (finder-name-str (array-of 256 char))
+              (mine2 \ (qq do
+                (def (uq newnamenode) (macro (uq linkage) (uq nn)
+                  (uql varargs-list)))
+                (def (uq finder-node)
+                  (fn (uq linkage) int (uql original-mts) 0)))))
+          mine2)))))
+
+#|
+@fn std.concepts.exists-concept-macro
+
+@param mc           An MContext.
+@param macro-name   The name of the concept macro.
+@param macro-types  The types of the concept macro.
+|#
+(def exists-concept-macro
+  (fn extern bool ((mc    (p MContext))
+                   (macro-name  (p DNode)) 
+                   (macro-types (p DNode)))
+    (let ((newname  (array-of 255 char))
+          (namenode (p DNode)))
+      (if (not (get-concept-macro-name mc 
+                                       macro-name 
+                                       (@:@ macro-types list-node)
+                                       false
+                                       newname))
+          (return true)
+          0)
+      (setv namenode (mnfv mc newname))
+      (setv macro-types (@:@ macro-types list-node))
+      (let ((macnode \ (qq (uq namenode) (uql macro-types))))
+        (return (exists-macro mc macnode))))))
+
+#|
+@fn std.concepts.all-applicable
+
+Returns true if the list of concept nodes does not contain any
+instances of "not-applicable" (i.e. of the root, unused concept node).
+
+|#
+(def all-applicable
+  (fn intern bool ((tcl-list  (p (p concept-node)))
+                   (tcl-count int))
+    (for (i \ 0) (< i tcl-count) (incv i)
+      (if (= 0 (strcmp (@:@ (@$ tcl-list i) name) "not-applicable"))
+          (return false)
+          0))
+    true))
+
+#|
+@fn std.concepts.get-candidate-toplevel
+
+Checks at the top-level of the concept list for a candidate that
+matches the requested macro name.  If one exists, writes it to the
+macro buffer and returns true.  Otherwise, returns false.
+
+|#
+(def get-candidate-toplevel
+  (fn intern bool ((mc          (p MContext))
+                   (tcl-list    (p (p concept-node)))
+                   (tcl-count   int)
+                   (macname     (p char))
+                   (macbuf      (p char))
+                   (hascnamebuf bool)
+                   (cname       (p char)))
+    (let ((cnode    (p DNode))
+          (cnodepre (p DNode) (nullptr DNode))
+          (cnodelst (p DNode) (nullptr DNode))
+          (cnodestr (array-of 255 char))
+          (mybuf    (array-of 255 char))
+          (myn      (p DNode)))
+      (sprintf mybuf "_%s" macname)
+      (for (i \ 0) (< i tcl-count) (incv i)
+        (setv cnode (mnfv mc (@:@ (@$ tcl-list i) name)))
+        (if (null cnodelst)
+            (setv cnodelst cnode)
+            true)
+        (if (not (null cnodepre))
+            (setf (:@ cnodepre next-node) cnode)
+            true)
+        (type-to-string mc cnode cnodestr)
+        (if hascnamebuf
+            (do (strcat cname (@:@ cnode token-str))
+                (if (< i (- tcl-count 1))
+                    (strcat cname " ")
+                    0))
+            0)
+        (strcat mybuf "@")
+        (strcat mybuf cnodestr)
+        (setv cnodepre cnode))
+      (setv myn (mnfv mc mybuf))
+      (if (exists-macro mc (qq (uq myn)
+                               (uql cnodelst)))
+          (do (strcpy macbuf mybuf)
+              (return true))
+          (do (and hascnamebuf
+                (setf ($ cname 0) #\NULL))
+              0)))
+    false))
+
+#|
+@fn std.concepts.get-candidate
+
+|#
+(def get-candidate
+  (fn intern int ((mc          (p MContext))
+                  (errn        (p DNode))
+                  (tcl-list    (p (p concept-node)))
+                  (tcl-count   int)
+                  (arg-cycle   int)
+                  (macname     (p char))
+                  (macbuf      (p char))
+                  (is-error    (p int))
+                  (hascnamebuf bool)
+                  (cname       (p char)))
+    (if hascnamebuf (setf ($ cname 0) #\NULL) true)
+
+    (def all-applicable (var auto \ (all-applicable tcl-list tcl-count)))
+
+    (and all-applicable
+         (let ((res \ (get-candidate-toplevel mc tcl-list tcl-count
+                                              macname macbuf
+                                              hascnamebuf cname)))
+           (and res (return 1))))
+
+    (if (>= arg-cycle tcl-count)
+        (return 0)
+        0)
+
+    ; If here, then no match was found at the top-level for the
+    ; concepts.
+
+    (let ((tcl (p concept-node) (@$ tcl-list arg-cycle))
+          (tclorig (p concept-node) tcl)
+          (lastbuf (array-of 1024 char))
+          (thisbuf (array-of 1024 char))
+          (omacbuf (array-of 1024 char))
+          (has-last \ 0)
+          (err \ 0)
+          (res \ 0)
+          (cn (p concept-node)))
+      (setf ($ omacbuf 0) #\NULL)
+      (setf ($ lastbuf 0) #\NULL)
+      (setf ($ thisbuf 0) #\NULL)
+
+      ; First: try incrementing arg-cycle. If this succeeds, don't
+      ; check for refinements.
+      (setv res (get-candidate mc
+                               errn
+                               tcl-list
+                               tcl-count
+                               (+ arg-cycle 1)
+                               macname
+                               macbuf
+                               is-error
+                               true
+                               thisbuf))
+      (setf ($ tcl-list arg-cycle) tclorig)
+      (and (= 1 (@ is-error))
+           (do (return 0)))
+      (and (= 0 res)
+           (goto next-part))
+      (if hascnamebuf
+          (strcpy cname thisbuf)
+          0)
+      (return 1)
+
+      (label next-part)
+        ; Loop through the refinements at the arg-cycle position and see
+        ; whether any is relevant.
+        (for (i \ 0) (< i (@:@ tcl refinement-count)) (incv i)
+          (strcpy omacbuf macbuf)
+          (if (!= 0 (cast (strlen thisbuf) int))
+              (strcpy lastbuf thisbuf)
+              0)
+          ; In tcl-list, set the arg-cycle node to the appropriate
+          ; refinement node.
+          (setf ($ tcl-list arg-cycle) (@ (p+ (@:@ tcl refinements) i)))
+          ; However, if this concept has further refinements, check them
+          ; first (by leaving arg-cycle at its current value).
+          (setv res (get-candidate mc
+                                   errn
+                                   tcl-list
+                                   tcl-count
+                                   arg-cycle
+                                   macname
+                                   macbuf
+                                   is-error
+                                   true
+                                   thisbuf))
+          (setf ($ tcl-list arg-cycle) tclorig)
+          (and (= 1 (@ is-error))
+               (do
+                   (return 0)))
+          (and (= 0 res)
+               (continue))
+          (if (and (=  1 has-last)
+                   (!= 0 (strcmp thisbuf lastbuf)))
+              (do
+                (if (refines-multiple mc thisbuf lastbuf)
+                    (do (setv has-last 1)
+                        (strcpy macbuf omacbuf)
+                        (strcpy thisbuf lastbuf) true)
+                    (if (refines-multiple mc lastbuf thisbuf)
+                        (do (setv has-last 1)
+                            (strcpy lastbuf thisbuf) true)
+                        (let ((errbuf (array-of 1024 char)))
+                          (sprintf errbuf "multiple instantiations found: (%s), (%s)"
+                                          thisbuf
+                                          lastbuf)
+                          (report-error mc errn errbuf)
+                          (setf is-error 1)
+                          (return 0)))))
+              (do (setv has-last 1)))
+          (if hascnamebuf
+              (strcpy cname thisbuf)
+              0))
+
+      (return has-last))))
+
+#|
+@macro std.concepts.assert-return
+
+|#
+(def assert-return
+  (macro intern (error-cond report-error-node report-error-str)
+    (qq if (uq error-cond)
+           (do (report-error mc (uq report-error-node)
+                             (uq report-error-str))
+               (return (nullptr DNode)))
+           0)))
+
+#|
+@macro std.concepts.assert-return-b
+
+|#
+(def assert-return-b
+  (macro intern (error-cond report-error-node report-error-str)
+    (qq if (uq error-cond)
+           (do (report-error mc (uq report-error-node)
+                             (uq report-error-str))
+               (return false))
+           0)))
+
+#|
+@fn std.concepts.is-forced-concept
+
+|#
+(def is-forced-concept
+  (fn intern bool ((node (p DNode)))
+    (and (= 1 (@:@ node is-list))
+         (and (= 0 (@:@ (@:@ node list-node) is-list))
+              (= 0 (strcmp (@:@ (@:@ node list-node) token-str)
+                           "force"))))))
+
+#|
+@fn std.concepts.validate-forced-concept
+
+|#
+(def validate-forced-concept
+  (fn intern bool ((mc   (p MContext))
+                   (node (p DNode)))
+    (assert-return-b (null (@:@ node next-node))
+                     node "expected concept as next element")
+    (let ((concept \ (@:@ node next-node)))
+      (assert-return-b (null (@:@ concept next-node))
+                       concept "expected type as next element")
+      (assert-return-b (not (exists-concept-fn mc concept))
+                       concept "element is not a concept")
+      (let ((type \ (@:@ concept next-node)))
+        (assert-return-b (not (exists-type mc type))
+                         type "element is not a type")
+        (assert-return-b (not (implements-fn mc type concept))
+                         type "type does not implement concept")))
+    true))
+
+#|
+@fn std.concepts.get-type-concept-list
+
+Takes a list of concept instantiation arguments, except for the
+initial concept name.  Populates the type concept list, being the
+mapping between the parameter and the concept map for the parameter.
+
+Most parameters are plain types, for which see get-type-concept-map.
+The special processing here is for disambiguation (forcing the use of
+a specific concept) and non-types, the latter of which are treated as
+being of the Value concept.
+
+|#
+(def get-type-concept-list
+  (fn intern bool ((mc                (p MContext))
+                   (varargs-list      (p DNode))
+                   (varargs-count     int)
+                   (type-concept-list (p (p concept-node)))
+                   (type-list         (p (p DNode))))
+    (def myvl (var auto \ varargs-list))
+
+    (for (i \ 0) (< i varargs-count) (incv i)
+      (if (is-forced-concept myvl)
+          (do
+            (def first (var auto \ (@:@ myvl list-node)))
+            (and (not (validate-forced-concept mc first))
+                 (return false))
+            (setf ($ type-concept-list i)
+                  (make-simple-node mc (@:@ first next-node)))
+            (setf ($ type-list i)
+                  (@:@ (@:@ first next-node) next-node)))
+          (do
+              (if (and (not (exists-type mc myvl))
+                       (= 0 (@:@ myvl is-list)))
+                  ; If the type argument is not actually a type, then
+                  ; treat it as being of the Value concept.
+                  (setf ($ type-concept-list i)
+                        (make-simple-node mc (mnfv mc "Value")))
+                  (setf ($ type-concept-list i)
+                        (get-type-concept-map mc myvl)))
+              (setf ($ type-list i) myvl)))
+      (if (null (@$ type-concept-list i))
+          (do (report-error mc myvl
+              "type does not implement any concepts")
+              (return false))
+          true)
+      (setv myvl (@:@ myvl next-node)))
+
+    (for (i \ 0) (< i (- varargs-count 1)) (incv i)
+      (setf (:@ (@$ type-list i) next-node)
+            (@$ type-list (+ i 1))))
+
+    true))
+
+#|
+@macro std.concepts.instantiate
+
+Takes a concept macro name and a series of arguments for that concept
+macro as its arguments. Determines the most appropriate concrete
+concept macro, based on the provided arguments, and expands into a
+call to that macro. The term `instantiate` is used because in nearly
+all cases, the concept macro being run is something that in turn
+expands into a series of bindings; for example, `Vector`.
+
+When multiple equally-preferred instantiations are available for a
+given call, this will report an error and expand to nothing.
+Disambiguation is achieved by way of the `force` form:
+
+        (instantiate MacroName (force ConceptName Type) ...)
+
+Disambiguation is not required when an argument implements a concept
+that refines another concept, and there are instantiations available
+for both concepts.  In that case, the instantiation for the former
+concept will be preferred.
+
+Each argument to `instantiate` must implement one or more concepts.
+If any argument does not, the expansion will fail with the error
+message "type does not implement any concepts".  See `implement` in
+this module for details on how types can be made to implement
+concepts.
+
+If no concept macros that have this name exist, the expansion will
+fail with the error "concept not found".  This is usually caused by a
+missing import statement.
+
+@param macro-name       The name of the macro to be instantiated.
+|#
+(def instantiate
+  (macro extern (macro-name rest)
+    (let ((i \ 0)
+          (name \ (@:@ macro-name token-str))
+          (finder-name-str (array-of 256 char)))
+      (sprintf finder-name-str "_finder-%s" name)
+      (let ((instance-count \ (fn-by-name-count mc finder-name-str)))
+        (and (= 0 instance-count)
+          (do (report-error mc macro-name
+                            "concept not found")
+              (return (nullptr DNode))))))
+
+    (def arg-count (var auto \ (arg-count mc)))
+    (setv arg-count (- arg-count 1))
+    (def pre-arg-count (var auto \ arg-count))
+    (def varargs-list (var auto \ (get-varargs-list mc arg-count rest)))
+    (setv arg-count pre-arg-count)
+
+    (assert-return (= 0 arg-count) 
+                   macro-name
+                   "expected at least one type argument")
+
+    (def type-concept-list (var auto (array-of 64 (p concept-node))))
+    (def type-list (var auto (array-of 64 (p DNode))))
+    (def res (var auto \ (get-type-concept-list mc varargs-list
+                                                arg-count type-concept-list
+                                                type-list)))
+    (if (not res) (return (nullptr DNode)) 0)
+
+    (setf ($ type-list arg-count) (nullptr DNode))
+
+    (let ((macbuf (array-of 255 char))
+          (err \ 0)
+          (res \ 0))
+      (setf ($ macbuf 0) #\NULL)
+      (setv res (get-candidate mc
+                               varargs-list
+                               type-concept-list
+                               arg-count
+                               0
+                               (@:@ macro-name token-str)
+                               macbuf
+                               (# err)
+                               false
+                               (nullptr char)))
+      (and (= 1 err)
+           (return (nullptr DNode)))
+      (and (= 0 res)
+           (let ((i \ 0)
+                 (buf (array-of 8192 char))
+                 (node \ (@$ type-list i))
+                 (node2 \ (@$ type-concept-list i)))
+             (setf ($ buf 0) #\NULL)
+             (strcat buf "no applicable concept macro found (arguments implement the following concepts: ")
+             (while (not (null node))
+               (concept-map-to-string mc node2 buf)
+               (incv i)
+               (setv node (@$ type-list i))
+               (setv node2 (@$ type-concept-list i))
+               (and (not (null node))
+                 (strcat buf "; ")))
+             (strcat buf "; current candidates accept: ")
+             (concepts-to-string mc macro-name buf)
+             (strcat buf ")")
+             (report-error mc varargs-list buf)
+             (return (nullptr DNode))))
+      (if (= (@$ macbuf 0) #\NULL)
+          (do (printf "macbuf not set!\n")
+              (return (nullptr DNode)))
+          0)
+      (let ((macnode \ (mnfv mc macbuf))
+            (retnode \ (qq do ((uq macnode) (uql (@ type-list))))))
+        retnode)))))))

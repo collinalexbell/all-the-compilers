@@ -1,0 +1,147 @@
+use crate::base::{
+    ast::{TypedIdent},
+    pos::{BytePos, Span},
+    symbol::{Name, Symbol, SymbolData, Symbols},
+    types::{Field, Type},
+};
+
+use crate::core::{Allocator, Alternative, Closure, Expr, LetBinding, Literal, Named, Pattern};
+
+grammar<'env, 'a>(symbols: &'env mut Symbols, allocator: &'a Allocator<'a>);
+
+Comma<Rule>: Vec<Rule> =
+    <rules: (<Rule> ",")*> <last: Rule?> => {
+        let mut rules = rules;
+        rules.extend(last);
+        rules
+    };
+
+
+Identifier: Symbol = {
+    <r"@?[A-Za-z_][A-Za-z0-9_]*"> => symbols.symbol(SymbolData::<&Name>::from(<>)),
+    <r"\(#?[A-Za-z_]+[+\-*/<=]+\)"> => symbols.simple_symbol(&<>[1..<>.len() - 1]),
+    <r"\([&\|=*><+]+\)"> => symbols.simple_symbol(&<>[1..<>.len() - 1]),
+};
+
+Field: (Symbol, Option<Symbol>) = {
+    <field: Identifier> <binding: ("=" <Identifier>)?> => (field, binding)
+};
+
+Literal: Literal = {
+    <r"[0-9]+"> => Literal::Int(<>.parse().unwrap()),
+    <r#""[^"]*""#> => Literal::String(Box::from(&<>[1..<>.len() - 1])),
+};
+
+Pattern: Pattern = {
+    <id: Identifier> => {
+        if id.as_str().starts_with(char::is_uppercase) {
+            Pattern::Constructor(TypedIdent::new(id), Vec::new())
+        } else {
+            Pattern::Ident(TypedIdent::new(id))
+        }
+    },
+    <id: Identifier> <args: Identifier+> =>
+        Pattern::Constructor(TypedIdent::new(id), args.into_iter().map(TypedIdent::new).collect()),
+    "{" <Comma<Field>> "}" => Pattern::Record{
+        typ: Type::hole(),
+        fields: <>.into_iter()
+            .map(|(field, binding)| (TypedIdent::new(field), binding))
+            .collect()
+    },
+    <Literal> => Pattern::Literal(<>),
+};
+
+Alternative: Alternative<'a> = {
+    "|" <pattern: Pattern> "->" <expr: AllocExpr> => Alternative {
+        pattern: pattern,
+        expr: expr,
+    },
+};
+
+FieldExpr : (Symbol, Option<Expr<'a>>) = {
+    <Identifier> <("=" <Expr>)?>,
+};
+
+AtomicExpr: Expr<'a> = {
+    "(" <Expr> ")",
+    "{" <args: Comma<FieldExpr>> "}" => {
+        let id = TypedIdent {
+            name: symbols.simple_symbol("<record>"),
+            typ: Type::record(vec![], args.iter()
+                .map(|&(ref arg, _)| Field { name: arg.clone(), typ: Type::hole(), })
+                .collect()),
+        };
+        let args = args.into_iter()
+            .map(|(id, expr)| expr.unwrap_or_else(|| Expr::Ident(TypedIdent::new(id), Span::default())));
+        let args = allocator.arena.alloc_extend(args);
+        Expr::Data(id, args, BytePos::default())
+    },
+    <id: Identifier> => {
+        if id.as_str().starts_with(char::is_uppercase) {
+            Expr::Data(TypedIdent::new(id), &[], BytePos::default())
+        } else {
+            Expr::Ident(TypedIdent::new(id), Span::default())
+        }
+    },
+    <Literal> => Expr::Const(<>, Span::default()),
+};
+
+AllocExpr: &'a Expr<'a> = {
+    <Expr> => allocator.arena.alloc(<>)
+};
+
+LetBinding: LetBinding<'a> = {
+    <closures: RecLetBinding+> => {
+        LetBinding {
+            name: closures[0].name.clone(),
+            expr: Named::Recursive(closures),
+            span_start: BytePos::default(),
+        }
+    },
+
+    "let" <name: Identifier> "=" <expr: AllocExpr> => LetBinding {
+        name: TypedIdent::new(name),
+        expr: Named::Expr(expr),
+        span_start: BytePos::default(),
+    }
+};
+
+RecLetBinding: Closure<'a> = {
+    "rec" "let" <name: Identifier> <args: Identifier*> "=" <expr: AllocExpr> =>
+        Closure {
+            pos: BytePos::default(),
+            name: TypedIdent::new(name),
+            args: args.into_iter().map(TypedIdent::new).collect(),
+            expr,
+        }
+};
+
+ProjectionExpr: Expr<'a> = {
+    <expr: AtomicExpr> <projection : ("." <Identifier>)*> => {
+        projection.into_iter().fold(expr, |expr, field| {
+            let f = TypedIdent::new(field);
+            let alt = Alternative {
+                pattern: Pattern::Record{ typ: Type::hole(), fields: vec![(f.clone(), None)] },
+                expr: allocator.arena.alloc(Expr::Ident(f.clone(), Default::default())),
+            };
+            Expr::Match(allocator.arena.alloc(expr), allocator.alternative_arena.alloc_extend(Some(alt)))
+        })
+    },
+};
+
+pub Expr: Expr<'a> = {
+    ProjectionExpr,
+    <f: ProjectionExpr> <args: ProjectionExpr+> => {
+        let args = allocator.arena.alloc_extend(args.into_iter());
+        match f {
+            Expr::Data(id, ..) =>
+                Expr::Data(id, args, BytePos::default()),
+            f => Expr::Call(allocator.arena.alloc(f), args)
+        }
+    },
+    <bind: LetBinding> "in" <expr: AllocExpr> => {
+        Expr::Let(allocator.let_binding_arena.alloc(bind), expr)
+    },
+    "match" <expr: AllocExpr> "with" <alts: Alternative+> "end" =>
+        Expr::Match(expr, allocator.alternative_arena.alloc_extend(alts.into_iter())),
+};

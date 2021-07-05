@@ -1,0 +1,30 @@
+//! Implementation of the `Writer` type
+
+let { Functor, map } = import! std.functor
+let prelude @ { Applicative, Monad, Monoid, (<>) } = import! std.prelude
+let { empty } = import! std.monoid
+let { Identity } = import! std.identity
+
+/// The writer Monad
+type Writer w a = { value : a, writer : w }
+
+let functor : [Monoid w] -> Functor (Writer w) = {
+    map = \f m -> { value = f m.value, writer = m.writer },
+}
+
+let applicative : [Monoid w] -> Applicative (Writer w) = {
+    functor,
+    apply = \mf m -> { value = mf.value m.value, writer = mf.writer <> m.writer },
+    wrap = \value -> { value, writer = empty },
+}
+
+let monad : [Monoid w] -> Monad (Writer w) = {
+    applicative,
+    flat_map = \f m ->
+        let { value, writer } = f m.value
+        { value, writer = m.writer <> writer },
+}
+
+let tell w : w -> Writer w () = { value = (), writer = w }
+
+{ Writer, functor, applicative, monad, tell }

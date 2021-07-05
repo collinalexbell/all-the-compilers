@@ -1,0 +1,55 @@
+(import cstdio)
+
+(import macros)
+(import vector)
+(import algorithms)
+(import derivations)
+(import utility)
+(import concepts)
+(import concepts)
+
+(std.concepts.instantiate Vector int)
+(mfor T (sort for-each
+         lower-bound upper-bound
+         equal-range binary-search)
+  (std.concepts.instantiate T (Iterator (Vector int))))
+
+(def print-num
+  (fn extern void ((n int))
+    (printf "%d, " n)
+    (return)))
+
+(def main
+  (fn extern-c int (void)
+    (let ((v (Vector int))
+          (i int 0))
+      (for (setv i 10) (> i 0) (decv i)
+        (push-back v i))
+      (for (setv i 10) (> i 0) (decv i)
+        (push-back v i))
+      (sort (begin v) (end v))
+
+      (let ((n (Iterator (Vector int)) 
+               (lower-bound (begin v) (end v) 5)))
+        (for-each n (end v) (# print-num int)))
+      (printf "\n")
+      
+      (let ((n (Iterator (Vector int)) 
+               (upper-bound (begin v) (end v) 5)))
+        (for-each (begin v) n (# print-num int)))
+      (printf "\n")
+
+      (let ((pp (Pair (Iterator (Vector int)) 
+                      (Iterator (Vector int)))
+                (equal-range (begin v) (end v) 5)))
+        (for-each (@ (: pp first)) 
+                  (@ (: pp second)) 
+                  (# print-num int)))
+      (printf "\n")
+      
+      (for (setv i 0) (< i 20) (incv i)
+        (printf "%d is present? %s\n"
+                i
+                (if (binary-search (begin v) (end v) i)
+                    "Yes" "No")))
+    0)))

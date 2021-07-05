@@ -1,0 +1,20 @@
+name:                rts
+version:             0.1.0.0
+synopsis:            The Eta runtime system
+description:         The package for that contains the Eta runtime system.
+homepage:            http://github.com/typelead/eta
+license:             BSD3
+license-file:        LICENSE
+author:              Rahul Muttineni
+maintainer:          rahulmutt@gmail.com
+-- copyright:
+category:            Boot
+build-type:          Simple
+cabal-version:       >=1.10
+
+library
+  default-language:    Haskell2010
+  java-sources:        build/rts.jar
+  ghc-options:         -this-unit-id rts
+  install-includes:    etaversion.h
+                       MachDeps.h
